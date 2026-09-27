@@ -1,0 +1,27 @@
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# SQLite / local application data
+*.db
+*.sqlite
+*.sqlite3
+
+# Local receipt data
+data/uploads/
+data/receipts/
+
+# macOS
+.DS_Store
+
+# IDE / editor
+.vscode/
+.idea/
