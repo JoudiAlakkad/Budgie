@@ -1,0 +1,20 @@
+# Configuration
+
+All settings come from environment variables, read by `app/config.py`. The repo ships `.env.example`, and `.env` is git-ignored. Nothing is hard-coded: no credentials and no machine-specific paths (criterion 17).
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `LLM_BASE_URL` | `http://localhost:11434/v1` | OpenAI-compatible server. In Docker on a Mac or Windows host, use `http://host.docker.internal:11434/v1` |
+| `LLM_MODEL` | `gemma3:4b` | model name/tag |
+| `LLM_API_KEY` | `ollama` | dummy; sent as a Bearer token for servers that require one |
+| `LLM_TIMEOUT_S` | `120` | per request |
+| `LLM_MAX_RETRIES` | `1` | on timeout or connection error only |
+| `LLM_TEMPERATURE` | `0` | |
+| `LLM_MAX_TOKENS` | `1024` | |
+| `PROMPT_VERSION` | `v1` | folder under `ai/prompts/` |
+| `DATABASE_URL` | `sqlite:///./data/budgie.db` | |
+| `UPLOAD_DIR` | `./data/uploads` | |
+| `MAX_UPLOAD_MB` | `10` | |
+| `LOG_LEVEL` | `INFO` | |
+
+**Swapping the model or server** is a config change only: point `LLM_BASE_URL` at llama.cpp server, LM Studio or vLLM, and set `LLM_MODEL`.
