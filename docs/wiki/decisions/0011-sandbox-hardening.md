@@ -15,7 +15,19 @@ The brief requires the agent harness to run sandboxed: access only to the worksp
   - `deny`: reading `.env*`, `~/.ssh/**` and `~/.gitconfig`
   - `ask`: `git push`, `git commit`, `rm`, `docker`, `curl` and `wget`
   - `allow`: tests, lint and read-only git commands
-- **Git:** the agent commits locally, and the student pushes from the host.
+- **Git: the push model.** The student chose this on 2026-09-28.
+  - The agent commits locally. Only the student pushes, from a host terminal. No personal credentials and no access tokens exist inside the container.
+  - **Branch protection on `main`** is set up on the server (GitHub or Gitea) when the remote is created:
+    - changes arrive only through PRs
+    - every CI check from [0010](0010-ci-gates-before-merge.md) must pass
+    - force-pushes and deletion of `main` are blocked
+
+    The server enforces these rules no matter who pushes.
+  - **Why Git-side limits alone aren't enough:**
+    - A local `pre-push` hook or `remote.pushurl = no_push` can be undone by the agent (`--no-verify`, one `git config` call), so they aren't a boundary.
+    - A forwarded credential is the student's full identity. It reaches **all** of their repositories and every server the SSH key opens, and branch protection on Budgie limits none of that.
+    - So credentials stay out of the container, and branch protection guards `main` on top of that.
+  - **Rejected:** a fine-grained token for Budgie only inside the container, which would let the agent push feature branches. It would put a secret inside the sandbox for little gain.
 - **Network (optional):** an allowlist firewall for PyPI, GitHub, the Ollama registry, the Anthropic API and `host.docker.internal:11434`.
 
 ## Consequences

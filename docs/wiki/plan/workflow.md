@@ -36,6 +36,7 @@ See [0010](../decisions/0010-ci-gates-before-merge.md): ruff, pytest, OpenAPI dr
 - Agent-authored commits carry a `Co-Authored-By` line for Claude.
 - The agent commits locally, and only the student pushes, from the host ([0011](../decisions/0011-sandbox-hardening.md)).
 - The remote host is GitHub or Gitea (to be decided). Both support issues, milestones, PRs and Actions.
+- **When the remote is created**, protect `main`: require PRs, require all CI checks to pass, and block force-pushes and deletion ([0011](../decisions/0011-sandbox-hardening.md)).
 
 ## Dev log
 Run `/dev-log <title>` after a noteworthy feature. See [0012](../decisions/0012-dev-log-skill.md) and `docs/ai-dev-log.md`. The target is 5–8 episodes, including at least one where the agent's work failed or was only partly used.
