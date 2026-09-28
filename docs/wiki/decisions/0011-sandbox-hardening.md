@@ -17,7 +17,7 @@ The brief requires the agent harness to run sandboxed: access only to the worksp
   - `allow`: tests, lint and read-only git commands
 - **Git: the push model.** The student chose this on 2026-09-28.
   - The agent commits locally. Only the student pushes, from a host terminal. No personal credentials and no access tokens exist inside the container.
-  - **Branch protection on `main`** is set up on the server (GitHub or Gitea) when the remote is created:
+  - **Branch protection on `main`** is set up on the server (GitHub) when the remote is created:
     - changes arrive only through PRs
     - every CI check from [0010](0010-ci-gates-before-merge.md) must pass
     - force-pushes and deletion of `main` are blocked

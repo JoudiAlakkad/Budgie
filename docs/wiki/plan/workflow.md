@@ -20,6 +20,11 @@ How a feature from the [roadmap](roadmap.md) moves from issue to merge.
    - It runs `/dev-log` if the episode is noteworthy. Rejected or corrected agent output should always be logged.
    - The student pushes from the host and opens a PR. It merges when CI is green, and the issue is closed.
 
+## Issues and milestones
+- Every roadmap feature (plus the AI spike) has a draft in `.github/issues/<ID>.md`. The draft's header holds the title, milestone and labels, and the body holds the goal, dependencies, acceptance criteria and the wiki pages to read.
+- The student creates them on GitHub from the host with `scripts/create-github-issues.sh` (`--dry-run` prints the `gh` calls). It is safe to re-run: existing milestones, labels and titles are skipped.
+- The drafts carry the roadmap's summary criteria. In step 1, the main session sharpens the issue on GitHub before work starts, and the PR closes it with `Closes #<n>`.
+
 ## Subagent guardrails
 These are part of every custom agent in `.claude/agents/`.
 - Read `docs/wiki/README.md`, the stack's area pages, the contracts and the relevant decisions before changing anything.
@@ -35,7 +40,7 @@ See [0010](../decisions/0010-ci-gates-before-merge.md): ruff, pytest, OpenAPI dr
 - Commit messages are short and imperative, and name the feature, e.g. `F05: persist extraction failures`.
 - Agent-authored commits carry a `Co-Authored-By` line for Claude.
 - The agent commits locally, and only the student pushes, from the host ([0011](../decisions/0011-sandbox-hardening.md)).
-- The remote host is GitHub or Gitea (to be decided). Both support issues, milestones, PRs and Actions.
+- The remote host is GitHub (`JoudiAlakkad/Budgie`). It holds the issues, milestones, PRs and Actions.
 - **When the remote is created**, protect `main`: require PRs, require all CI checks to pass, and block force-pushes and deletion ([0011](../decisions/0011-sandbox-hardening.md)).
 
 ## Dev log
