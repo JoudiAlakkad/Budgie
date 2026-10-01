@@ -11,6 +11,8 @@ The brief requires the agent harness to run sandboxed: access only to the worksp
   - SSH-agent forwarding and the git credential helper are turned off. On 2026-09-28 both were found to be forwarded into the container: a `vscode-ssh-auth-*.sock` socket and a `credential.helper` that points to VS Code.
     - In the container, `.devcontainer/devcontainer.json` sets `remoteEnv.SSH_AUTH_SOCK=""`, and `postAttachCommand` unsets `credential.helper`.
     - On the host, the student must set these **VS Code user settings**, because they're read on the host and not from `devcontainer.json`: `"dev.containers.gitCredentialHelperConfigLocation": "none"` and `"dev.containers.copyGitConfig": false`.
+  - Claude Code is installed inside the container by `postCreateCommand`, together with the `anthropic.claude-code` VS Code extension. This way the agent always runs inside the sandbox and never on the host. The installer is an unpinned `curl | bash` that runs once, when the container is created, so it falls outside the agent's permission rules below.
+  - `.claude/settings.local.json` holds per-machine overrides and is gitignored.
 - **Claude Code permissions** in `.claude/settings.json`:
   - `deny`: reading `.env*`, `~/.ssh/**` and `~/.gitconfig`
   - `ask`: `git push`, `git commit`, `rm`, `docker`, `curl` and `wget`
