@@ -5,5 +5,25 @@
   },
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
   "workspaceFolder": "/workspace",
-  "remoteUser": "vscode"
+  "remoteUser": "vscode",
+
+  // Sandbox hardening (docs/wiki/decisions/0011-sandbox-hardening.md).
+  // Hide the forwarded host SSH agent from processes in the container.
+  "remoteEnv": {
+    "SSH_AUTH_SOCK": ""
+  },
+  // Remove the git credential helper VS Code injects on attach. The reliable fix is
+  // the host-side VS Code user setting "dev.containers.gitCredentialHelperConfigLocation": "none"
+  // (plus "dev.containers.copyGitConfig": false); this is a fallback.
+  "postAttachCommand": "git config --global --unset-all credential.helper || true",
+  // Install Claude Code once, when the container is created.
+  "postCreateCommand": "curl -fsSL https://claude.ai/install.sh | bash",
+
+  // Install the VS Code extension inside the container (optional).
+  "customizations": {
+    "vscode": {
+      "extensions": ["anthropic.claude-code"]
+    }
+  }
+
 }

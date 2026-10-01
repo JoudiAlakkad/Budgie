@@ -25,3 +25,6 @@ data/receipts/
 # IDE / editor
 .vscode/
 .idea/
+
+# claude
+.claude/settings.local.json
