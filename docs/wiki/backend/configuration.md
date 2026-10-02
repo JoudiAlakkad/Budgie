@@ -1,6 +1,6 @@
 # Configuration
 
-All settings come from environment variables, read by `app/config.py`. The repo ships `.env.example`, and `.env` is git-ignored. Nothing is hard-coded: no credentials and no machine-specific paths (criterion 17).
+All settings come from environment variables, read by `app/config.py`. This table is the reference list; there is no `.env.example`. A local `.env` is optional and git-ignored. Nothing is hard-coded: no credentials and no machine-specific paths (criterion 17).
 
 | Variable | Default | Purpose |
 |---|---|---|
