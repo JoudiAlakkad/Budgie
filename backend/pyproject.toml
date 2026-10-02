@@ -1,0 +1,96 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "budgie"
+version = "0.1.0"
+description = "Budgie: receipt-to-expense service"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic-settings",
+    "sqlalchemy>=2",
+    "httpx",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "ruff",
+    "import-linter",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+# ---------------------------------------------------------------- ruff
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["."]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI dependency markers are meant to be called in argument defaults.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.File"]
+
+# ---------------------------------------------------------------- pytest
+[tool.pytest.ini_options]
+markers = [
+    "integration: needs a live model server; excluded from CI with -m 'not integration'",
+]
+
+# ---------------------------------------------------------------- import-linter
+# Layer rules from docs/wiki/architecture.md and decision 0006.
+[tool.importlinter]
+root_packages = ["app"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Layers: api > services > (domain | db | ai)"
+type = "layers"
+layers = [
+    "app.api",
+    "app.services",
+    "app.domain | app.db | app.ai",
+]
+
+[[tool.importlinter.contracts]]
+name = "api does not import db or ai"
+type = "forbidden"
+source_modules = ["app.api"]
+forbidden_modules = ["app.db", "app.ai"]
+# Direct imports only: api reaches db/ai through services, which the layers contract allows.
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "domain is pure"
+type = "forbidden"
+source_modules = ["app.domain"]
+forbidden_modules = ["app.db", "app.ai", "app.api", "app.services"]
+
+[[tool.importlinter.contracts]]
+name = "Only app.db imports SQLAlchemy"
+type = "forbidden"
+source_modules = [
+    "app.api",
+    "app.services",
+    "app.domain",
+    "app.ai",
+    "app.main",
+    "app.config",
+    "app.errors",
+    "app.openapi_export",
+]
+forbidden_modules = ["sqlalchemy"]
+# Direct imports only: services may use app.db, which wraps SQLAlchemy.
+allow_indirect_imports = true
