@@ -17,7 +17,6 @@ Much of the code is written by agents. Every change needs the same objective che
 
 - `main` is protected: changes go through PRs, and all checks must pass.
 - The same checks run locally with `make check` and `pre-commit`.
-- Gitea Actions accepts the same workflow syntax (`.gitea/workflows/`) if Gitea becomes the primary remote.
 
 ## Consequences
 - Agents must run `make check` before they report a feature as done.

@@ -1,0 +1,114 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "budgie"
+version = "0.1.0"
+description = "Budgie: receipt-to-expense service"
+requires-python = ">=3.12"
+# Compatible ranges, lower bound = the version resolved when pinned (F01).
+# 0.x packages are capped at the next minor where minors have broken APIs (httpx),
+# otherwise at the next major. Starlette comes through FastAPI's own pin.
+dependencies = [
+    "fastapi>=0.142.2,<1",
+    "uvicorn[standard]>=0.54,<1",
+    "pydantic>=2.13,<3",
+    "pydantic-settings>=2.15,<3",
+    "sqlalchemy>=2.1,<2.2",
+    "httpx>=0.28.1,<0.29",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.1,<10",
+    "pytest-cov>=7.1,<8",
+    # Exact: pre-commit uses the same ruff version.
+    "ruff==0.16.10",
+    "import-linter>=2.15,<3",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+# ---------------------------------------------------------------- ruff
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["."]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI dependency markers are meant to be called in argument defaults.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.File"]
+
+# ---------------------------------------------------------------- pytest
+[tool.pytest.ini_options]
+markers = [
+    "integration: needs a live model server; excluded from CI with -m 'not integration'",
+]
+
+# ---------------------------------------------------------------- import-linter
+# Layer rules from docs/wiki/architecture.md and decision 0006.
+[tool.importlinter]
+root_packages = ["app"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Layers: api > services > (domain | db | ai)"
+type = "layers"
+layers = [
+    "app.api",
+    "app.services",
+    "app.domain | app.db | app.ai",
+]
+
+[[tool.importlinter.contracts]]
+name = "api does not import db or ai"
+type = "forbidden"
+source_modules = ["app.api"]
+forbidden_modules = ["app.db", "app.ai"]
+# Direct imports only: api reaches db/ai through services, which the layers contract allows.
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "domain is pure"
+type = "forbidden"
+source_modules = ["app.domain"]
+# Everything app-internal except app.errors (shared typed errors), plus the
+# infrastructure packages. Checks indirect imports too.
+forbidden_modules = [
+    "app.config",
+    "app.main",
+    "app.openapi_export",
+    "app.services",
+    "app.api",
+    "app.db",
+    "app.ai",
+    "httpx",
+    "fastapi",
+    "pydantic_settings",
+    "sqlalchemy",
+]
+
+[[tool.importlinter.contracts]]
+name = "Only app.db imports SQLAlchemy"
+type = "forbidden"
+# The whole app, so a new top-level module is covered without editing this list.
+source_modules = ["app"]
+forbidden_modules = ["sqlalchemy"]
+# `app.db.**` matches only submodules, so `app.db` itself needs its own line. That line has
+# no match until app/db/__init__.py imports SQLAlchemy, hence alerting "none" (default: error).
+ignore_imports = [
+    "app.db -> sqlalchemy",
+    "app.db.** -> sqlalchemy",
+]
+unmatched_ignore_imports_alerting = "none"
+# Direct imports only: services may use app.db, which wraps SQLAlchemy.
+allow_indirect_imports = true

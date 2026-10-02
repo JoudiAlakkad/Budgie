@@ -1,6 +1,6 @@
 # Backend
 
-A Python 3.12 FastAPI app in `backend/app/`. It serves the API and the static frontend ([architecture](../architecture.md)).
+A Python 3.12 FastAPI app in `backend/app/` (the dev container runs 3.14; CI and the image run 3.12). It serves the API and the static frontend ([architecture](../architecture.md)).
 
 - [Modules](modules.md): package layout and dependency direction
 - [AI extraction](ai-extraction.md): model client, prompts, output schema, failure handling

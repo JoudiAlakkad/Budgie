@@ -1,0 +1,3 @@
+# Build artefacts from `pip install -e ./backend`
+*.egg-info/
+build/

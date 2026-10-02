@@ -10,7 +10,7 @@ This is planned for F3 and F5. The model choice is explained in [0004](../decisi
   - `httpx.TimeoutException` raises `LLMTimeout`
   - non-2xx responses raise `LLMError`
 - It retries at most `LLM_MAX_RETRIES` times, and only on timeouts or connection errors.
-- `health()` does `GET {LLM_BASE_URL}/models` with a short timeout.
+- `ping()` does `GET {LLM_BASE_URL}/models` with a 2 s timeout (or `LLM_TIMEOUT_S` if lower) and never raises; `/health` reports `llm: ok|down` from it. Built in F1.
 
 ## Extractor (`ai/extractor.py`)
 - The prompts live in `ai/prompts/<PROMPT_VERSION>/system.txt` and `user.txt` and are versioned, so the evaluation can compare them.
