@@ -1,0 +1,15 @@
+.git
+.github
+.claude
+.devcontainer
+.venv
+venv
+data
+docs
+tests
+scripts
+**/__pycache__
+**/*.pyc
+**/CLAUDE.md
+.env
+.env.*

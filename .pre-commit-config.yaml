@@ -1,0 +1,13 @@
+# Optional local hooks (decision 0010). Install with: pre-commit install
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--config, backend/pyproject.toml]
+      - id: ruff-format
+        args: [--config, backend/pyproject.toml]
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
