@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,7 +13,8 @@ class Settings(BaseSettings):
 
     llm_base_url: str = "http://localhost:11434/v1"
     llm_model: str = "gemma3:4b"
-    llm_api_key: str = "ollama"
+    # SecretStr keeps the key out of repr() and logs; read it with get_secret_value().
+    llm_api_key: SecretStr = SecretStr("ollama")
     llm_timeout_s: float = 120
     llm_max_retries: int = 1
     llm_temperature: float = 0

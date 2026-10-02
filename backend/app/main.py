@@ -11,7 +11,6 @@ from fastapi.staticfiles import StaticFiles
 from app import __version__
 from app.api import health
 from app.config import Settings, get_settings
-from app.errors import StorageError
 from app.services.storage import close_storage, prepare_storage
 
 logger = logging.getLogger(__name__)
@@ -29,12 +28,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     _configure_logging(settings.log_level)
 
     @asynccontextmanager
-    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        try:
-            prepare_storage(settings)
-        except StorageError:
-            # Keep serving so /api/health can report `db: error` (error handling in persistence.md).
-            logger.exception("Storage could not be prepared; continuing without it")
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        # Never raises: failures are logged and kept on the app state, where
+        # /api/health reads them to report `db: error` (persistence.md).
+        app.state.storage_status = prepare_storage(settings)
         logger.info("Budgie started (model %s)", settings.llm_model)
         yield
         close_storage()

@@ -1,5 +1,7 @@
 """`GET /api/health` (contracts/api-endpoints.md): always 200, `{status, db, llm, model}`."""
 
+import importlib.util
+import os
 from pathlib import Path
 
 import pytest
@@ -115,3 +117,70 @@ def test_unusable_storage_still_starts_and_reports_db_error(
 
     assert response.status_code == 200
     assert response.json()["db"] == "error"
+
+
+def _health_with(settings: Settings) -> dict:
+    """Start the app (lifespan included) on `settings` and return the health body."""
+    app = create_app(settings)
+    app.dependency_overrides[get_llm_client] = lambda: FakeLLMClient()
+    with TestClient(app) as client:
+        response = client.get("/api/health")
+    dispose_databases()
+    assert response.status_code == 200
+    return response.json()
+
+
+def _driver_installed(*modules: str) -> bool:
+    return any(importlib.util.find_spec(name) is not None for name in modules)
+
+
+@pytest.mark.parametrize(
+    "database_url",
+    [
+        pytest.param("not a url", id="malformed"),
+        pytest.param("sqlite://host:abc/x", id="bad-port"),
+        pytest.param("nosuchdialect://a/b", id="unknown-dialect"),
+        pytest.param(
+            "postgresql://budgie@db-host/budgie",
+            id="postgres-without-driver",
+            marks=pytest.mark.skipif(
+                _driver_installed("psycopg", "psycopg2"), reason="a postgres driver is installed"
+            ),
+        ),
+    ],
+)
+def test_bad_database_url_still_starts_and_reports_db_error(
+    settings: Settings, database_url: str
+) -> None:
+    """A DATABASE_URL the engine can't be built from is a storage error, not a crash."""
+    body = _health_with(settings.model_copy(update={"database_url": database_url}))
+
+    assert body["status"] == "ok"
+    assert body["db"] == "error"
+
+
+def test_upload_dir_failure_reports_db_error_but_still_creates_tables(
+    settings: Settings, tmp_path: Path
+) -> None:
+    """The database answers SELECT 1, but startup storage failed, so db is `error`."""
+    not_a_dir = tmp_path / "uploads-is-a-file"
+    not_a_dir.write_text("", encoding="utf-8")
+
+    body = _health_with(settings.model_copy(update={"upload_dir": str(not_a_dir)}))
+
+    assert body["db"] == "error"
+    # The database step still ran: it no longer depends on the upload dir.
+    assert (tmp_path / "budgie.db").is_file()
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+def test_read_only_upload_dir_reports_db_error(settings: Settings, tmp_path: Path) -> None:
+    read_only = tmp_path / "read-only-uploads"
+    read_only.mkdir()
+    read_only.chmod(0o500)
+    try:
+        body = _health_with(settings.model_copy(update={"upload_dir": str(read_only)}))
+    finally:
+        read_only.chmod(0o700)
+
+    assert body["db"] == "error"

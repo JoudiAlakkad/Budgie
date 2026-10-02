@@ -46,7 +46,7 @@ def get_db_ping(db: Database = Depends(get_database)) -> Callable[[], None]:
 def get_llm_client(settings: Settings = Depends(get_settings)) -> LLMClient:
     return LLMClient(
         base_url=settings.llm_base_url,
-        api_key=settings.llm_api_key,
+        api_key=settings.llm_api_key.get_secret_value(),
         model=settings.llm_model,
         timeout=settings.llm_timeout_s,
     )
