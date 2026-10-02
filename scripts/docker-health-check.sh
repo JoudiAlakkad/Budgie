@@ -25,4 +25,7 @@ grep -q '"llm":"down"' <<<"$body" || { echo "expected llm: down (no model server
 
 user="$(docker exec "$NAME" id -u)"
 [[ "$user" != "0" ]] || { echo "container runs as root"; exit 1; }
+
+mode="$(docker exec "$NAME" stat -c %a /data)"
+[[ "$mode" == "700" ]] || { echo "/data has mode $mode, expected 700"; exit 1; }
 echo "docker check passed"

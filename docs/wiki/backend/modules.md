@@ -3,7 +3,7 @@
 ```
 backend/
 ├── app/
-│   ├── main.py            # app factory: routers, static mount, exception handlers, startup
+│   ├── main.py            # app factory: routers, static mount, startup; exception handlers from F2
 │   ├── config.py          # pydantic-settings Settings, read from env (configuration.md)
 │   ├── errors.py          # typed errors shared by all layers (StorageError, …)
 │   ├── openapi_export.py  # python -m app.openapi_export --out docs/openapi.json [--check]

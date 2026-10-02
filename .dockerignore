@@ -13,3 +13,5 @@ scripts
 **/CLAUDE.md
 .env
 .env.*
+**/.env
+**/.env.*

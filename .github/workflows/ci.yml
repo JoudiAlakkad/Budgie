@@ -9,6 +9,8 @@ on:
 
 permissions:
   contents: read
+  # gitleaks-action lists PR commits and comments on the PR when it finds a leak.
+  pull-requests: write
 
 jobs:
   lint:

@@ -16,9 +16,7 @@ Much of the code is written by agents. Every change needs the same objective che
 6. `gitleaks`, a secret scan
 
 - `main` is protected: changes go through PRs, and all checks must pass.
-- Each gate is its own CI job (`lint`, `test`, `openapi`, `imports`, `docker`, `gitleaks`), so branch protection can require them by name. The remote is GitHub (`JoudiAlakkad/Budgie`), and CI is GitHub Actions only.
-- The same checks run locally with `make check` and, optionally, `pre-commit`. The dev container has neither docker nor gitleaks: `make check` skips gitleaks with a notice, and the docker gate runs on the host with `make docker-check` (`scripts/docker-health-check.sh`, shared with CI).
-- Local tests run on the dev container's Python 3.14; CI and the image use 3.12 ([0005](0005-fastapi-and-vanilla-js-single-container.md)).
+- The same checks run locally with `make check` and `pre-commit`.
 
 ## Consequences
 - Agents must run `make check` before they report a feature as done.

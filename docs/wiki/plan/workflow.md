@@ -35,6 +35,11 @@ These are part of every custom agent in `.claude/agents/`.
 
 ## CI checks
 See [0010](../decisions/0010-ci-gates-before-merge.md): ruff, pytest, OpenAPI drift, docker build + health, import-linter, gitleaks. `main` is protected.
+- **CI:** GitHub Actions on `JoudiAlakkad/Budgie`, built in F1. Each gate is its own job (`lint`, `test`, `openapi`, `imports`, `docker`, `gitleaks`), so branch protection can require them by name.
+- **Local:** `make check` runs lint, tests, import rules and the OpenAPI drift check. The dev container has neither docker nor gitleaks: gitleaks is skipped with a notice, and the docker gate runs on the host with `make docker-check`. CI uses the same script, `scripts/docker-health-check.sh`, which checks health (`db: ok`, `llm: down`), a non-root user and mode 700 on `/data`.
+- **Python:** local tests run on the dev container's 3.14; CI and the image use 3.12 ([0005](../decisions/0005-fastapi-and-vanilla-js-single-container.md)).
+- **Image `HEALTHCHECK`:** only checks that `/api/health` answers. Because health is always 200, a container with `db: error` still counts as healthy; the docker gate checks `db: ok` separately.
+- **Versions:** ruff is pinned exactly in `backend/pyproject.toml`, and `.pre-commit-config.yaml` must use the same `rev`.
 
 ## Git conventions
 - Commit messages are short and imperative, and name the feature, e.g. `F05: persist extraction failures`.

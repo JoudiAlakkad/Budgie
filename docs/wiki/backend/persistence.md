@@ -4,7 +4,7 @@ The data is stored in SQLite through SQLAlchemy, and only `app/db/` touches it (
 
 ## Location
 - `DATABASE_URL` is `sqlite:////data/budgie.db` in the container. Local development uses `./data/budgie.db`, which is git-ignored.
-- Images go in `UPLOAD_DIR` (default `/data/uploads/`). The file names are random UUIDs, never the uploaded file name.
+- Images go in `UPLOAD_DIR` (`/data/uploads/` in the container, `./data/uploads` locally). The file names are random UUIDs, never the uploaded file name.
 - Both live on the Docker volume `budgie-data`.
 
 ## Schema (draft, finalised in F1 and F2)
