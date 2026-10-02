@@ -29,6 +29,11 @@ The rules are enforced by `import-linter` ([0006](../decisions/0006-sqlite-behin
 - `api` → `services` → (`domain`, `db`, `ai`)
 - `domain` imports nothing from the app. It works on plain dataclasses or Pydantic models.
 - `api` never imports `db` or `ai`, and `db` never imports `api`.
-- The contracts in `backend/pyproject.toml`: a layers contract `api > services > (domain | db | ai)`; "domain is pure" (checks indirect imports too); "api does not import db or ai" and "only app.db imports sqlalchemy", which check direct imports only, because `api → services → db` is the intended path.
+- The contracts in `backend/pyproject.toml`:
+  - layers: `api > services > (domain | db | ai)`
+  - "domain is pure": forbids everything app-internal except `app.errors`, plus `httpx`, `fastapi`, `pydantic_settings` and `sqlalchemy`; checks indirect imports too
+  - "api does not import db or ai": direct imports only, because `api → services → db` is the intended path
+  - "only app.db imports sqlalchemy": applies to all of `app`, ignoring `app.db` and `app.db.**`; direct imports only. It needs `unmatched_ignore_imports_alerting = "none"`, because `**` matches only submodules.
+- Dependencies use compatible ranges with the current version as the lower bound. ruff is pinned exactly, to match `.pre-commit-config.yaml`.
 
 Services receive the LLM client and the repositories through FastAPI dependencies, so tests can swap in fakes.

@@ -25,5 +25,7 @@ The data is stored in SQLite through SQLAlchemy, and only `app/db/` touches it (
 ## Error mapping
 - A `SQLAlchemyError` or `OSError` in a repository raises `StorageError`, which the API returns as `500 storage_error` ([error format](../contracts/error-format.md)).
 - `/health` runs `SELECT 1` and reports `db: ok|error`.
-- A storage failure at startup (creating the upload dir or the tables) is logged, and the app keeps running so `/health` can report `db: error`. It doesn't crash the process.
+- **Startup never crashes on storage.** The lifespan calls `services.storage.prepare_storage`, which runs two steps independently: the upload dir (create it, then write a temp file to prove it's writable) and `init_db()`. Failures are logged and returned as a `StorageStatus` on `app.state.storage_status`.
+- `current_health` reads that status. If startup failed, `/health` reports `db: error` without pinging, and it stays that way until a restart. Otherwise it runs `SELECT 1`.
+- `Database` builds its engine on first use. A malformed URL, an unknown dialect, a bad port or a missing driver (e.g. `postgresql://` without psycopg) becomes `StorageError` from `init_db`, `ping` or `session_factory`.
 - Typed errors (`StorageError`, later the LLM errors) live in `app/errors.py`, outside the layers, so `db` and `ai` can raise them and `api` can map them without importing either.

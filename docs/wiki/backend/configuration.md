@@ -6,7 +6,7 @@ All settings come from environment variables, read by `app/config.py`. This tabl
 |---|---|---|
 | `LLM_BASE_URL` | `http://localhost:11434/v1` | OpenAI-compatible server. In Docker on a Mac or Windows host, use `http://host.docker.internal:11434/v1` |
 | `LLM_MODEL` | `gemma3:4b` | model name/tag |
-| `LLM_API_KEY` | `ollama` | dummy; sent as a Bearer token for servers that require one |
+| `LLM_API_KEY` | `ollama` | dummy; sent as a Bearer token for servers that require one. A `SecretStr`, so it stays out of `repr()` and logs; only `services/dependencies.py` calls `.get_secret_value()` |
 | `LLM_TIMEOUT_S` | `120` | per request |
 | `LLM_MAX_RETRIES` | `1` | on timeout or connection error only |
 | `LLM_TEMPERATURE` | `0` | |
