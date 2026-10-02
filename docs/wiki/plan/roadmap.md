@@ -35,7 +35,7 @@ Each feature is one issue, one branch (`feat/F<NN>-<slug>`) and one PR. The proc
 
 ## Acceptance criteria, by feature (summary)
 - **F1:**
-  - `docker build` and `docker run` work, and `GET /api/health` returns `{app, db, llm}`.
+  - `docker build` and `docker run` work, and `GET /api/health` returns `{status, db, llm, model}` ([api-endpoints](../contracts/api-endpoints.md)).
   - `make check` passes, and CI is green.
 - **F2:**
   - Every endpoint in [api-endpoints](../contracts/api-endpoints.md) has request and response DTOs, and the error format is shared.

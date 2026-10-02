@@ -28,3 +28,8 @@ data/receipts/
 
 # claude
 .claude/settings.local.json
+# Test / tooling output
+.coverage
+
+# Claude Code agent worktrees
+.claude/worktrees/

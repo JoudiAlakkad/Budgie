@@ -15,6 +15,7 @@ All settings come from environment variables, read by `app/config.py`. The repo 
 | `DATABASE_URL` | `sqlite:///./data/budgie.db` | |
 | `UPLOAD_DIR` | `./data/uploads` | |
 | `MAX_UPLOAD_MB` | `10` | |
+| `FRONTEND_DIR` | `./frontend` | static UI served at `/`; `/app/frontend` in Docker. Empty means no frontend is served. Relative to the working directory, so `make run` starts from the repo root |
 | `LOG_LEVEL` | `INFO` | |
 
 **Swapping the model or server** is a config change only: point `LLM_BASE_URL` at llama.cpp server, LM Studio or vLLM, and set `LLM_MODEL`.
