@@ -1,6 +1,6 @@
 # 0004 — Vision model direct via Ollama
 
-**Status:** Accepted (2026-09-28). The model choice is confirmed in the AI spike (milestone 2).
+**Status:** Accepted (2026-09-28). Approach confirmed by the [AI spike](../backend/ai-spike.md) on 2026-10-03. `gemma3:4b` stays the default **provisionally**: it reads short receipts well, but invents dates and totals on long ones, and it called a photo that isn't a receipt a receipt in every run (in strict mode with an invented shop, date and total). The comparison with `qwen2.5vl:3b` moves to the F11 evaluation and should include non-receipt photos.
 
 ## Context
 Receipts arrive as photos. The brief requires a locally run model behind an OpenAI-compatible API, with the model and server replaceable through configuration. The target hardware is a laptop without a GPU (8–16 GB RAM).
@@ -15,5 +15,6 @@ Receipts arrive as photos. The brief requires a locally run model behind an Open
 
 ## Consequences
 - The pipeline is simple and has one AI failure point, handled as described in [ai-extraction](../backend/ai-extraction.md).
+- Without a separate classifier, the same model decides whether an image is a receipt at all. The spike showed it can't be trusted to do that, so `not_a_receipt` needs a second signal ([ai-extraction](../backend/ai-extraction.md)).
 - Latency on CPU is high, about 30–90 s per receipt, which led to [0007](0007-async-extraction-with-polling.md).
 - Swapping the model or server is a config change only, and the model comparison in the evaluation shows that it works.

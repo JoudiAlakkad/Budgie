@@ -31,6 +31,7 @@ back; the parent records them.
 - [0011 — Sandbox hardening](decisions/0011-sandbox-hardening.md)
 - [0012 — Dev-log skill](decisions/0012-dev-log-skill.md)
 - [0013 — Deterministic item categorisation by lookup](decisions/0013-deterministic-item-categorisation-by-lookup.md)
+- [0014 — Status line skill](decisions/0014-statusline-skill.md)
 
 ## Areas
 

@@ -32,3 +32,6 @@ data/receipts/
 
 # Claude Code agent worktrees
 .claude/worktrees/
+
+# AI spike output (receipt data is personal)
+data/spike/
