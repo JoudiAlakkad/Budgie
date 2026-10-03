@@ -33,7 +33,7 @@ Implements [0013](../decisions/0013-deterministic-item-categorisation-by-lookup.
 ### Categories
 `groceries.fresh`, `groceries.staples`, `snacks_sweets`, `drinks`, `alcohol`, `tobacco`, `household`, `personal_care`, `health`, `eating_out`, `transport`, `clothing`, `electronics`, `other`, plus the special categories `deposit` and `discount`, which aren't counted as spending.
 
-The API mirrors this list as Literals in `app/api/schemas.py` (`SpendingCategory`, `Category`), because `api` doesn't import `domain`. A test checks that both lists match.
+The API mirrors this list as Literals in `app/api/schemas.py` (`SpendingCategory`, `Category`), because `api` doesn't import `domain`. A test parses this section and checks that the Literals match it.
 
 ## `duplicates.py` (F7)
 - A receipt is a likely duplicate if the normalised merchant, the date and the total (±0.01) match an existing expense.

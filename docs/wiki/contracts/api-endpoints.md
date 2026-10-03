@@ -7,8 +7,9 @@
 All bodies are JSON unless stated otherwise. Errors use the [error format](error-format.md). Final since F2 ([0016](../decisions/0016-api-representation-and-stub-convention.md)).
 
 ## Conventions
-- **Money** is a JSON number with at most 2 decimals (`1.99`). The server computes with `Decimal`.
-- **Dates** are `YYYY-MM-DD`. **Timestamps** (`uploaded_at`, `updated_at`) are ISO 8601 in UTC with an offset.
+- **Money** is a JSON number with at most 2 decimals (`1.99`). The server computes with `Decimal` and rounds to 0.01 before building a response; a value with more decimals is a server error. **Quantities** (`qty`) are JSON numbers without the 2-decimal limit (`1.234` kg) and may be negative (deposit returns).
+- **Dates** are `YYYY-MM-DD`. **Timestamps** (`uploaded_at`, `updated_at`) are ISO 8601 in UTC, written with `Z`; a value stored without a zone is taken as UTC.
+- **Months** (`?month=`) are `YYYY-MM` with a month from `01` to `12`.
 - **Ids** are integers. **Currency** is three capital letters (`EUR`).
 - **Responses** always contain every key; a missing value is `null`, never a left-out key.
 - **Requests** reject unknown fields with `422 validation_error`.
@@ -36,7 +37,7 @@ All bodies are JSON unless stated otherwise. Errors use the [error format](error
 | POST | `/expenses/{id}/confirm` | – | `200` `Expense`; `422` `uncategorized_items` or `incomplete_expense`; confirming twice is a no-op; `404` |
 | DELETE | `/expenses/{id}` | – | `204`, also deletes its receipt and image; `404` |
 
-- **Filters:** `category` matches expenses with at least one item in that category. `from` and `to` are inclusive dates. There is no pagination; the data is one user's.
+- **Filters:** `category` (`Category` or `uncategorized`) matches expenses with at least one item in that category. `from` and `to` are inclusive dates. There is no pagination; the data is one user's.
 - **Manual entry for a failed receipt:** `POST /expenses` with `receipt_id` attaches a hand-typed expense to the photo. The expense gets `source: manual`, and the receipt becomes `extracted` ([0015](../decisions/0015-non-receipt-is-a-failure-with-retry-or-manual-entry.md)).
 
 ## Item categories (the lookup table)
@@ -69,7 +70,7 @@ All bodies are JSON unless stated otherwise. Errors use the [error format](error
 - **`Flag`:** `{field?, code, message}`, e.g. `{field: "total", code: "sum_mismatch", message: "Items sum to 12.40 but total is 14.40"}`. `code` is a string; the known codes are listed in [domain-logic](../backend/domain-logic.md), so new rules don't change the contract.
 - **`LineItemInput`:** `{id?, description, qty?, unit?, unit_price?, amount, category?: Category}`. The server derives `normalized_name` and `category_source`.
 - **`ExpenseCreate`:** `{receipt_id?, merchant, date, currency = "EUR", total, subtotal?, tax?, line_items: LineItemInput[]}`, at least one line item. Created unconfirmed, with `source: manual` and a review status from the rules.
-- **`ExpenseUpdate`:** every field of `ExpenseCreate` except `receipt_id`, all optional; only the fields sent change. `line_items`, if sent, replaces the list: items with an `id` are updated, items without one are created, missing ones are deleted. `source`, `review_status`, `confirmed` and `flags` are not writable.
+- **`ExpenseUpdate`:** every field of `ExpenseCreate` except `receipt_id`, all optional; only the fields sent change. A field that `ExpenseCreate` requires may be left out but not sent as `null`; `subtotal` and `tax` may be `null`. `line_items`, if sent, needs at least one item. `line_items`, if sent, replaces the list: items with an `id` are updated, items without one are created, missing ones are deleted. `source`, `review_status`, `confirmed` and `flags` are not writable.
 
 ### Settings and insights
 - **`ItemCategory`:** `{normalized_name, category: Category, source: seed|user, updated_at}`
@@ -78,4 +79,4 @@ All bodies are JSON unless stated otherwise. Errors use the [error format](error
 - **`InsightsSummary`:** `{month, total_spent, total_budget?, projected_total, categories: CategorySpend[], goal?: GoalProgress}`
   - **`CategorySpend`:** `{category: SpendingCategory, spent, budget?, projected, state: under|on_pace_to_overrun|over}`
   - **`GoalProgress`:** `{target_amount, target_date, saved_this_month?, required_per_month, on_track?: bool}`
-- **`Leak`:** `{type: recurring|over_budget|on_pace_to_overrun|spike|small_frequent, category?, merchant?, amount, explanation}`
+- **`Leak`:** `{type: recurring|over_budget|on_pace_to_overrun|spike|small_frequent, category?: SpendingCategory, merchant?, amount, explanation}`

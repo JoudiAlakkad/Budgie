@@ -37,6 +37,6 @@ Any other action returns `409 invalid_state`.
 - **Confirming needs a complete expense:** merchant, date and total set (`422 incomplete_expense`) and every item categorised (`422 uncategorized_items`, [0013](../decisions/0013-deterministic-item-categorisation-by-lookup.md)).
 - **A non-receipt is a failure, not a review result** ([0015](../decisions/0015-non-receipt-is-a-failure-with-retry-or-manual-entry.md)). If the model reports `is_receipt=false`, or the plausibility rule decides the output isn't a receipt, the receipt is `failed` with `error: not_a_receipt`. The user can retry or enter the expense by hand.
 - **`review_status` is a rule result, not a probability** ([0008](../decisions/0008-rule-based-review-status-not-probability.md)):
-  - `rejected` means required fields are missing and the rules can't fill them. The user can still enter them by hand.
-  - `needs_review` means at least one flag is set.
+  - `rejected` means there is no total and no line item, so nothing usable was extracted. The user can still enter the fields by hand.
+  - `needs_review` means at least one flag is set, including a missing merchant or date ([domain-logic](../backend/domain-logic.md#confidencepy-f4)).
 - **Timing:** `POST /receipts` and `POST /receipts/{id}/extract` return `202` right away, and the UI polls `GET /receipts/{id}` ([0007](../decisions/0007-async-extraction-with-polling.md)).

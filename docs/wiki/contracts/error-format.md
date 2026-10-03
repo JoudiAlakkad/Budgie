@@ -7,16 +7,16 @@ Every non-2xx response has this body:
 ```
 
 - `error` is a stable machine-readable code, and `detail` is a message a person can read.
-- `fields` is set only for `validation_error`: a list of `{field, message}`. `field` is the error location joined with `.`, without the `body` prefix, e.g. `line_items.0.amount`. For every other code it is `null`.
-- Stack traces, exception text and internal paths are never included.
+- `fields` is set only for `validation_error`: a list of `{field, message}`. `field` is the error location joined with `.`, without the `body` prefix, e.g. `line_items.0.amount`. Query and path errors keep their prefix, e.g. `query.month`. For every other code it is `null`.
+- Stack traces, exception text and internal paths are never included. An HTTP status or error code that has no row below is logged and answered as `500 internal_error`.
 - One mapping in `backend/app/api/errors.py` turns error codes into HTTP statuses. Routing errors from Starlette (unknown path, wrong method, broken multipart body) use the same format.
 
 ## HTTP error codes
 | HTTP | `error` | When |
 |---|---|---|
-| 400 | `bad_request` | the multipart body is broken (raised by Starlette before validation) |
+| 400 | `bad_request` | the multipart body can't be parsed at all, e.g. no boundary (raised by Starlette before validation); a body cut off mid-file arrives as a missing `file`, i.e. `422 validation_error` |
 | 404 | `not_found` | an unknown id or path |
-| 405 | `method_not_allowed` | the path exists, but not with this method |
+| 405 | `method_not_allowed` | the path exists, but not with this method. The `Allow` header lists the methods of the first route that matches the path only (a Starlette limit) |
 | 409 | `invalid_state` | the action isn't allowed in the current status, e.g. extracting a receipt that is `extracting`, or deleting a seed category |
 | 413 | `file_too_large` | the upload is bigger than `MAX_UPLOAD_MB` |
 | 422 | `unsupported_file` | the upload isn't a jpeg, png or webp (checked by its first bytes) |

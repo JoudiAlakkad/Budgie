@@ -10,7 +10,7 @@ The draft contract had two outcomes for "the image isn't a receipt": a failed re
 - The user chooses between two actions:
   - **Retry:** `POST /receipts/{id}/extract`.
   - **Enter manually:** `POST /expenses` with `receipt_id`. The expense gets `source: manual`, the receipt becomes `extracted`, and the photo stays linked. This works for any `failed` receipt.
-- `review_status: rejected` now only means that required fields are missing; `is_receipt` is no longer one of its rules ([0008](0008-rule-based-review-status-not-probability.md)).
+- `review_status: rejected` now only means that nothing usable was extracted (no total and no line item); `is_receipt` is no longer one of its rules ([0008](0008-rule-based-review-status-not-probability.md)).
 
 ## Consequences
 - "Not a receipt" and "a receipt with gaps" stay separate in the UI and the evaluation.
