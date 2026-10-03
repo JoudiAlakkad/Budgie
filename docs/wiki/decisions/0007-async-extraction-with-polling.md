@@ -1,6 +1,6 @@
 # 0007 — Async extraction with polling
 
-**Status:** Proposed (2026-09-28). Confirm or revert after the AI spike measures real latency.
+**Status:** Accepted (2026-10-03). The [AI spike](../backend/ai-spike.md) measured 28–76 s per receipt with the model loaded, +15 s cold, and about 100 s for a runaway output.
 
 ## Context
 A 4B vision model on CPU can take 30–90 s per receipt ([0004](0004-vision-model-direct-via-ollama.md)). Holding one HTTP request open that long risks timeouts in the browser or proxy, and the UI would look frozen.

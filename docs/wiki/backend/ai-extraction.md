@@ -18,6 +18,11 @@ This is planned for F3 and F5. The model choice is explained in [0004](../decisi
 - **Output schema** (`ai/schema.py`, `ReceiptExtraction`):
   `is_receipt, merchant?, date?, currency?, line_items[{description, qty?, unit_price?, amount}], subtotal?, tax?, total?, unreadable_fields[]`.
   There is **no category field** ([0013](../decisions/0013-deterministic-item-categorisation-by-lookup.md)).
+- **From the [AI spike](ai-spike.md):**
+  - every key is required and nullable, because with optional keys the model left out merchant, date and total
+  - `unreadable_fields` is an enum of schema keys, because free text looped until the token limit
+  - the prompt names the payment lines that aren't items and explains the tax-class column
+  - output cut off at `max_tokens` is `malformed_output`
 - **Parsing:**
   1. strip code fences, then `json.loads`, then validate with Pydantic
   2. on failure, send one repair prompt with the validation error

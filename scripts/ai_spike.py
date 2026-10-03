@@ -65,6 +65,37 @@ SYSTEM_PROMPT = (
 )
 USER_PROMPT = "Transcribe this receipt into the JSON schema."
 
+# --strict: every key required (nullable), so constrained decoding can't drop fields, and a
+# precise meaning for unreadable_fields. Spike finding: with optional keys the model omitted
+# merchant, date and total, and filled unreadable_fields with text it had read.
+STRICT_SCHEMA = {
+    **SCHEMA,
+    "properties": {
+        **SCHEMA["properties"],
+        "line_items": {
+            "type": "array",
+            "items": {
+                **SCHEMA["properties"]["line_items"]["items"],
+                "required": ["description", "qty", "unit_price", "amount"],
+            },
+        },
+        "unreadable_fields": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "enum": ["merchant", "date", "currency", "line_items", "subtotal", "tax", "total"],
+            },
+        },
+    },
+    "required": list(SCHEMA["properties"]),
+}
+STRICT_SYSTEM_PROMPT = SYSTEM_PROMPT + (
+    " Fill every key. merchant is the shop name at the top. date is the purchase date as "
+    "YYYY-MM-DD. total is the final amount paid. Each line item is one purchased product: "
+    "amount is its line price in currency, qty the count or weight, unit_price the price per "
+    "unit. unreadable_fields may only name schema keys whose value you set to null."
+)
+
 
 def settings() -> dict:
     return {
@@ -116,22 +147,24 @@ def checks(data: dict) -> dict:
     }
 
 
-def run_one(client: httpx.Client, cfg: dict, path: Path) -> dict:
+def run_one(client: httpx.Client, cfg: dict, path: Path, strict: bool) -> dict:
+    schema = STRICT_SCHEMA if strict else SCHEMA
+    system = STRICT_SYSTEM_PROMPT if strict else SYSTEM_PROMPT
     body = {
         "model": cfg["model"],
         "temperature": cfg["temperature"],
         "max_tokens": cfg["max_tokens"],
         "response_format": {
             "type": "json_schema",
-            "json_schema": {"name": "receipt_extraction", "schema": SCHEMA},
+            "json_schema": {"name": "receipt_extraction", "schema": schema},
         },
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system},
             {"role": "user", "content": [{"type": "text", "text": USER_PROMPT}, image_part(path)]},
         ],
     }
     started = time.perf_counter()
-    result: dict = {"image": path.name, "model": cfg["model"]}
+    result: dict = {"image": path.name, "model": cfg["model"], "strict": strict}
     try:
         response = client.post(f"{cfg['base_url']}/chat/completions", json=body)
         result["latency_s"] = round(time.perf_counter() - started, 1)
@@ -154,6 +187,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("images", nargs="+", type=Path)
     parser.add_argument("--runs", type=int, default=1, help="runs per image (first is cold)")
+    parser.add_argument("--strict", action="store_true", help="all keys required, stricter prompt")
     args = parser.parse_args()
 
     cfg = settings()
@@ -166,9 +200,11 @@ def main() -> int:
     with httpx.Client(timeout=cfg["timeout"], headers=headers) as client:
         for path in args.images:
             for run in range(1, args.runs + 1):
-                result = run_one(client, cfg, path)
+                result = run_one(client, cfg, path, args.strict)
                 result["run"] = run
-                out = OUT_DIR / f"{stamp}_{cfg['model'].replace(':', '-')}_{path.stem}_r{run}.json"
+                variant = "strict" if args.strict else "base"
+                name = f"{stamp}_{cfg['model'].replace(':', '-')}_{variant}_{path.stem}_r{run}.json"
+                out = OUT_DIR / name
                 out.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
                 c = result.get("checks") or {}
                 status = result.get("error") or result.get("parse_error") or "ok"

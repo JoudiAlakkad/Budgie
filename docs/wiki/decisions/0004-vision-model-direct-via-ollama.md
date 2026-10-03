@@ -1,6 +1,6 @@
 # 0004 — Vision model direct via Ollama
 
-**Status:** Accepted (2026-09-28). The model choice is confirmed in the AI spike (milestone 2).
+**Status:** Accepted (2026-09-28). Approach confirmed by the [AI spike](../backend/ai-spike.md) on 2026-10-03. `gemma3:4b` stays the default **provisionally**: it reads short receipts well, but invents dates and totals on long ones. The comparison with `qwen2.5vl:3b` moves to the F11 evaluation.
 
 ## Context
 Receipts arrive as photos. The brief requires a locally run model behind an OpenAI-compatible API, with the model and server replaceable through configuration. The target hardware is a laptop without a GPU (8–16 GB RAM).
