@@ -9,7 +9,8 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app import __version__
-from app.api import health
+from app.api import budgets, expenses, health, insights, item_categories, receipts
+from app.api.errors import error_responses, install_error_handlers
 from app.config import Settings, get_settings
 from app.services.storage import close_storage, prepare_storage
 
@@ -36,10 +37,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         yield
         close_storage()
 
-    app = FastAPI(title="Budgie", version=__version__, lifespan=lifespan)
+    # One schema per model for requests and responses, so DTOs like `Budget` and `Goal`
+    # appear once in the spec (decision 0016).
+    app = FastAPI(
+        title="Budgie",
+        version=__version__,
+        lifespan=lifespan,
+        separate_input_output_schemas=False,
+    )
     app.dependency_overrides[get_settings] = lambda: settings
+    install_error_handlers(app)
 
     app.include_router(health.router, prefix="/api")
+    # Every operation documents the shared error body for 422 and 500; this also replaces
+    # FastAPI's default `HTTPValidationError`. 501 stays undocumented per route (0016).
+    for module in (receipts, expenses, item_categories, budgets, insights):
+        app.include_router(module.router, prefix="/api", responses=error_responses(422, 500))
 
     # Mounted last so /api, /docs and /openapi.json win over the static files.
     # An empty FRONTEND_DIR means "no frontend"; Path("") would otherwise be the cwd.

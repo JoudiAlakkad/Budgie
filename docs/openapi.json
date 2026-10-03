@@ -25,10 +25,2042 @@
           }
         }
       }
+    },
+    "/api/receipts": {
+      "post": {
+        "tags": [
+          "receipts"
+        ],
+        "summary": "Upload a receipt image; extraction runs in the background",
+        "operationId": "upload_receipt_api_receipts_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_receipt_api_receipts_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Receipt"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation or business-rule error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "File too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "receipts"
+        ],
+        "summary": "List receipts, newest first",
+        "operationId": "list_receipts_api_receipts_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "uploaded",
+                    "extracting",
+                    "extracted",
+                    "failed",
+                    "confirmed"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Receipt"
+                  },
+                  "title": "Response List Receipts Api Receipts Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation or business-rule error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/receipts/{id}": {
+      "get": {
+        "tags": [
+          "receipts"
+        ],
+        "summary": "Get a receipt, with its expense once one exists",
+        "operationId": "get_receipt_api_receipts__id__get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Receipt"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation or business-rule error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "receipts"
+        ],
+        "summary": "Delete a receipt, its image and its expense",
+        "operationId": "delete_receipt_api_receipts__id__delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation or business-rule error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/receipts/{id}/image": {
+      "get": {
+        "tags": [
+          "receipts"
+        ],
+        "summary": "The receipt image",
+        "operationId": "get_receipt_image_api_receipts__id__image_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The image bytes",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/webp": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation or business-rule error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/receipts/{id}/extract": {
+      "post": {
+        "tags": [
+          "receipts"
+        ],
+        "summary": "Retry extraction of a failed or extracted receipt",
+        "operationId": "extract_receipt_api_receipts__id__extract_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Receipt"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation or business-rule error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/expenses": {
+      "get": {
+        "tags": [
+          "expenses"
+        ],
+        "summary": "List expenses, newest date first",
+        "operationId": "list_expenses_api_expenses_get",
+        "parameters": [
+          {
+            "name": "review_status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "accepted",
+                    "needs_review",
+                    "rejected"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Review Status"
+            }
+          },
+          {
+            "name": "confirmed",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Confirmed"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "inclusive",
+              "title": "From"
+            },
+            "description": "inclusive"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "inclusive",
+              "title": "To"
+            },
+            "description": "inclusive"
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "groceries.fresh",
+                    "groceries.staples",
+                    "snacks_sweets",
+                    "drinks",
+                    "alcohol",
+                    "tobacco",
+                    "household",
+                    "personal_care",
+                    "health",
+                    "eating_out",
+                    "transport",
+                    "clothing",
+                    "electronics",
+                    "other",
+                    "deposit",
+                    "discount",
+                    "uncategorized"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "expenses with at least one item in this category",
+              "title": "Category"
+            },
+            "description": "expenses with at least one item in this category"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Expense"
+                  },
+                  "title": "Response List Expenses Api Expenses Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation or business-rule error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "expenses"
+        ],
+        "summary": "Create a manual expense, optionally for a failed receipt",
+        "operationId": "create_expense_api_expenses_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpenseCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Expense"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation or business-rule error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/expenses/export.csv": {
+      "get": {
+        "tags": [
+          "expenses"
+        ],
+        "summary": "Confirmed expenses as CSV, one row per line item",
+        "operationId": "export_csv_api_expenses_export_csv_get",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "inclusive",
+              "title": "From"
+            },
+            "description": "inclusive"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "inclusive",
+              "title": "To"
+            },
+            "description": "inclusive"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CSV file (contracts/csv-export.md)",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation or business-rule error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/expenses/{id}": {
+      "get": {
+        "tags": [
+          "expenses"
+        ],
+        "summary": "Get an expense",
+        "operationId": "get_expense_api_expenses__id__get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Expense"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation or business-rule error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "expenses"
+        ],
+        "summary": "Edit an expense; a confirmed expense becomes unconfirmed",
+        "operationId": "update_expense_api_expenses__id__patch",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpenseUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Expense"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation or business-rule error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "expenses"
+        ],
+        "summary": "Delete an expense, its receipt and its image",
+        "operationId": "delete_expense_api_expenses__id__delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation or business-rule error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/expenses/{id}/confirm": {
+      "post": {
+        "tags": [
+          "expenses"
+        ],
+        "summary": "Confirm an expense",
+        "operationId": "confirm_expense_api_expenses__id__confirm_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Expense"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation or business-rule error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/item-categories": {
+      "get": {
+        "tags": [
+          "item-categories"
+        ],
+        "summary": "List the item lookup table",
+        "operationId": "list_item_categories_api_item_categories_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "substring of the normalized name",
+              "title": "Q"
+            },
+            "description": "substring of the normalized name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ItemCategory"
+                  },
+                  "title": "Response List Item Categories Api Item Categories Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation or business-rule error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/item-categories/{normalized_name}": {
+      "put": {
+        "tags": [
+          "item-categories"
+        ],
+        "summary": "Set the category for an item name (source `user`)",
+        "operationId": "put_item_category_api_item_categories__normalized_name__put",
+        "parameters": [
+          {
+            "name": "normalized_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Normalized Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemCategoryUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemCategory"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation or business-rule error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "item-categories"
+        ],
+        "summary": "Remove a user entry so the seed applies again",
+        "operationId": "delete_item_category_api_item_categories__normalized_name__delete",
+        "parameters": [
+          {
+            "name": "normalized_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Normalized Name"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation or business-rule error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/budgets": {
+      "get": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "List the monthly budgets",
+        "operationId": "list_budgets_api_budgets_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Budget"
+                  },
+                  "type": "array",
+                  "title": "Response List Budgets Api Budgets Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation or business-rule error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Replace the whole budget list",
+        "operationId": "put_budgets_api_budgets_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "items": {
+                  "$ref": "#/components/schemas/Budget"
+                },
+                "type": "array",
+                "title": "Body"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Budget"
+                  },
+                  "type": "array",
+                  "title": "Response Put Budgets Api Budgets Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation or business-rule error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/goal": {
+      "get": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Get the savings goal",
+        "operationId": "get_goal_api_goal_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Goal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation or business-rule error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Set the savings goal",
+        "operationId": "put_goal_api_goal_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Goal"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Goal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation or business-rule error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/insights/summary": {
+      "get": {
+        "tags": [
+          "insights"
+        ],
+        "summary": "Spending, budgets and goal",
+        "operationId": "insights_summary_api_insights_summary_get",
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^\\d{4}-\\d{2}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "YYYY-MM; default: the current month",
+              "title": "Month"
+            },
+            "description": "YYYY-MM; default: the current month"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsightsSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation or business-rule error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/insights/leaks": {
+      "get": {
+        "tags": [
+          "insights"
+        ],
+        "summary": "Detected spending leaks",
+        "operationId": "insights_leaks_api_insights_leaks_get",
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^\\d{4}-\\d{2}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "YYYY-MM; default: the current month",
+              "title": "Month"
+            },
+            "description": "YYYY-MM; default: the current month"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Leak"
+                  },
+                  "title": "Response Insights Leaks Api Insights Leaks Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation or business-rule error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "Body_upload_receipt_api_receipts_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "description": "jpeg, png or webp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_receipt_api_receipts_post"
+      },
+      "Budget": {
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "groceries.fresh",
+              "groceries.staples",
+              "snacks_sweets",
+              "drinks",
+              "alcohol",
+              "tobacco",
+              "household",
+              "personal_care",
+              "health",
+              "eating_out",
+              "transport",
+              "clothing",
+              "electronics",
+              "other"
+            ],
+            "title": "Category"
+          },
+          "monthly_limit": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Monthly Limit"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "category",
+          "monthly_limit"
+        ],
+        "title": "Budget",
+        "description": "A monthly limit for one spending category. Sent and returned in `/budgets`."
+      },
+      "CategorySpend": {
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "groceries.fresh",
+              "groceries.staples",
+              "snacks_sweets",
+              "drinks",
+              "alcohol",
+              "tobacco",
+              "household",
+              "personal_care",
+              "health",
+              "eating_out",
+              "transport",
+              "clothing",
+              "electronics",
+              "other"
+            ],
+            "title": "Category"
+          },
+          "spent": {
+            "type": "number",
+            "title": "Spent"
+          },
+          "budget": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget"
+          },
+          "projected": {
+            "type": "number",
+            "title": "Projected"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "under",
+              "on_pace_to_overrun",
+              "over"
+            ],
+            "title": "State"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category",
+          "spent",
+          "budget",
+          "projected",
+          "state"
+        ],
+        "title": "CategorySpend"
+      },
+      "ErrorBody": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "enum": [
+              "bad_request",
+              "not_found",
+              "method_not_allowed",
+              "invalid_state",
+              "file_too_large",
+              "unsupported_file",
+              "uncategorized_items",
+              "incomplete_expense",
+              "validation_error",
+              "storage_error",
+              "internal_error",
+              "not_implemented"
+            ],
+            "title": "Error"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "fields": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/FieldError"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fields"
+          }
+        },
+        "type": "object",
+        "required": [
+          "error",
+          "detail"
+        ],
+        "title": "ErrorBody",
+        "description": "The body of every non-2xx response (error-format.md)."
+      },
+      "Expense": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "receipt_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Id"
+          },
+          "merchant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "examples": [
+              "EUR"
+            ]
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "subtotal": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtotal"
+          },
+          "tax": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "ai",
+              "ai_corrected",
+              "manual"
+            ],
+            "title": "Source"
+          },
+          "review_status": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "needs_review",
+              "rejected"
+            ],
+            "title": "Review Status"
+          },
+          "confirmed": {
+            "type": "boolean",
+            "title": "Confirmed"
+          },
+          "flags": {
+            "items": {
+              "$ref": "#/components/schemas/Flag"
+            },
+            "type": "array",
+            "title": "Flags"
+          },
+          "line_items": {
+            "items": {
+              "$ref": "#/components/schemas/LineItem"
+            },
+            "type": "array",
+            "title": "Line Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "receipt_id",
+          "merchant",
+          "date",
+          "currency",
+          "total",
+          "subtotal",
+          "tax",
+          "source",
+          "review_status",
+          "confirmed",
+          "flags",
+          "line_items"
+        ],
+        "title": "Expense"
+      },
+      "ExpenseCreate": {
+        "properties": {
+          "receipt_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Id"
+          },
+          "merchant": {
+            "type": "string",
+            "title": "Merchant"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date"
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "default": "EUR",
+            "examples": [
+              "EUR"
+            ]
+          },
+          "total": {
+            "type": "number",
+            "title": "Total"
+          },
+          "subtotal": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtotal"
+          },
+          "tax": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax"
+          },
+          "line_items": {
+            "items": {
+              "$ref": "#/components/schemas/LineItemInput"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Line Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "merchant",
+          "date",
+          "total",
+          "line_items"
+        ],
+        "title": "ExpenseCreate",
+        "description": "`POST /expenses`: a manual expense, optionally attached to a failed receipt."
+      },
+      "ExpenseUpdate": {
+        "properties": {
+          "merchant": {
+            "type": "string",
+            "title": "Merchant"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date"
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "examples": [
+              "EUR"
+            ]
+          },
+          "total": {
+            "type": "number",
+            "title": "Total"
+          },
+          "subtotal": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtotal"
+          },
+          "tax": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax"
+          },
+          "line_items": {
+            "items": {
+              "$ref": "#/components/schemas/LineItemInput"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Line Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ExpenseUpdate",
+        "description": "`PATCH /expenses/{id}`: only the fields sent change.\n\nFields that are required in `ExpenseCreate` may be left out but not sent as `null`.\n`line_items`, if sent, replaces the list."
+      },
+      "FieldError": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field",
+            "examples": [
+              "line_items.0.amount"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "message"
+        ],
+        "title": "FieldError",
+        "description": "One failed field of a `validation_error`."
+      },
+      "Flag": {
+        "properties": {
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "code",
+          "message"
+        ],
+        "title": "Flag",
+        "description": "A rule result on an expense, e.g. `sum_mismatch` on `total`."
+      },
+      "Goal": {
+        "properties": {
+          "target_amount": {
+            "type": "number",
+            "title": "Target Amount"
+          },
+          "target_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Target Date"
+          },
+          "monthly_income": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Income"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "target_amount",
+          "target_date"
+        ],
+        "title": "Goal",
+        "description": "The savings goal. Sent and returned in `/goal`; `monthly_income` is always dumped."
+      },
+      "GoalProgress": {
+        "properties": {
+          "target_amount": {
+            "type": "number",
+            "title": "Target Amount"
+          },
+          "target_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Target Date"
+          },
+          "saved_this_month": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Saved This Month"
+          },
+          "required_per_month": {
+            "type": "number",
+            "title": "Required Per Month"
+          },
+          "on_track": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "On Track"
+          }
+        },
+        "type": "object",
+        "required": [
+          "target_amount",
+          "target_date",
+          "saved_this_month",
+          "required_per_month",
+          "on_track"
+        ],
+        "title": "GoalProgress"
+      },
       "Health": {
         "properties": {
           "status": {
@@ -66,6 +2098,485 @@
         ],
         "title": "Health",
         "description": "`GET /api/health`. Always returned with 200 while the app runs."
+      },
+      "InsightsSummary": {
+        "properties": {
+          "month": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}$",
+            "title": "Month",
+            "examples": [
+              "2026-10"
+            ]
+          },
+          "total_spent": {
+            "type": "number",
+            "title": "Total Spent"
+          },
+          "total_budget": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Budget"
+          },
+          "projected_total": {
+            "type": "number",
+            "title": "Projected Total"
+          },
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/CategorySpend"
+            },
+            "type": "array",
+            "title": "Categories"
+          },
+          "goal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GoalProgress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "month",
+          "total_spent",
+          "total_budget",
+          "projected_total",
+          "categories",
+          "goal"
+        ],
+        "title": "InsightsSummary"
+      },
+      "ItemCategory": {
+        "properties": {
+          "normalized_name": {
+            "type": "string",
+            "title": "Normalized Name"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "groceries.fresh",
+              "groceries.staples",
+              "snacks_sweets",
+              "drinks",
+              "alcohol",
+              "tobacco",
+              "household",
+              "personal_care",
+              "health",
+              "eating_out",
+              "transport",
+              "clothing",
+              "electronics",
+              "other",
+              "deposit",
+              "discount"
+            ],
+            "title": "Category"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "seed",
+              "user"
+            ],
+            "title": "Source"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "normalized_name",
+          "category",
+          "source",
+          "updated_at"
+        ],
+        "title": "ItemCategory",
+        "description": "One entry of the item lookup table."
+      },
+      "ItemCategoryUpdate": {
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "groceries.fresh",
+              "groceries.staples",
+              "snacks_sweets",
+              "drinks",
+              "alcohol",
+              "tobacco",
+              "household",
+              "personal_care",
+              "health",
+              "eating_out",
+              "transport",
+              "clothing",
+              "electronics",
+              "other",
+              "deposit",
+              "discount"
+            ],
+            "title": "Category"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "category"
+        ],
+        "title": "ItemCategoryUpdate",
+        "description": "`PUT /item-categories/{normalized_name}`."
+      },
+      "Leak": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "recurring",
+              "over_budget",
+              "on_pace_to_overrun",
+              "spike",
+              "small_frequent"
+            ],
+            "title": "Type"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "groceries.fresh",
+                  "groceries.staples",
+                  "snacks_sweets",
+                  "drinks",
+                  "alcohol",
+                  "tobacco",
+                  "household",
+                  "personal_care",
+                  "health",
+                  "eating_out",
+                  "transport",
+                  "clothing",
+                  "electronics",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "merchant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant"
+          },
+          "amount": {
+            "type": "number",
+            "title": "Amount"
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "category",
+          "merchant",
+          "amount",
+          "explanation"
+        ],
+        "title": "Leak"
+      },
+      "LineItem": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "normalized_name": {
+            "type": "string",
+            "title": "Normalized Name"
+          },
+          "qty": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qty"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "unit_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Price"
+          },
+          "amount": {
+            "type": "number",
+            "title": "Amount"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "groceries.fresh",
+              "groceries.staples",
+              "snacks_sweets",
+              "drinks",
+              "alcohol",
+              "tobacco",
+              "household",
+              "personal_care",
+              "health",
+              "eating_out",
+              "transport",
+              "clothing",
+              "electronics",
+              "other",
+              "deposit",
+              "discount",
+              "uncategorized"
+            ],
+            "title": "Category"
+          },
+          "category_source": {
+            "type": "string",
+            "enum": [
+              "seed",
+              "user",
+              "none"
+            ],
+            "title": "Category Source"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "description",
+          "normalized_name",
+          "qty",
+          "unit",
+          "unit_price",
+          "amount",
+          "category",
+          "category_source"
+        ],
+        "title": "LineItem"
+      },
+      "LineItemInput": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "qty": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qty"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "unit_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Price"
+          },
+          "amount": {
+            "type": "number",
+            "title": "Amount"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "groceries.fresh",
+                  "groceries.staples",
+                  "snacks_sweets",
+                  "drinks",
+                  "alcohol",
+                  "tobacco",
+                  "household",
+                  "personal_care",
+                  "health",
+                  "eating_out",
+                  "transport",
+                  "clothing",
+                  "electronics",
+                  "other",
+                  "deposit",
+                  "discount"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "description",
+          "amount"
+        ],
+        "title": "LineItemInput",
+        "description": "A line item as sent by the client; the server derives `normalized_name`."
+      },
+      "Receipt": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "uploaded",
+              "extracting",
+              "extracted",
+              "failed",
+              "confirmed"
+            ],
+            "title": "Status"
+          },
+          "uploaded_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Uploaded At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "llm_unavailable",
+                  "llm_timeout",
+                  "llm_error",
+                  "malformed_output",
+                  "not_a_receipt",
+                  "unreadable_image",
+                  "interrupted"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "error_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Detail"
+          },
+          "expense": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Expense"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "uploaded_at",
+          "error",
+          "error_detail",
+          "expense"
+        ],
+        "title": "Receipt"
       }
     }
   }
