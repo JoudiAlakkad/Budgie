@@ -12,7 +12,9 @@ This is the pure, deterministic code in `backend/app/domain/`. It makes up the "
 
 ## `confidence.py` (F4)
 Sets the review status from the flags ([0008](../decisions/0008-rule-based-review-status-not-probability.md)):
-- `rejected`: `is_receipt=false`, or no total and no line items
+- `rejected`: required fields missing that the rules can't fill (no total and no line items)
+
+The **plausibility rule** that decides whether the output is a receipt at all runs before this, and a non-receipt never gets a review status: the receipt becomes `failed` with `not_a_receipt` ([0015](../decisions/0015-non-receipt-is-a-failure-with-retry-or-manual-entry.md)). Its exact thresholds are set in F04 and tested against the spike outputs.
 - `needs_review`: any flag, an `unreadable_fields` entry, a missing merchant or date, or any `uncategorized` item
 - `accepted`: otherwise
 
@@ -30,6 +32,8 @@ Implements [0013](../decisions/0013-deterministic-item-categorisation-by-lookup.
 
 ### Categories
 `groceries.fresh`, `groceries.staples`, `snacks_sweets`, `drinks`, `alcohol`, `tobacco`, `household`, `personal_care`, `health`, `eating_out`, `transport`, `clothing`, `electronics`, `other`, plus the special categories `deposit` and `discount`, which aren't counted as spending.
+
+The API mirrors this list as Literals in `app/api/schemas.py` (`SpendingCategory`, `Category`), because `api` doesn't import `domain`. A test parses this section and checks that the Literals match it.
 
 ## `duplicates.py` (F7)
 - A receipt is a likely duplicate if the normalised merchant, the date and the total (±0.01) match an existing expense.

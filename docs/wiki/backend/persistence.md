@@ -11,7 +11,7 @@ The data is stored in SQLite through SQLAlchemy, and only `app/db/` touches it (
 | Table | Columns |
 |---|---|
 | `receipts` | id, image_path, status, error, uploaded_at, model_name, prompt_version, raw_model_output, latency_ms |
-| `expenses` | id, receipt_id?, merchant, date, currency, subtotal?, tax?, total, source, review_status, confirmed, flags (JSON), created_at, updated_at |
+| `expenses` | id, receipt_id?, merchant?, date?, currency, subtotal?, tax?, total?, source, review_status, confirmed, flags (JSON), created_at, updated_at |
 | `line_items` | id, expense_id, description, normalized_name, qty?, unit?, unit_price?, amount, category, category_source |
 | `item_categories` | normalized_name (PK), category, source (`seed`/`user`), updated_at |
 | `budgets` | category (PK), monthly_limit |

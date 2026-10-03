@@ -1,8 +1,8 @@
 # CSV export
 
-`GET /api/expenses/export.csv?from=YYYY-MM-DD&to=YYYY-MM-DD` returns the documented file-exchange integration point ([architecture](../architecture.md#integration-points)).
+`GET /api/expenses/export.csv?from=YYYY-MM-DD&to=YYYY-MM-DD` returns the documented file-exchange integration point ([architecture](../architecture.md#integration-points)). Final since F2.
 
-- **What's included:** confirmed expenses only, one row per **line item**. Manual expenses without items get one row with an empty `item_*`.
+- **What's included:** confirmed expenses only, one row per **line item**. Every expense has at least one item, manual ones included.
 - **Format:** UTF-8, comma-separated, with a header row. Decimals use `.` and dates are ISO 8601.
 
 | Column | Type | Example |

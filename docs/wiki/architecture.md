@@ -38,7 +38,7 @@ The module details are in [backend/modules](backend/modules.md).
 ## Main data flow (scenario 1)
 1. The UI sends `POST /api/receipts` (multipart). The service stores the image, creates a receipt with status `uploaded`, and returns `202` ([0007](decisions/0007-async-extraction-with-polling.md)).
 2. A background task sets the status to `extracting` and calls `ai.extractor`. The model returns JSON, which is validated against `ReceiptExtraction` and repaired once if it's malformed.
-3. `domain.validation` runs the arithmetic and date checks. `domain.categorize` normalises each item name and looks it up ([0013](decisions/0013-deterministic-item-categorisation-by-lookup.md)). `domain.confidence` sets the review status and the flags ([0008](decisions/0008-rule-based-review-status-not-probability.md)).
+3. `domain.validation` runs the arithmetic and date checks. `domain.categorize` normalises each item name and looks it up ([0013](decisions/0013-deterministic-item-categorisation-by-lookup.md)). `domain.confidence` sets the review status and the flags ([0008](decisions/0008-rule-based-review-status-not-probability.md)). If the model reports `is_receipt=false` or the plausibility rule fails, the receipt becomes `failed` with `not_a_receipt` instead ([0015](decisions/0015-non-receipt-is-a-failure-with-retry-or-manual-entry.md)).
 4. The expense, its line items and the raw model output are saved, and the status becomes `extracted`.
 5. The UI, which has been polling `GET /api/receipts/{id}`, shows the review form. The user corrects and categorises items and calls `POST /api/expenses/{id}/confirm`.
 6. Confirmed expenses feed `domain.budget` and `domain.leaks`, which serve `GET /api/insights/*`.
