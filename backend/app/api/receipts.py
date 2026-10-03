@@ -1,9 +1,11 @@
 """`/api/receipts` (contracts/api-endpoints.md#receipts). Stubs until F05."""
 
-from fastapi import APIRouter, File, Response, UploadFile
+from typing import Annotated
+
+from fastapi import APIRouter, File, Response
 
 from app.api.errors import error_responses
-from app.api.schemas import Receipt, ReceiptStatus
+from app.api.schemas import Receipt, ReceiptStatus, ReceiptUpload
 from app.errors import NotImplementedYet
 
 router = APIRouter(prefix="/receipts", tags=["receipts"])
@@ -16,7 +18,8 @@ router = APIRouter(prefix="/receipts", tags=["receipts"])
     summary="Upload a receipt image; extraction runs in the background",
     responses=error_responses(413),
 )
-def upload_receipt(file: UploadFile = File(description="jpeg, png or webp")) -> Receipt:
+def upload_receipt(form: Annotated[ReceiptUpload, File()]) -> Receipt:
+    # A form model gives the multipart schema a stable name in the spec (`ReceiptUpload`).
     raise NotImplementedYet("F05")
 
 

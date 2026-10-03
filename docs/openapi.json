@@ -38,7 +38,7 @@
           "content": {
             "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/Body_upload_receipt_api_receipts_post"
+                "$ref": "#/components/schemas/ReceiptUpload"
               }
             }
           }
@@ -1381,7 +1381,7 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "pattern": "^\\d{4}-\\d{2}$"
+                  "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
                 },
                 {
                   "type": "null"
@@ -1443,7 +1443,7 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "pattern": "^\\d{4}-\\d{2}$"
+                  "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
                 },
                 {
                   "type": "null"
@@ -1496,21 +1496,6 @@
   },
   "components": {
     "schemas": {
-      "Body_upload_receipt_api_receipts_post": {
-        "properties": {
-          "file": {
-            "type": "string",
-            "contentMediaType": "application/octet-stream",
-            "title": "File",
-            "description": "jpeg, png or webp"
-          }
-        },
-        "type": "object",
-        "required": [
-          "file"
-        ],
-        "title": "Body_upload_receipt_api_receipts_post"
-      },
       "Budget": {
         "properties": {
           "category": {
@@ -2103,7 +2088,7 @@
         "properties": {
           "month": {
             "type": "string",
-            "pattern": "^\\d{4}-\\d{2}$",
+            "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
             "title": "Month",
             "examples": [
               "2026-10"
@@ -2577,6 +2562,23 @@
           "expense"
         ],
         "title": "Receipt"
+      },
+      "ReceiptUpload": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "description": "jpeg, png or webp"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "ReceiptUpload",
+        "description": "`POST /receipts`: the multipart form (jpeg, png or webp, at most `MAX_UPLOAD_MB`)."
       }
     }
   }

@@ -1,11 +1,12 @@
 """One code-to-status mapping covers every error code (contracts/error-format.md)."""
 
+import json
 from typing import get_args
 
 import pytest
 
 from app import errors
-from app.api.errors import STATUS_BY_CODE, error_responses
+from app.api.errors import STATUS_BY_CODE, error_response, error_responses
 from app.api.schemas import ErrorCode
 from app.errors import BudgieError, NotImplementedYet
 
@@ -17,7 +18,10 @@ def _all_subclasses(cls: type) -> list[type]:
     return found
 
 
-BUDGIE_ERRORS = [BudgieError, *_all_subclasses(BudgieError)]
+# Only the app's own errors: tests define deliberately unmapped subclasses of their own.
+BUDGIE_ERRORS = [
+    cls for cls in [BudgieError, *_all_subclasses(BudgieError)] if cls.__module__ == errors.__name__
+]
 
 # The HTTP table of error-format.md, copied on purpose.
 DOCUMENTED = {
@@ -49,7 +53,6 @@ def test_all_error_classes_are_found() -> None:
         "IncompleteExpense",
         "NotImplementedYet",
     } <= names
-    assert all(cls.__module__ == errors.__name__ for cls in BUDGIE_ERRORS)
 
 
 @pytest.mark.parametrize("cls", BUDGIE_ERRORS, ids=lambda cls: cls.__name__)
@@ -75,6 +78,17 @@ def test_not_implemented_names_the_feature() -> None:
 
     assert error.feature == "F07"
     assert "F07" in error.detail
+
+
+def test_error_response_falls_back_for_an_unknown_code() -> None:
+    response = error_response(418, "made_up_code", "secret /srv/x")
+
+    assert response.status_code == 500
+    assert json.loads(response.body) == {
+        "error": "internal_error",
+        "detail": "An unexpected error occurred.",
+        "fields": None,
+    }
 
 
 def test_error_responses_reference_the_error_body() -> None:

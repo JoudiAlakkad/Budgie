@@ -13,6 +13,7 @@ import datetime as dt
 from decimal import Decimal
 from typing import Annotated, Literal
 
+from fastapi import UploadFile
 from pydantic import (
     AfterValidator,
     BaseModel,
@@ -49,7 +50,10 @@ Quantity = Annotated[
 
 Currency = Annotated[str, Field(pattern=r"^[A-Z]{3}$", examples=["EUR"])]
 
-Month = Annotated[str, Field(pattern=r"^\d{4}-\d{2}$", examples=["2026-10"])]
+MONTH_PATTERN = r"^\d{4}-(0[1-9]|1[0-2])$"
+"""`YYYY-MM` with a real month; also used by the `?month=` query parameter."""
+
+Month = Annotated[str, Field(pattern=MONTH_PATTERN, examples=["2026-10"])]
 
 
 def _to_utc(value: dt.datetime) -> dt.datetime:
@@ -242,6 +246,12 @@ class Receipt(BaseModel):
     error: ReceiptErrorCode | None
     error_detail: str | None
     expense: Expense | None
+
+
+class ReceiptUpload(_Request):
+    """`POST /receipts`: the multipart form (jpeg, png or webp, at most `MAX_UPLOAD_MB`)."""
+
+    file: UploadFile = Field(description="jpeg, png or webp")
 
 
 class LineItemInput(_Request):

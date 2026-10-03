@@ -2,7 +2,9 @@
 
 import datetime as dt
 import json
+import re
 from decimal import Decimal
+from pathlib import Path
 from typing import get_args
 
 import pytest
@@ -25,24 +27,26 @@ from app.api.schemas import (
     SpendingCategory,
 )
 
-# Copied from docs/wiki/backend/domain-logic.md#categories on purpose: a change there
-# must be made here too.
-SPENDING_CATEGORIES = [
-    "groceries.fresh",
-    "groceries.staples",
-    "snacks_sweets",
-    "drinks",
-    "alcohol",
-    "tobacco",
-    "household",
-    "personal_care",
-    "health",
-    "eating_out",
-    "transport",
-    "clothing",
-    "electronics",
-    "other",
-]
+DOMAIN_LOGIC_MD = Path(__file__).resolve().parents[2] / "docs/wiki/backend/domain-logic.md"
+SPECIAL_MARKER = "plus the special categories"
+
+
+def wiki_categories() -> tuple[list[str], list[str]]:
+    """(spending, special) categories from the `### Categories` section of domain-logic.md.
+
+    The section is one sentence: the spending categories in backticks, then
+    "plus the special categories" and the special ones in backticks.
+    """
+    text = DOMAIN_LOGIC_MD.read_text(encoding="utf-8")
+    match = re.search(r"^### Categories\n(.*?)(?=^#|\Z)", text, flags=re.MULTILINE | re.DOTALL)
+    assert match, "domain-logic.md has no ### Categories section"
+    sentence = match.group(1).strip().split("\n\n")[0]
+    assert SPECIAL_MARKER in sentence, sentence
+    spending, special = sentence.split(SPECIAL_MARKER, 1)
+    return re.findall(r"`([^`]+)`", spending), re.findall(r"`([^`]+)`", special)
+
+
+SPENDING_CATEGORIES, SPECIAL_CATEGORIES = wiki_categories()
 
 ITEM = {"description": "BIO BANANE 1 KG", "amount": "1.99"}
 EXPENSE = {"merchant": "REWE", "date": "2026-10-03", "total": "1.99", "line_items": [ITEM]}
@@ -221,8 +225,9 @@ def test_timestamps_serialise_in_utc_with_offset(value: dt.datetime, expected: s
 
 
 def test_category_literals_match_domain_logic() -> None:
+    assert SPENDING_CATEGORIES and SPECIAL_CATEGORIES  # the parser found both lists
     assert list(get_args(SpendingCategory)) == SPENDING_CATEGORIES
-    assert list(get_args(Category)) == [*SPENDING_CATEGORIES, "deposit", "discount"]
+    assert list(get_args(Category)) == [*SPENDING_CATEGORIES, *SPECIAL_CATEGORIES]
     assert list(get_args(LineItemCategory)) == [*get_args(Category), "uncategorized"]
 
 

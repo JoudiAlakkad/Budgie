@@ -7,14 +7,14 @@ text, causes and tracebacks only go to the server log.
 """
 
 import logging
-from typing import Any
+from typing import Any, get_args
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.api.schemas import ErrorBody, FieldError
+from app.api.schemas import ErrorBody, ErrorCode, FieldError
 from app.errors import BudgieError, StorageError
 
 logger = logging.getLogger(__name__)
@@ -47,7 +47,8 @@ _DESCRIPTIONS: dict[int, str] = {
     501: "Not implemented yet",
 }
 
-# Starlette's own HTTP errors (routing, multipart parsing) by status.
+# Starlette's own HTTP errors (routing, multipart parsing) by status. Any other status
+# becomes 500 internal_error, because its detail isn't known to be safe to show.
 _CODE_BY_HTTP_STATUS: dict[int, str] = {
     400: "bad_request",
     404: "not_found",
@@ -58,8 +59,12 @@ _DEFAULT_HTTP_DETAIL: dict[str, str] = {
     "bad_request": "The request body could not be parsed.",
     "not_found": "The requested resource does not exist.",
     "method_not_allowed": "This method is not allowed for this path.",
-    "internal_error": "The request could not be handled.",
 }
+
+# Starlette's generic phrases, replaced by the friendlier texts above.
+_GENERIC_HTTP_DETAIL = frozenset({"Bad Request", "Not Found", "Method Not Allowed"})
+
+_ERROR_CODES = frozenset(get_args(ErrorCode))
 
 _INTERNAL_DETAIL = "An unexpected error occurred."
 _VALIDATION_DETAIL = "The request is invalid."
@@ -72,6 +77,10 @@ def error_response(
     fields: list[FieldError] | None = None,
     headers: dict[str, str] | None = None,
 ) -> JSONResponse:
+    if code not in _ERROR_CODES:
+        # An undocumented code must not break the error format itself.
+        logger.error("Unknown error code %r answered as internal_error", code)
+        status, code, detail, fields = 500, "internal_error", _INTERNAL_DETAIL, None
     body = ErrorBody.model_validate({"error": code, "detail": detail, "fields": fields})
     return JSONResponse(body.model_dump(mode="json"), status_code=status, headers=headers)
 
@@ -93,8 +102,12 @@ def _field_name(loc: tuple[int | str, ...] | list[int | str]) -> str:
 
 async def _budgie_error(_: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, BudgieError)
-    status = STATUS_BY_CODE.get(exc.code, 500)
-    # Storage and unknown server-side errors keep their cause and traceback in the log only.
+    status = STATUS_BY_CODE.get(exc.code)
+    if status is None:
+        # A subclass whose code is missing from the map: its detail isn't vetted either.
+        logger.exception("%s has unmapped code %r", type(exc).__name__, exc.code, exc_info=exc)
+        return error_response(500, "internal_error", _INTERNAL_DETAIL)
+    # Storage and other server-side errors keep their cause and traceback in the log only.
     if isinstance(exc, StorageError) or (status >= 500 and exc.code != "not_implemented"):
         logger.exception("%s: %s", type(exc).__name__, exc.detail, exc_info=exc)
     return error_response(status, exc.code, exc.detail)
@@ -102,14 +115,14 @@ async def _budgie_error(_: Request, exc: Exception) -> JSONResponse:
 
 async def _http_error(_: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, StarletteHTTPException)
-    code = _CODE_BY_HTTP_STATUS.get(exc.status_code, "internal_error")
-    detail = exc.detail if isinstance(exc.detail, str) and exc.detail else None
-    return error_response(
-        exc.status_code,
-        code,
-        detail or _DEFAULT_HTTP_DETAIL[code],
-        headers=getattr(exc, "headers", None),
-    )
+    code = _CODE_BY_HTTP_STATUS.get(exc.status_code)
+    if code is None:
+        logger.error("Unmapped HTTP %s answered as internal_error", exc.status_code)
+        return error_response(500, "internal_error", _INTERNAL_DETAIL)
+    detail = exc.detail if isinstance(exc.detail, str) else ""
+    if not detail or detail in _GENERIC_HTTP_DETAIL:
+        detail = _DEFAULT_HTTP_DETAIL[code]
+    return error_response(exc.status_code, code, detail, headers=exc.headers)
 
 
 async def _validation_error(_: Request, exc: Exception) -> JSONResponse:

@@ -2,12 +2,12 @@
 
 from fastapi import APIRouter, Query
 
-from app.api.schemas import InsightsSummary, Leak
+from app.api.schemas import MONTH_PATTERN, InsightsSummary, Leak
 from app.errors import NotImplementedYet
 
 router = APIRouter(prefix="/insights", tags=["insights"])
 
-_MONTH = Query(None, pattern=r"^\d{4}-\d{2}$", description="YYYY-MM; default: the current month")
+_MONTH = Query(None, pattern=MONTH_PATTERN, description="YYYY-MM; default: the current month")
 
 
 @router.get("/summary", response_model=InsightsSummary, summary="Spending, budgets and goal")

@@ -7,6 +7,8 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from starlette.routing import Match, Mount
+from starlette.types import Scope
 
 from app import __version__
 from app.api import budgets, expenses, health, insights, item_categories, receipts
@@ -15,6 +17,27 @@ from app.config import Settings, get_settings
 from app.services.storage import close_storage, prepare_storage
 
 logger = logging.getLogger(__name__)
+
+API_PREFIX = "/api"
+
+
+class FrontendMount(Mount):
+    """The static frontend at `/`, which never claims a path under `/api`.
+
+    Starlette's router takes the first full match. A plain mount at `/` fully matches
+    every path, so `/api/nope` would get the static 404 (or 405 for POST) and an API path
+    with the wrong method would never reach the router's 405 with its `Allow` header.
+    Declining `/api` paths leaves them to the API routes and their error format.
+    """
+
+    def matches(self, scope: Scope) -> tuple[Match, Scope]:
+        path: str = scope.get("path", "")
+        root_path: str = scope.get("root_path", "")
+        if root_path and path.startswith(root_path):
+            path = path[len(root_path) :]
+        if path == API_PREFIX or path.startswith(API_PREFIX + "/"):
+            return Match.NONE, {}
+        return super().matches(scope)
 
 
 def _configure_logging(level_name: str) -> None:
@@ -48,11 +71,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.dependency_overrides[get_settings] = lambda: settings
     install_error_handlers(app)
 
-    app.include_router(health.router, prefix="/api")
+    app.include_router(health.router, prefix=API_PREFIX)
     # Every operation documents the shared error body for 422 and 500; this also replaces
     # FastAPI's default `HTTPValidationError`. 501 stays undocumented per route (0016).
     for module in (receipts, expenses, item_categories, budgets, insights):
-        app.include_router(module.router, prefix="/api", responses=error_responses(422, 500))
+        app.include_router(module.router, prefix=API_PREFIX, responses=error_responses(422, 500))
 
     # Mounted last so /api, /docs and /openapi.json win over the static files.
     # An empty FRONTEND_DIR means "no frontend"; Path("") would otherwise be the cwd.
@@ -60,7 +83,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return app
     frontend_dir = Path(settings.frontend_dir)
     if frontend_dir.is_dir():
-        app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
+        app.router.routes.append(
+            FrontendMount("/", app=StaticFiles(directory=frontend_dir, html=True), name="frontend")
+        )
     else:
         logger.warning("FRONTEND_DIR %s not found; serving the API only", frontend_dir)
 
