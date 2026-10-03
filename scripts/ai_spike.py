@@ -90,8 +90,8 @@ STRICT_SCHEMA = {
     "required": list(SCHEMA["properties"]),
 }
 STRICT_SYSTEM_PROMPT = SYSTEM_PROMPT + (
-    " Fill every key. merchant is the shop name at the top. date is the purchase date as "
-    "YYYY-MM-DD. total is the final amount paid. Each line item is one purchased product: "
+    " Fill every key. merchant is the shop name. date is the purchase date as "
+    "YYYY-MM-DD. total is the final amount paid. Each item is one purchased product: "
     "amount is its line price in currency, qty the count or weight, unit_price the price per "
     "unit. unreadable_fields may only name schema keys whose value you set to null."
 )

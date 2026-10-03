@@ -23,6 +23,7 @@ This is planned for F3 and F5. The model choice is explained in [0004](../decisi
   - `unreadable_fields` is an enum of schema keys, because free text looped until the token limit
   - the prompt names the payment lines that aren't items and explains the tax-class column
   - output cut off at `max_tokens` is `malformed_output`
+  - `is_receipt` alone is not enough: the model said `true` for a photo of a pinboard in every run, and the strict schema made it invent a full receipt. F03/F04 add a second signal (a separate classification call, or a rule on missing merchant, total and items); which one is still open
 - **Parsing:**
   1. strip code fences, then `json.loads`, then validate with Pydantic
   2. on failure, send one repair prompt with the validation error
@@ -35,10 +36,10 @@ This is planned for F3 and F5. The model choice is explained in [0004](../decisi
 | Model server unreachable | receipt `failed` with `error=llm_unavailable`; UI offers Retry; `/health` shows `llm: down`; the rest of the app keeps working |
 | Timeout | one retry, then `failed` with `error=llm_timeout` |
 | Malformed or unexpected output | one repair attempt, then `failed` with `error=malformed_output`, raw output kept |
-| Input can't be processed | wrong type or too large: `422`/`413` at upload; corrupt image: `unreadable_image`; `is_receipt=false`: `not_a_receipt` |
+| Input can't be processed | wrong type or too large: `422`/`413` at upload; corrupt image: `unreadable_image`; `is_receipt=false` or the second non-receipt signal: `not_a_receipt` |
 | DB read/write error | `500 storage_error`, logged; `/health` shows `db: error` |
 
 ## Tests
-- Recorded responses in `tests/fixtures/recorded_responses/`: valid, malformed then repaired, malformed twice, missing fields, `is_receipt=false`, an injection attempt.
+- Recorded responses in `tests/fixtures/recorded_responses/`: valid, malformed then repaired, malformed twice, missing fields, `is_receipt=false`, `is_receipt=true` on a non-receipt (from the spike), an injection attempt.
 - A fake client covers timeouts and connection errors.
 - An optional `@pytest.mark.integration` test runs against a live Ollama.
