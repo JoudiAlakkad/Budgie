@@ -1,6 +1,6 @@
 # 0008 — Rule-based review status, not a probability
 
-**Status:** Accepted (2026-09-28)
+**Status:** Accepted (2026-09-28). Amended by [0015](0015-non-receipt-is-a-failure-with-retry-or-manual-entry.md): `is_receipt` no longer sets a review status; a non-receipt makes the receipt `failed`.
 
 ## Context
 Criterion 13 says a confidence value must not be shown as a probability unless it is calibrated. Small local models don't give meaningful calibrated scores.

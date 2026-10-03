@@ -10,6 +10,7 @@ This is planned for F3 and F5. The model choice is explained in [0004](../decisi
   - `httpx.TimeoutException` raises `LLMTimeout`
   - non-2xx responses raise `LLMError`
 - It retries at most `LLM_MAX_RETRIES` times, and only on timeouts or connection errors.
+- None of these errors reaches HTTP: the pipeline stores them as the receipt's error code ([error-format](../contracts/error-format.md#receipt-error-codes)).
 - `ping()` does `GET {LLM_BASE_URL}/models` with a 2 s timeout (or `LLM_TIMEOUT_S` if lower) and never raises; `/health` reports `llm: ok|down` from it. Built in F1.
 
 ## Extractor (`ai/extractor.py`)
@@ -23,7 +24,7 @@ This is planned for F3 and F5. The model choice is explained in [0004](../decisi
   - `unreadable_fields` is an enum of schema keys, because free text looped until the token limit
   - the prompt names the payment lines that aren't items and explains the tax-class column
   - output cut off at `max_tokens` is `malformed_output`
-  - `is_receipt` alone is not enough: the model said `true` for a photo of a pinboard in every run, and the strict schema made it invent a full receipt. F03/F04 add a second signal (a separate classification call, or a rule on missing merchant, total and items); which one is still open
+  - `is_receipt` alone is not enough: the model said `true` for a photo of a pinboard in every run, and the strict schema made it invent a full receipt. F03/F04 add a second signal (a separate classification call, or a plausibility rule on missing merchant, total and items); which one is still open. Either signal makes the receipt `failed` with `not_a_receipt` ([0015](../decisions/0015-non-receipt-is-a-failure-with-retry-or-manual-entry.md))
 - **Parsing:**
   1. strip code fences, then `json.loads`, then validate with Pydantic
   2. on failure, send one repair prompt with the validation error
@@ -33,13 +34,17 @@ This is planned for F3 and F5. The model choice is explained in [0004](../decisi
 ## Failure handling (criterion 10)
 | Condition | Behaviour |
 |---|---|
-| Model server unreachable | receipt `failed` with `error=llm_unavailable`; UI offers Retry; `/health` shows `llm: down`; the rest of the app keeps working |
+| Model server unreachable | receipt `failed` with `error=llm_unavailable`; `/health` shows `llm: down`; the rest of the app keeps working |
 | Timeout | one retry, then `failed` with `error=llm_timeout` |
-| Malformed or unexpected output | one repair attempt, then `failed` with `error=malformed_output`, raw output kept |
-| Input can't be processed | wrong type or too large: `422`/`413` at upload; corrupt image: `unreadable_image`; `is_receipt=false` or the second non-receipt signal: `not_a_receipt` |
+| Model server answers with an error | `failed` with `error=llm_error` |
+| Malformed, unexpected or cut-off output | one repair attempt, then `failed` with `error=malformed_output`, raw output kept |
+| Not a receipt | `is_receipt=false` or the plausibility rule: `failed` with `error=not_a_receipt` ([0015](../decisions/0015-non-receipt-is-a-failure-with-retry-or-manual-entry.md)) |
+| Input can't be processed | wrong type or too large: `422 unsupported_file` / `413 file_too_large` at upload; the model server can't decode it: `failed` with `error=unreadable_image` |
+
+Every failed receipt offers **Enter manually**, and all but `unreadable_image` also offer **Retry** ([error-format](../contracts/error-format.md#receipt-error-codes)).
 | DB read/write error | `500 storage_error`, logged; `/health` shows `db: error` |
 
 ## Tests
-- Recorded responses in `tests/fixtures/recorded_responses/`: valid, malformed then repaired, malformed twice, missing fields, `is_receipt=false`, `is_receipt=true` on a non-receipt (from the spike), an injection attempt.
+- Recorded responses in `tests/fixtures/recorded_responses/`: valid, malformed then repaired, malformed twice, cut off at the token limit, missing fields, `is_receipt=false`, `is_receipt=true` on a non-receipt (from the spike), an injection attempt.
 - A fake client covers timeouts and connection errors.
 - An optional `@pytest.mark.integration` test runs against a live Ollama.
