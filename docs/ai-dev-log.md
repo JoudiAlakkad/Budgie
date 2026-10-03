@@ -96,3 +96,27 @@ Build the F01 service skeleton: settings read from env vars, `GET /api/health` r
 
 **7. Observation (benefit, limitation or risk)**
 *Limitation:* the agent's first version passed its own tests but crashed on a bad `DATABASE_URL`. It took a separate read-only review to find the failure paths: the tests only covered the cases the implementer had thought of.
+
+## Episode 3 — Non-receipt photo misreported in AI spike
+- **Date:** 2026-10-03 · **Feature:** M2 (AI spike) · **Commits:** `71f0b30..550911b` · **Outcome:** failed
+
+**1. Task given to the agent**
+In an earlier session, the agent ran the milestone-2 AI spike: 6 photos through `gemma3:4b`, in a base and a strict schema variant, to confirm or revise [0004](wiki/decisions/0004-vision-model-direct-via-ollama.md) and [0007](wiki/decisions/0007-async-extraction-with-polling.md). It recorded the results in the wiki (`71f0b30`, `9be03b6`). The exact instructions of that session are unknown. In a later session the user asked for the spike's status, then whether the model had detected that one image was not a receipt, then to fix the affected wiki pages.
+
+**2. Context and instructions**
+CLAUDE.md (read the wiki first, update stale articles in the same commit, `make check` before reporting done, commit locally only); `docs/wiki/backend/ai-spike.md`, `ai-extraction.md`, decisions 0004 and 0007, the roadmap's M2 entry; raw outputs in `data/spike/` and the source photos in `data/receipts/` (both git-ignored).
+
+**3. Agent's proposed contribution**
+The original write-up (`9be03b6`, co-authored by Claude) described the sixth photo as "one US shop receipt" and reported merchant, date and total as present in 6/6 strict runs. The photo is a pinboard (mandala, notes, shortcut card). The model returned `is_receipt: true` in all 3 runs, and in strict mode invented a receipt from "Red Rock Trading Post" for 25.00 USD. The write-up's description matches the invented output; how it came about is unknown. In the later session the agent first repeated the wrong description in a status summary. Asked directly, it checked `is_receipt` in every output, looked at the image, found the error, recounted the results table over the 5 real receipts, added a non-receipt section with two untested ideas for a second signal, and updated `ai-extraction.md` and 0004 (`550911b`). It also flagged an edit to `scripts/ai_spike.py` it had not made, and the same date 2023-10-26 in two strict outputs (not checked).
+
+**4. Tools and permissions used**
+Main session only, no subagents, no worktree. Bash (`jq` over the spike outputs, `git log/show/diff`, `make check`), Read (wiki pages and the photo), Edit (three wiki files). `git commit` is on the `ask` list in `.claude/settings.json`; the commit was made after the user said to commit everything on the spike branch. Nothing was pushed.
+
+**5. Verification**
+The corrected numbers were recounted from the `checks` and `extraction` fields of `data/spike/*.json`, and the photo was inspected directly. `make check` exited 0 (4 import contracts kept, `docs/openapi.json` up to date, gitleaks skipped locally); it does not cover wiki content. No reviewer subagent ran.
+
+**6. Accepted / modified / rejected**
+Modified: the original spike write-up was partly wrong (the photo description and the "6/6" row). The corrected version was accepted in `550911b`, and the edit to the spike script was kept as the user's own.
+
+**7. Observation (benefit, limitation or risk)**
+*Risk:* the agent didn't check whether the output of the model was correct, so an invented receipt went into the project as fact. The user asked the agent directly to check, since there was an image that is not a receipt, and only then did the agent correct it.
