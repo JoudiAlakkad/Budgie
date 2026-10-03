@@ -7,6 +7,7 @@ text, causes and tracebacks only go to the server log.
 """
 
 import logging
+from collections.abc import Mapping
 from typing import Any, get_args
 
 from fastapi import FastAPI, Request
@@ -93,8 +94,11 @@ def error_responses(*statuses: int) -> dict[int | str, dict[str, Any]]:
     }
 
 
-def _field_name(loc: tuple[int | str, ...] | list[int | str]) -> str:
-    parts = list(loc)
+def _field_name(err: Mapping[str, Any]) -> str:
+    # Malformed JSON is located at a character offset, not at a field.
+    if err.get("type") == "json_invalid":
+        return "body"
+    parts = list(err.get("loc", ()))
     if len(parts) > 1 and parts[0] == "body":
         parts = parts[1:]
     return ".".join(str(part) for part in parts)
@@ -128,8 +132,7 @@ async def _http_error(_: Request, exc: Exception) -> JSONResponse:
 async def _validation_error(_: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, RequestValidationError)
     fields = [
-        FieldError(field=_field_name(err.get("loc", ())), message=str(err.get("msg", "")))
-        for err in exc.errors()
+        FieldError(field=_field_name(err), message=str(err.get("msg", ""))) for err in exc.errors()
     ]
     return error_response(422, "validation_error", _VALIDATION_DETAIL, fields)
 

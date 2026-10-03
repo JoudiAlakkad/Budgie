@@ -29,7 +29,7 @@ def list_receipts(status: ReceiptStatus | None = None) -> list[Receipt]:
 
 
 @router.get(
-    "/{id}",
+    "/{id:int}",
     response_model=Receipt,
     summary="Get a receipt, with its expense once one exists",
     responses=error_responses(404),
@@ -39,7 +39,7 @@ def get_receipt(id: int) -> Receipt:
 
 
 @router.get(
-    "/{id}/image",
+    "/{id:int}/image",
     response_class=Response,
     summary="The receipt image",
     responses={
@@ -59,7 +59,7 @@ def get_receipt_image(id: int) -> Response:
 
 
 @router.post(
-    "/{id}/extract",
+    "/{id:int}/extract",
     response_model=Receipt,
     status_code=202,
     summary="Retry extraction of a failed or extracted receipt",
@@ -70,7 +70,7 @@ def extract_receipt(id: int) -> Receipt:
 
 
 @router.delete(
-    "/{id}",
+    "/{id:int}",
     status_code=204,
     response_class=Response,
     summary="Delete a receipt, its image and its expense",

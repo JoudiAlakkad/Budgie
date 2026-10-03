@@ -15,14 +15,14 @@ Every non-2xx response has this body:
 | HTTP | `error` | When |
 |---|---|---|
 | 400 | `bad_request` | the multipart body can't be parsed at all, e.g. no boundary (raised by Starlette before validation); a body cut off mid-file arrives as a missing `file`, i.e. `422 validation_error` |
-| 404 | `not_found` | an unknown id or path |
+| 404 | `not_found` | an unknown id or path; an id that isn't an integer (e.g. `/receipts/abc`) is an unknown path |
 | 405 | `method_not_allowed` | the path exists, but not with this method. The `Allow` header lists the methods of the first route that matches the path only (a Starlette limit) |
 | 409 | `invalid_state` | the action isn't allowed in the current status, e.g. extracting a receipt that is `extracting`, or deleting a seed category |
 | 413 | `file_too_large` | the upload is bigger than `MAX_UPLOAD_MB` |
 | 422 | `unsupported_file` | the upload isn't a jpeg, png or webp (checked by its first bytes) |
 | 422 | `uncategorized_items` | confirm was called while some items are `uncategorized` |
 | 422 | `incomplete_expense` | confirm was called while merchant, date or total is missing |
-| 422 | `validation_error` | a field, query or path parameter failed validation, the JSON is malformed, or an unknown field was sent; `fields` says which |
+| 422 | `validation_error` | a field, query or path parameter failed validation, the JSON is malformed (`field: "body"`), or an unknown field was sent; `fields` says which |
 | 500 | `storage_error` | the database or a file couldn't be read or written |
 | 500 | `internal_error` | an unexpected error; the details are only in the server log |
 | 501 | `not_implemented` | the endpoint is in the contract but not built yet; `detail` names the feature that builds it |

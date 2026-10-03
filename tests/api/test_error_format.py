@@ -100,7 +100,9 @@ def test_budgie_errors_use_their_status_and_the_error_body(
 ) -> None:
     error = ERRORS[index]
     body = _assert_error(
-        error_client.get(f"/api/test-error/{index}"), STATUS_BY_CODE[error.code], error.code
+        error_client.get(f"/api/test-error/{index}"),
+        STATUS_BY_CODE[error.code],
+        error.code,
     )
 
     assert body["detail"] == error.detail
@@ -123,7 +125,9 @@ def test_storage_error_is_500_without_its_cause(error_client: TestClient) -> Non
     assert "/srv" not in response.text
 
 
-def test_unexpected_exception_is_500_without_internals(error_client: TestClient) -> None:
+def test_unexpected_exception_is_500_without_internals(
+    error_client: TestClient,
+) -> None:
     response = error_client.get("/api/test-crash")
     body = _assert_error(response, 500, "internal_error")
 
@@ -132,7 +136,9 @@ def test_unexpected_exception_is_500_without_internals(error_client: TestClient)
         assert leak not in response.text
 
 
-def test_unmapped_http_exception_is_500_without_its_detail(error_client: TestClient) -> None:
+def test_unmapped_http_exception_is_500_without_its_detail(
+    error_client: TestClient,
+) -> None:
     response = error_client.get("/api/test-teapot")
     body = _assert_error(response, 500, "internal_error")
 
@@ -141,7 +147,9 @@ def test_unmapped_http_exception_is_500_without_its_detail(error_client: TestCli
     assert body["detail"] == "An unexpected error occurred."
 
 
-def test_unmapped_budgie_error_code_is_500_internal_error(error_client: TestClient) -> None:
+def test_unmapped_budgie_error_code_is_500_internal_error(
+    error_client: TestClient,
+) -> None:
     response = error_client.get("/api/test-unmapped-code")
     body = _assert_error(response, 500, "internal_error")
 
@@ -183,6 +191,9 @@ def test_unknown_api_path_is_404_not_found(
         ("GET", "/api/receipts/1/extract", {"POST"}),
         ("POST", "/api/health", {"GET"}),
         ("DELETE", "/api/budgets", {"GET", "PUT"}),
+        # `{id:int}` keeps `export.csv` from matching the id routes.
+        ("DELETE", "/api/expenses/export.csv", {"GET"}),
+        ("PATCH", "/api/expenses/export.csv", {"GET"}),
     ],
 )
 def test_wrong_method_is_405_with_allow_header(
@@ -242,12 +253,16 @@ def test_unknown_field_is_422(client: TestClient) -> None:
     assert [f["field"] for f in body["fields"]] == ["x"]
 
 
-def test_invalid_query_and_path_are_422_with_fields(client: TestClient) -> None:
+def test_invalid_query_is_422_with_prefixed_field(client: TestClient) -> None:
     month = _assert_error(client.get("/api/insights/summary?month=2026-1"), 422, "validation_error")
-    path = _assert_error(client.get("/api/receipts/abc"), 422, "validation_error")
 
     assert month["fields"][0]["field"] == "query.month"
-    assert path["fields"][0]["field"] == "path.id"
+
+
+@pytest.mark.parametrize("path", ["/api/receipts/abc", "/api/expenses/abc"])
+def test_non_integer_id_is_404_not_found(client: TestClient, path: str) -> None:
+    """`{id:int}` doesn't match, so the id is an unknown path, not a validation error."""
+    _assert_error(client.get(path), 404, "not_found")
 
 
 @pytest.mark.parametrize("month", ["2026-13", "2026-00", "2026-1", "26-10", "2026-10-01"])
@@ -267,11 +282,13 @@ def test_valid_month_reaches_the_stub(client: TestClient, month: str) -> None:
 
 def test_malformed_json_is_422_validation_error(client: TestClient) -> None:
     response = client.post(
-        "/api/expenses", content=b'{"merchant": ', headers={"content-type": "application/json"}
+        "/api/expenses",
+        content=b'{"merchant": ',
+        headers={"content-type": "application/json"},
     )
 
     body = _assert_error(response, 422, "validation_error")
-    assert body["fields"]
+    assert [f["field"] for f in body["fields"]] == ["body"]
 
 
 def test_broken_multipart_is_400_bad_request(client: TestClient) -> None:
@@ -286,7 +303,9 @@ def test_broken_multipart_is_400_bad_request(client: TestClient) -> None:
     assert body["fields"] is None
 
 
-def test_upload_form_rejects_missing_file_and_unknown_fields(client: TestClient) -> None:
+def test_upload_form_rejects_missing_file_and_unknown_fields(
+    client: TestClient,
+) -> None:
     body = _assert_error(
         client.post("/api/receipts", files={"other": ("r.jpg", b"\xff\xd8\xff", "image/jpeg")}),
         422,

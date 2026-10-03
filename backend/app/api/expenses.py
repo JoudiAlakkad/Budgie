@@ -41,7 +41,7 @@ def create_expense(body: ExpenseCreate) -> Expense:
     raise NotImplementedYet("F06")
 
 
-# Declared before /{id}, so `export.csv` isn't taken for an id.
+# Declared before /{id:int}; the int converter also keeps `export.csv` from matching an id route.
 @router.get(
     "/export.csv",
     response_class=Response,
@@ -61,14 +61,14 @@ def export_csv(
 
 
 @router.get(
-    "/{id}", response_model=Expense, summary="Get an expense", responses=error_responses(404)
+    "/{id:int}", response_model=Expense, summary="Get an expense", responses=error_responses(404)
 )
 def get_expense(id: int) -> Expense:
     raise NotImplementedYet("F05")
 
 
 @router.patch(
-    "/{id}",
+    "/{id:int}",
     response_model=Expense,
     summary="Edit an expense; a confirmed expense becomes unconfirmed",
     responses=error_responses(404),
@@ -78,7 +78,7 @@ def update_expense(id: int, body: ExpenseUpdate) -> Expense:
 
 
 @router.post(
-    "/{id}/confirm",
+    "/{id:int}/confirm",
     response_model=Expense,
     summary="Confirm an expense",
     responses=error_responses(404),
@@ -88,7 +88,7 @@ def confirm_expense(id: int) -> Expense:
 
 
 @router.delete(
-    "/{id}",
+    "/{id:int}",
     status_code=204,
     response_class=Response,
     summary="Delete an expense, its receipt and its image",
