@@ -29,7 +29,7 @@ The first version of that code was a broad regex table: addresses, URLs, phone n
 - **Evaluation (F11):** committed evaluation material goes through the same module.
 
 ## Consequences
-- The schema removes most leaks at the source. The small rule set is cheap, precise, runs in linear time (guarded by a timing test), and doesn't touch item names.
+- The schema removes most leaks at the source. The small rule set is cheap, precise, runs in linear time (guarded by growth tests, which compare run time at two input sizes rather than against a fixed budget), and doesn't touch item names.
 - A rule that is missing is added once and tested once, for the database, the logs, the fixtures and the evaluation alike.
 - **Known gaps:**
   - header text the model copies into `merchant` stays in the stored raw output, unless F05 also replaces it there

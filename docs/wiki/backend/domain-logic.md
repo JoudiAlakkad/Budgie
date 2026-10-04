@@ -55,7 +55,9 @@ The thresholds are constants in the module, listed here once they're fixed.
 
 ## `redaction.py` (F3)
 The safety net for personal data in the three places where the model writes free text: `merchant`, item descriptions and the stored raw output ([0017](../decisions/0017-personal-data-is-redacted-by-code.md)). The first line of defence is the schema: fixed keys, enums for `payment_method` and `unreadable_fields`, and no field for card or address data.
-- **Rules** (ordered, each in linear time; timing tests on 200k-character runs guard this, including labels joined by `/` `.` `=` `-` and IBAN-shaped groups):
+- **Rules** (ordered, each in linear time). Growth tests guard this: each long run is timed at 12.5k and 50k characters, best of 3, and must grow less than 8× for the 4× input (linear is about 4×, quadratic about 16×). There is a 5 ms floor and a 5 s cap per call (`tests/unit/timing.py`). The runs include labels joined by `/` `.` `=` `-` and IBAN-shaped groups.
+- `_fit_iban` stops walking groups once the length passes the country's IBAN length (or 34).
+- Rules:
   - `iban` → `[iban]`: an IBAN that passes the ISO 13616 **mod-97 checksum** (`iban_checksum_valid`, computed digit by digit).
     - Shape: 2 uppercase letters and 2 check digits, then one compact run or groups of 4 after exactly one space, 15–34 characters in all. For the common countries the length must also match `IBAN_LENGTHS` (DE 22, AT 20, CH 21, NL 18, FR 27, GB 22, …).
     - The regex is a bounded lookahead, and `_fit_iban` judges it in Python. It drops trailing groups that aren't part of the IBAN (`AT61 … 3201 BANK` → `[iban] BANK`). A rejected candidate doesn't hide an IBAN that starts inside it.

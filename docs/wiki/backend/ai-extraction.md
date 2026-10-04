@@ -47,7 +47,7 @@ This is planned for F3 and F5. The model choice is explained in [0004](../decisi
 - **Example answer:** `EXAMPLE_OUTPUT` is a synthetic `ReceiptExtraction` ("Beispiel Markt", a `2 x 0,95` line, a deposit return, paid by card). `extractor.system_prompt` puts it into the `{example}` placeholder at the end of `system.txt`, which says to copy the shape only, never the values.
 - **Parsing:**
   1. if the output is cut off, raise `MalformedOutput` without a repair attempt
-  2. strip code fences (in linear time, `strip_fence`), then `json.loads` (falling back to the slice from the first `{` to the last `}`), then validate with Pydantic
+  2. strip code fences (`strip_fence`, linear; guarded by a growth test), then `json.loads` (falling back to the slice from the first `{` to the last `}`), then validate with Pydantic
   3. if either answer has `is_receipt: false`, raise `NotAReceipt`, even when the rest is invalid: for the first answer without a repair attempt, and for the repair answer instead of `MalformedOutput`
   4. on any other failure, send one repair turn: the first answer, then `repair.txt` with the validation errors. The image is sent again, so the model can fill in missing fields. The errors never quote the model's text.
   5. if that fails too, raise `MalformedOutput`, keeping the raw text of both attempts
