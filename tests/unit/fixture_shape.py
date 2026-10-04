@@ -63,11 +63,12 @@ def personal_data(data: dict) -> list[str]:
 # ---------------------------------------------------------------- independent scan
 # `personal_data` uses the redaction rules themselves, so it can only prove that
 # redacting again changes nothing. This scan shares no code with app.domain.redaction:
-# it is deliberately broader, and everything it may see is listed in the allowlist.
+# it is deliberately broader, and everything it may see is listed in the allowlist. It
+# also covers what the app rules leave to the schema and `clean_merchant` (addresses,
+# URLs, phone numbers), so a fixture can't carry them past the generator.
 
 # Removed before scanning. Each entry is something the fixtures legitimately hold.
-KNOWN_PLACEHOLDERS = ("[address]", "[card]", "[email]", "[iban]", "[id]", "[name]", "[phone]")
-KNOWN_PLACEHOLDERS += ("[taxid]", "[url]")
+KNOWN_PLACEHOLDERS = ("[card]", "[iban]", "[id]")
 ALLOWLIST = [
     # placeholders written by the redaction (test_recorded_fixtures checks the list)
     *(re.escape(placeholder) for placeholder in KNOWN_PLACEHOLDERS),
@@ -87,8 +88,8 @@ SUSPICIOUS = {
     "at sign": r"@",
     "masked digits": r"[*Xx#]{3,}[ -]?\d",
     "street": r"(?i:str\.|straße|strasse)",
-    # A label alone is fine (the prompts and the redaction keep `Tel. [phone]`); a label
-    # followed by a digit within the same short stretch is not.
+    # A label alone is fine (the prompts name the payment lines, and older redactions
+    # kept `Tel. [phone]`); a label followed by a digit within a short stretch is not.
     "contact or tax label with a value": r"(?i:\b(?:Tel|Fax|USt)\b[^\n\"\d\[]{0,20}\d)",
 }
 _SUSPICIOUS = {name: re.compile(pattern) for name, pattern in SUSPICIOUS.items()}

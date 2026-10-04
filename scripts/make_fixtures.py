@@ -3,8 +3,10 @@
     .venv/bin/python scripts/make_fixtures.py --spike data/spike \
         --out tests/fixtures/recorded_responses [--check]
 
-Spike-based cases take a spike output's `raw_output` and `usage`; synthetic cases are
-written inline below. Every content goes through `app.domain.redaction.redact_text`, and
+Spike-based cases take a spike output's `raw_output` and `usage`: only the strict runs
+(`valid_receipt`, `valid_receipt_fenced`, `non_receipt_claimed_receipt`). Synthetic cases
+are written inline below; `cut_off_length` and `missing_fields` are modelled on the spike's
+base-schema failures. Every content goes through `app.domain.redaction.redact_text`, and
 the script writes nothing if `find_personal_data` still finds anything, or if a spike
 pattern matches no file or several. The output is deterministic: `--check` writes
 nothing and exits 1 if the files on disk differ from what would be generated. Writing
@@ -30,6 +32,8 @@ SPIKE_MAX_TOKENS = 1024  # the spike's setting (docs/wiki/backend/ai-spike.md)
 MAX_TOKENS = 2048  # LLM_MAX_TOKENS from F03 on
 SYNTHETIC_USAGE = {"prompt_tokens": 312, "completion_tokens": 180, "total_tokens": 492}
 CUT_OFF_USAGE = {"prompt_tokens": 312, "completion_tokens": 2048, "total_tokens": 2360}
+RUNAWAY_USAGE = {"prompt_tokens": 312, "completion_tokens": 1024, "total_tokens": 1336}
+MODELLED_ON = "synthetic, modelled on spike base-schema failure ({})"
 STRICT_ITEM_KEYS = ("description", "qty", "unit_price", "amount")
 
 
@@ -123,6 +127,25 @@ CUT_MID_ITEM = """{
   "line_items": [
     {"description": "BIO EIER 10 STK.", "qty": 1, "unit_price": 2.99, "amount": 2.99},
     {"description": "VOLLMILCH 3,5%", "qty": 1, "unit_pr"""
+# The base schema let the model loop until max_tokens; here one item repeats and the
+# answer stops mid-token.
+RUNAWAY = (
+    '{\n  "is_receipt": true,\n  "line_items": [\n'
+    + '    {"description": "ARTIKEL", "amount": 0.99},\n' * 80
+    + '    {"description": "ARTI'
+)
+# The base schema made every key optional, and the model left out merchant, date and total.
+MISSING_KEYS = json.dumps(
+    {
+        "is_receipt": True,
+        "line_items": [
+            {"description": "VOLLMILCH 3,5%", "qty": 1, "unit_price": 1.19, "amount": 1.19},
+            {"description": "BROT", "amount": 2.49},
+        ],
+        "unreadable_fields": [],
+    },
+    indent=2,
+)
 # 6.30 + 0.00 + 1.09 = 7.39
 INJECTION = answer(
     merchant="Beispiel Markt",
@@ -168,9 +191,9 @@ CASES = [
     Case(
         "cut_off_length",
         "A runaway answer cut off at max_tokens (finish_reason length).",
-        (Spike(),),
-        spike=("base", "IMG_1554"),
+        (Text(RUNAWAY, RUNAWAY_USAGE),),
         max_tokens=SPIKE_MAX_TOKENS,
+        source=MODELLED_ON.format("runaway answer cut off at max_tokens"),
     ),
     Case(
         "cut_off_token_count",
@@ -180,9 +203,8 @@ CASES = [
     Case(
         "missing_fields",
         "Base schema without merchant, date and total; then the strict answer with them null.",
-        (Spike(), FillMissing(("merchant", "date", "total"))),
-        spike=("base", "IMG_1549"),
-        max_tokens=SPIKE_MAX_TOKENS,
+        (Text(MISSING_KEYS), FillMissing(("merchant", "date", "total"))),
+        source=MODELLED_ON.format("optional keys left out"),
     ),
     Case(
         "not_a_receipt", "is_receipt false, every field empty.", (Text(answer(is_receipt=False)),)

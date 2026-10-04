@@ -1,4 +1,5 @@
-"""Redaction rules (decision 0017): each rule, the must-survive negatives, idempotence."""
+"""Redaction rules (decision 0017): each rule, the must-survive negatives, idempotence,
+and `clean_merchant`."""
 
 import json
 import time
@@ -6,14 +7,12 @@ import time
 import pytest
 
 from app.domain.redaction import (
-    ALL_KINDS,
-    DESCRIPTION_KINDS,
     PLACEHOLDERS,
     RULES,
     Finding,
+    clean_merchant,
     find_personal_data,
     luhn_valid,
-    redact_description,
     redact_text,
 )
 
@@ -31,37 +30,6 @@ POSITIVES = [
     ("card_masked", "#### 1234", "[card]"),
     ("card_masked", "xxxxxxxxxxxx1234", "[card]"),
     ("card_masked", "MAX ****1234", "MAX [card]"),
-    ("email", "info@beispiel-markt.de", "[email]"),
-    ("email", "Kontakt: max.muster+bon@example.com", "Kontakt: [email]"),
-    ("url", "https://www.beispiel-markt.de/filialen", "[url]"),
-    ("url", "www.example-shop.de", "[url]"),
-    ("url", "Besuchen Sie example.de!", "Besuchen Sie [url]!"),
-    ("url", "service.com/hilfe", "[url]"),
-    ("phone", "+49 231 123456", "[phone]"),
-    ("phone", "0231/123456", "[phone]"),
-    ("phone", "0231-12 34 56", "[phone]"),
-    ("phone", "Tel. 0231 123456", "Tel. [phone]"),
-    ("phone", "Fon: 0231 9876543", "Fon: [phone]"),
-    ("phone", "Fax 0231 123457", "Fax [phone]"),
-    ("phone", "Telefon: 0231123456", "Telefon: [phone]"),
-    ("taxid", "DE123456789", "[taxid]"),
-    ("taxid", "USt-IdNr.: DE123456789", "USt-IdNr.: [taxid]"),
-    ("taxid", "USt-ID DE987654321", "USt-ID [taxid]"),
-    ("taxid", "St.-Nr. 315/5802/1234", "St.-Nr. [taxid]"),
-    ("taxid", "Steuernummer: 315/5802/1234", "Steuernummer: [taxid]"),
-    ("street", "Hauptstraße 12", "[address]"),
-    ("street", "Beispielstr. 12a", "[address]"),
-    ("street", "Am Lindenplatz 3", "[address]"),
-    ("street", "An der Ruhrallee 5", "[address]"),
-    ("street", "Kölner Straße 12-14", "[address]"),
-    ("street", "MUSTERWEG 7", "[address]"),
-    ("street", "Musterstraße 12a, 44227 Dortmund", "[address], [address]"),
-    ("street", "Hauptstraße 12 44227 Dortmund", "[address] [address]"),
-    ("street", "Hauptstraße 12\n44227 Dortmund", "[address]\n[address]"),
-    ("street", '{"merchant": "Markt, Lindenweg 4"}', '{"merchant": "Markt, [address]"}'),
-    ("postcode_city", "44227 Dortmund", "[address]"),
-    ("postcode_city", "80331 München", "[address]"),
-    ("postcode_city", "01067 DRESDEN", "[address]"),
     ("labelled_id", "Terminal-ID: 12345678", "Terminal-ID: [id]"),
     ("labelled_id", "TID 87654321", "TID [id]"),
     ("labelled_id", "Trace-Nr. 004711", "Trace-Nr. [id]"),
@@ -82,11 +50,6 @@ POSITIVES = [
     ("labelled_id", "Filiale 1234", "Filiale [id]"),
     ("labelled_id", "Fil.-Nr. 0042", "Fil.-Nr. [id]"),
     ("labelled_id", "Terminal-ID: 5317 4492", "Terminal-ID: [id]"),
-    ("cashier", "Es bediente Sie: Anna", "Es bediente Sie: [name]"),
-    ("cashier", "Es bediente Sie Anna M.", "Es bediente Sie [name]"),
-    ("cashier", "Kassierer(in): Max", "Kassierer(in): [name]"),
-    ("cashier", "Bediener: Lisa Muster", "Bediener: [name]"),
-    ("cashier", "ES BEDIENTE SIE: ANNA", "ES BEDIENTE SIE: [name]"),
 ]
 
 NEGATIVES = [
@@ -138,6 +101,11 @@ NEGATIVES = [
     "STREUSELRING 1 STK",
     "Holzweg 2 Stück",
     "KÖNIGSBERGER PLATZ 2 x 3,49",
+    # item names ending in a street suffix and a count (an address rule used to take them)
+    "APFELRING 2",
+    "STREUSELRING 1",
+    "Holzweg 2",
+    "KÖNIGSBERGER PLATZ 2",
     # counts that look like a postcode and city
     "10000 BONUSPUNKTE",
     "12345 Meilen",
@@ -164,18 +132,37 @@ NEGATIVES = [
     "Seriennr. 2026-09-17",
 ]
 
-# Item names that end in a street suffix and a count. The full table can't tell the
-# count from a house number when nothing follows; line items use the description mode.
-ADDRESS_LIKE_ITEMS = [
-    "Hering 2",
-    "APFELRING 2",
-    "STREUSELRING 1",
-    "Holzweg 2",
-    "KÖNIGSBERGER PLATZ 2",
-    "10000 BONUSPUNKTE",
-    "12345 Meilen",
+# Contact data the schema keeps out of every field but `merchant`, and `clean_merchant`
+# cuts from there. `redact_text` no longer has rules for it, so it passes unchanged; the
+# fixture generator's independent scan (tests/unit/fixture_shape.py) still flags it.
+NO_LONGER_REDACTED = [
+    # addresses
+    "Hauptstraße 12",
+    "Beispielstr. 12a",
+    "Am Lindenplatz 3",
+    "An der Ruhrallee 5",
+    "Kölner Straße 12-14",
+    "MUSTERWEG 7",
+    "Musterstraße 12a, 44227 Dortmund",
+    "Hauptstraße 12\n44227 Dortmund",
+    '{"merchant": "Markt, Lindenweg 4"}',
+    "44227 Dortmund",
+    "80331 München",
+    "01067 DRESDEN",
+    # phone numbers
+    "+49 231 123456",
+    "0231/123456",
+    "0231-12 34 56",
+    "Tel. 0231 123456",
+    "Fon: 0231 9876543",
+    "Fax 0231 123457",
+    "Telefon: 0231123456",
+    # URLs
+    "https://www.beispiel-markt.de/filialen",
+    "www.example-shop.de",
+    "Besuchen Sie example.de!",
+    "service.com/hilfe",
 ]
-FULL_MODE_LIMITS = {"APFELRING 2", "STREUSELRING 1", "Holzweg 2", "KÖNIGSBERGER PLATZ 2"}
 
 
 @pytest.mark.parametrize(("kind", "text", "expected"), POSITIVES)
@@ -184,70 +171,15 @@ def test_rule_redacts(kind: str, text: str, expected: str) -> None:
     assert kind in {f.kind for f in find_personal_data(text)}
 
 
-@pytest.mark.parametrize("text", NEGATIVES)
+@pytest.mark.parametrize("text", NEGATIVES + NO_LONGER_REDACTED)
 def test_must_survive(text: str) -> None:
     assert find_personal_data(text) == []
     assert redact_text(text) == text
 
 
-@pytest.mark.parametrize(
-    "text",
-    [
-        pytest.param(
-            text,
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="full mode can't tell a trailing item count from a house number",
-            ),
-        )
-        if text in FULL_MODE_LIMITS
-        else text
-        for text in ADDRESS_LIKE_ITEMS
-    ],
-)
-def test_address_like_items_survive_the_full_table(text: str) -> None:
-    assert redact_text(text) == text
-
-
-@pytest.mark.parametrize("text", ADDRESS_LIKE_ITEMS + NEGATIVES)
-def test_address_like_items_survive_the_description_mode(text: str) -> None:
-    assert find_personal_data(text, kinds=DESCRIPTION_KINDS) == []
-    assert redact_description(text) == text
-
-
-@pytest.mark.parametrize(
-    ("text", "expected"),
-    [
-        ("Karte ****4242", "Karte [card]"),
-        ("Terminal-ID: 55501234", "Terminal-ID: [id]"),
-        ("Tel. 0231 9876543", "Tel. [phone]"),
-        ("Es bediente Sie: Erika", "Es bediente Sie: [name]"),
-        ("www.beispiel-markt.de", "[url]"),
-        ("Musterstraße 12a, 44227 Dortmund", "Musterstraße 12a, 44227 Dortmund"),
-    ],
-)
-def test_description_mode_keeps_every_rule_but_addresses(text: str, expected: str) -> None:
-    assert redact_description(text) == expected
-
-
-def test_description_kinds_are_all_but_the_address_rules() -> None:
-    assert {rule.kind for rule in RULES} == ALL_KINDS
-    left_out = ALL_KINDS - DESCRIPTION_KINDS
-    assert left_out == {"street", "postcode_city"}
-
-
-def test_kinds_none_is_the_full_table() -> None:
-    assert redact_text(RECEIPT, kinds=None) == redact_text(RECEIPT)
-    assert redact_text(RECEIPT, kinds=ALL_KINDS) == redact_text(RECEIPT)
-
-
-def test_kinds_select_rules() -> None:
-    assert redact_text("Tel. 0231 9876543 ****4242", kinds={"phone"}) == "Tel. [phone] ****4242"
-
-
-def test_unknown_kind_is_an_error() -> None:
-    with pytest.raises(ValueError, match="addresss"):
-        redact_text("x", kinds={"addresss"})
+def test_rule_table() -> None:
+    assert [rule.kind for rule in RULES] == ["iban", "card", "card_masked", "labelled_id"]
+    assert sorted(PLACEHOLDERS) == ["[card]", "[iban]", "[id]"]
 
 
 @pytest.mark.parametrize(("kind", "text", "expected"), POSITIVES)
@@ -265,7 +197,7 @@ def test_every_rule_kind_has_two_positives() -> None:
 @pytest.mark.parametrize("placeholder", sorted(PLACEHOLDERS))
 def test_placeholders_match_no_rule(placeholder: str) -> None:
     assert '"' not in placeholder and "\\" not in placeholder
-    assert find_personal_data(f"Kasse {placeholder} Tel. {placeholder}") == []
+    assert find_personal_data(f"Kasse {placeholder} Terminal-ID: {placeholder}") == []
 
 
 RECEIPT = """Beispiel Markt GmbH
@@ -292,12 +224,13 @@ Es bediente Sie: Erika
 Kasse: 3 Bon 1234
 Vielen Dank für Ihren Einkauf!"""
 
+# The header stays: `redact_text` only covers what the schema lets through.
 RECEIPT_REDACTED = """Beispiel Markt GmbH
-[address]
-[address]
-Tel. [phone]
-[url]
-USt-IdNr.: [taxid]
+Musterstraße 12a
+44227 Dortmund
+Tel. 0231 9876543
+www.beispiel-markt.de
+USt-IdNr.: DE999999999
 
 BIO EIER OKT 10 STK.          2,99 A
 VOLLMILCH 3,5%                1,19 A
@@ -312,7 +245,7 @@ Karte: [card]
 Terminal-ID: [id]
 Trace-Nr. [id]
 Datum: 17.09.2026 Uhrzeit: 14:32:05
-Es bediente Sie: [name]
+Es bediente Sie: Erika
 Kasse: [id] Bon [id]
 Vielen Dank für Ihren Einkauf!"""
 
@@ -325,22 +258,25 @@ def test_synthetic_receipt() -> None:
 def test_json_stays_valid() -> None:
     data = {
         "is_receipt": True,
-        "merchant": "Beispiel Markt\nMusterstraße 12a\n44227 Dortmund",
+        "merchant": "Beispiel Märkte\nFiliale 1234",
         "date": "2026-09-17",
         "line_items": [
             {"description": "Karte ****4242", "qty": None, "unit_price": None, "amount": 7.12},
-            {"description": 'Gutschein "Tel. 0231 123456"', "qty": 1, "unit_price": 0.5},
+            {"description": 'Gutschein "Bon 4711"', "qty": 1, "unit_price": 0.5},
+            {"description": "Terminal-ID:\t55501234", "qty": 1, "unit_price": 0.0},
         ],
         "total": 7.12,
-        "unreadable_fields": ["www.beispiel-markt.de", "Es bediente Sie: Erika"],
+        "payment_method": "card",
+        "unreadable_fields": ["merchant"],
         "raw": RECEIPT,
     }
     for document in (json.dumps(data, indent=2), json.dumps(data, ensure_ascii=False)):
         redacted = json.loads(redact_text(document))
-        assert redacted["merchant"] == "Beispiel Markt\n[address]\n[address]"
+        assert redacted["merchant"] == "Beispiel Märkte\nFiliale [id]"
         assert redacted["line_items"][0]["description"] == "Karte [card]"
-        assert redacted["line_items"][1]["description"] == 'Gutschein "Tel. [phone]"'
-        assert redacted["unreadable_fields"] == ["[url]", "Es bediente Sie: [name]"]
+        assert redacted["line_items"][1]["description"] == 'Gutschein "Bon [id]"'
+        assert redacted["line_items"][2]["description"] == "Terminal-ID:\t55501234"
+        assert redacted["raw"] == RECEIPT_REDACTED
         assert redacted["date"] == "2026-09-17"
         assert redacted["total"] == 7.12
 
@@ -369,23 +305,65 @@ def test_findings_sorted_and_not_overlapping() -> None:
     assert findings == sorted(findings, key=lambda f: f.start)
     assert all(a.end <= b.start for a, b in zip(findings, findings[1:], strict=False))
     assert [f.kind for f in findings] == [
-        "street",
-        "postcode_city",
-        "phone",
-        "url",
-        "taxid",
         "card_masked",
         "labelled_id",
         "labelled_id",
-        "cashier",
         "labelled_id",
         "labelled_id",
     ]
 
 
 def test_earlier_rule_wins_on_overlap() -> None:
-    # The url rule also matches the domain, but the e-mail rule comes first.
-    assert find_personal_data("an info@example.de") == [Finding("email", 3, 18)]
+    # The labelled_id rule also matches the digits, but the card rule comes first.
+    assert find_personal_data("Kartennummer: 4111 1111 1111 1111") == [Finding("card", 14, 33)]
+
+
+# ---------------------------------------------------------------- clean_merchant
+
+MERCHANTS = [
+    ("ALDI SÜD\nMusterstr. 1\n44227 Dortmund", "ALDI SÜD"),
+    ("Netto 44227 Dortmund", "Netto"),
+    ("REWE Tel. 0231 123456", "REWE"),
+    ("Beispiel Markt, www.beispiel.de", "Beispiel Markt"),
+    ("dm-drogerie markt", "dm-drogerie markt"),
+    ("ALDI", "ALDI"),
+    ("  \n  Lidl  ", "Lidl"),
+    (None, None),
+    ("", None),
+    ("Tel. 0231 123456", None),
+    ("Shop ****1234", "Shop [card]"),
+    # each cut, and the trailing punctuation
+    ("Markt 0231/123456", "Markt"),
+    ("Markt 0231-12 34 56", "Markt"),
+    ("Markt https://markt.example", "Markt"),
+    ("Markt | @markt", "Markt"),
+    # the cut is at `@`, so an e-mail's local part stays (known limit)
+    ("Markt | info@markt.example", "Markt | info"),
+    ("Markt Telefon: 0231", "Markt"),
+    ("Markt FON 0231", "Markt"),
+    ("Markt fax", "Markt"),
+    ("Markt – Fil. 3;", "Markt – Fil. 3"),
+    ("Markt -", "Markt"),
+    ("Markt:/,;", "Markt"),
+    ("Markt\r\nHauptstraße 1", "Markt"),
+    # no cut: short numbers, words that only contain a label, a store number
+    ("Markt 24", "Markt 24"),
+    ("Fontana Café", "Fontana Café"),
+    ("Telekom Shop", "Telekom Shop"),
+    ("REWE Filiale 1234", "REWE Filiale [id]"),
+    ("   ", None),
+    ("www.markt.example", None),
+]
+
+
+@pytest.mark.parametrize(("text", "expected"), MERCHANTS)
+def test_clean_merchant(text: str | None, expected: str | None) -> None:
+    assert clean_merchant(text) == expected
+
+
+@pytest.mark.parametrize(("text", "expected"), MERCHANTS)
+def test_clean_merchant_is_idempotent(text: str | None, expected: str | None) -> None:
+    assert clean_merchant(expected) == expected
 
 
 # ---------------------------------------------------------------- run time
@@ -405,6 +383,8 @@ RUNS = {
     "#": "#" * RUN,
     "digits": "1" * RUN,
     "1234 groups": "1234 " * (RUN // 5),
+    "12345a groups": "12345a" * (RUN // 6),
+    "1 2 3 4 5 groups": "1 2 3 4 5 a " * (RUN // 12),
     "uppercase": "A" * RUN,
     "lowercase": "a" * RUN,
     "-": "-" * RUN,
@@ -412,6 +392,7 @@ RUNS = {
     "a.": "a." * (RUN // 2),
     "a-": "a-" * (RUN // 2),
     "spaces": " " * RUN,
+    "punctuation": " ,;:-–|/" * (RUN // 8),
     "label repeated": "Kasse " * (RUN // 6),
     "every label repeated": LABELS * (RUN // len(LABELS)),
     "www. x.de": "www." + "x.de " * (RUN // 5),
@@ -425,6 +406,8 @@ RUNS = {
 }
 SEPARATORS = "*" * 40 + "\n" + "-" * 40 + "\n" + "#" * 40 + "\n" + "X" * 40 + "\n"
 MIXED = (SEPARATORS + RECEIPT + "\n") * (20_000 // len(SEPARATORS + RECEIPT + "\n") + 1)
+# One long merchant line: the store name, then a header that never hits a cut.
+MERCHANT_LINE = ("Markt " + "Filiale 1234 " + "*" * 20 + " 1234 " + " ,;:-|/ ") * (20_000 // 52)
 
 
 def timed(func, *args) -> float:
@@ -448,16 +431,29 @@ def test_every_rule_is_fast_on_long_runs(rule) -> None:
     assert slow == {}
 
 
+@pytest.mark.parametrize("text", RUNS.values(), ids=RUNS.keys())
+def test_clean_merchant_is_fast_on_long_runs(text: str) -> None:
+    assert timed(clean_merchant, text) < BUDGET_S
+
+
+def test_clean_merchant_is_fast_on_a_20_kb_line() -> None:
+    assert len(MERCHANT_LINE) >= 20_000 and "\n" not in MERCHANT_LINE
+    assert timed(clean_merchant, MERCHANT_LINE) < BUDGET_S
+    cleaned = clean_merchant(MERCHANT_LINE)
+    assert cleaned and cleaned.startswith("Markt Filiale [id]") and "1234" not in cleaned
+    assert timed(clean_merchant, MIXED) < BUDGET_S
+
+
 def test_realistic_mixed_text_is_fast_and_redacted() -> None:
     assert len(MIXED) >= 20_000
     assert timed(redact_text, MIXED) < BUDGET_S
     once = redact_text(MIXED)
-    assert "Musterstraße" not in once and "4242" not in once
+    assert "4242" not in once and "55501234" not in once
     assert "*" * 40 in once and "#" * 40 in once
     assert redact_text(once) == once
 
 
-def test_runaway_url_text_is_idempotent() -> None:
-    text = "www." + "x.de " * 1000 + "Tel 0231 1234567 Kasse 3 Bon 4"
+def test_runaway_text_is_idempotent() -> None:
+    text = "Kasse 3 Bon 4 " * 1000 + "Karte ****4242 Terminal-ID: 55501234"
     once = redact_text(text)
     assert redact_text(once) == once

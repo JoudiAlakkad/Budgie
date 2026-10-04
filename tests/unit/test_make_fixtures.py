@@ -73,7 +73,7 @@ def spike_file(folder: Path, variant: str, image: str, raw: str, completion: int
 
 STRICT_RECEIPT = {
     "is_receipt": True,
-    "merchant": "Beispiel Markt\nMusterstraße 12a\n44227 Dortmund",
+    "merchant": "Beispiel Markt Filiale 1234",
     "date": "2026-09-17",
     "currency": "EUR",
     "line_items": [
@@ -85,15 +85,6 @@ STRICT_RECEIPT = {
     "total": 2.99,
     "unreadable_fields": [],
 }
-BASE_RECEIPT = {
-    "is_receipt": True,
-    "currency": "EUR",
-    "line_items": [
-        {"description": "JOGHURT NACH GRIECH.", "amount": 0.79},
-        {"description": "Es bediente Sie: Erika", "amount": 1.0},
-    ],
-    "unreadable_fields": ["Tel. 0231 9876543"],
-}
 
 
 @pytest.fixture
@@ -102,9 +93,6 @@ def spike_dir(tmp_path: Path) -> Path:
     folder.mkdir()
     strict = json.dumps(STRICT_RECEIPT, indent=2, ensure_ascii=False)
     spike_file(folder, "strict", "IMG_1557", strict, 250)
-    runaway = '{"is_receipt": true, "unreadable_fields": [' + '"www.example-shop.de", ' * 200
-    spike_file(folder, "base", "IMG_1554", runaway, 1024)
-    spike_file(folder, "base", "IMG_1549", "```json\n" + json.dumps(BASE_RECEIPT) + "\n```", 120)
     invented = {**STRICT_RECEIPT, "merchant": "Red Rock Trading Post", "currency": "USD"}
     spike_file(folder, "strict", "24C13256-1D52-42BA-A8B0-B52F4E2B26A4", json.dumps(invented), 300)
     # A base run of the ALDI photo must not be picked up by the strict pattern.
@@ -169,7 +157,7 @@ def test_spike_content_is_redacted(script: ModuleType, spike_dir: Path, tmp_path
     valid = load(out, "valid_receipt")
     [content] = contents(valid)
     extraction = json.loads(content)
-    assert extraction["merchant"] == "Beispiel Markt\n[address]\n[address]"
+    assert extraction["merchant"] == "Beispiel Markt Filiale [id]"
     assert extraction["line_items"][1]["description"] == "Karte [card]"
     assert valid["source"] == (
         "spike 2026-10-03 strict IMG_1557 r1, redacted by app.domain.redaction"
@@ -178,8 +166,6 @@ def test_spike_content_is_redacted(script: ModuleType, spike_dir: Path, tmp_path
     assert valid["responses"][0]["body"]["usage"]["completion_tokens"] == 250
     [fenced] = contents(load(out, "valid_receipt_fenced"))
     assert fenced == f"```json\n{content}\n```"
-    [runaway] = contents(load(out, "cut_off_length"))
-    assert "example-shop" not in runaway and "[url]" in runaway
 
 
 def test_missing_fields_fills_strict_keys(
@@ -187,15 +173,69 @@ def test_missing_fields_fills_strict_keys(
 ) -> None:
     out = tmp_path / "out"
     run(script, spike_dir, out)
-    first, second = contents(load(out, "missing_fields"))
-    assert "[name]" in first and "Tel. [phone]" in first
+    data = load(out, "missing_fields")
+    first, second = contents(data)
+    assert data["source"] == (
+        "synthetic, modelled on spike base-schema failure (optional keys left out)"
+    )
+    assert set(json.loads(first)) == {"is_receipt", "line_items", "unreadable_fields"}
     filled = json.loads(second)
-    assert (filled["merchant"], filled["date"], filled["total"]) == (None, None, None)
+    assert set(filled) == set(json.loads(script.answer()))
+    nulls = ("merchant", "date", "currency", "subtotal", "tax", "total", "payment_method")
+    assert all(filled[key] is None for key in nulls)
     assert filled["unreadable_fields"] == ["merchant", "date", "total"]
     assert filled["line_items"] == [
-        {"description": "JOGHURT NACH GRIECH.", "qty": None, "unit_price": None, "amount": 0.79},
-        {"description": "Es bediente Sie: [name]", "qty": None, "unit_price": None, "amount": 1.0},
+        {"description": "VOLLMILCH 3,5%", "qty": 1, "unit_price": 1.19, "amount": 1.19},
+        {"description": "BROT", "qty": None, "unit_price": None, "amount": 2.49},
     ]
+
+
+def test_cut_off_length_is_a_synthetic_runaway(
+    script: ModuleType, spike_dir: Path, tmp_path: Path
+) -> None:
+    out = tmp_path / "out"
+    run(script, spike_dir, out)
+    data = load(out, "cut_off_length")
+    [response] = data["responses"]
+    [runaway] = contents(data)
+    assert data["source"] == (
+        "synthetic, modelled on spike base-schema failure (runaway answer cut off at max_tokens)"
+    )
+    assert data["max_tokens"] == 1024
+    assert response["body"]["usage"]["completion_tokens"] == 1024
+    assert response["body"]["choices"][0]["finish_reason"] == "length"
+    assert runaway.count('"description": "ARTIKEL"') > 50
+    assert runaway.endswith('{"description": "ARTI')
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(runaway)
+
+
+def test_only_strict_spike_runs_are_read(script: ModuleType) -> None:
+    assert {case.spike[0] for case in script.CASES if case.spike} == {"strict"}
+    assert {case.name for case in script.CASES if case.spike} == {
+        "valid_receipt",
+        "valid_receipt_fenced",
+        "non_receipt_claimed_receipt",
+    }
+
+
+def test_independent_scan_catches_an_address_the_rules_let_through(
+    script: ModuleType, spike_dir: Path, tmp_path: Path
+) -> None:
+    # The app rules no longer cover addresses (the schema and clean_merchant do), so the
+    # generator writes this file. The independent scan, run on the output by
+    # test_writes_every_case_in_shape and test_recorded_fixtures, is what stops it.
+    path = next(spike_dir.glob("*_strict_IMG_1557_r1.json"))
+    spike = json.loads(path.read_text(encoding="utf-8"))
+    leaky = {**STRICT_RECEIPT, "merchant": "Beispiel Markt\nMusterstraße 12a\n44227 Dortmund"}
+    spike["raw_output"] = json.dumps(leaky, indent=2, ensure_ascii=False)
+    path.write_text(json.dumps(spike, ensure_ascii=False), encoding="utf-8")
+    out = tmp_path / "out"
+
+    assert run(script, spike_dir, out) == 0
+    data = load(out, "valid_receipt")
+    assert personal_data(data) == []
+    assert suspicious_texts(data) == ["5+ digits", "street"]
 
 
 @pytest.mark.parametrize(
@@ -303,7 +343,7 @@ def test_check_reports_a_changed_file(script: ModuleType, spike_dir: Path, tmp_p
 def test_missing_spike_file_writes_nothing(
     script: ModuleType, spike_dir: Path, tmp_path: Path
 ) -> None:
-    next(spike_dir.glob("*_gemma3-4b_IMG_1549_r1.json")).unlink()
+    next(spike_dir.glob("*_gemma3-4b_strict_IMG_1557_r1.json")).unlink()
     out = tmp_path / "out"
     assert run(script, spike_dir, out) != 0
     assert not out.exists()
