@@ -12,14 +12,40 @@ from app.domain.redaction import (
     Finding,
     clean_merchant,
     find_personal_data,
+    iban_checksum_valid,
     luhn_valid,
     redact_text,
 )
 
 # (rule kind, input, expected output)
 POSITIVES = [
+    # the official examples, spaced and compact
     ("iban", "DE89 3704 0044 0532 0130 00", "[iban]"),
     ("iban", "IBAN: DE89370400440532013000", "IBAN: [iban]"),
+    ("iban", "AT61 1904 3002 3457 3201", "[iban]"),
+    ("iban", "AT611904300234573201", "[iban]"),
+    ("iban", "CH93 0076 2011 6238 5295 7", "[iban]"),
+    ("iban", "CH9300762011623852957", "[iban]"),
+    ("iban", "NL91 ABNA 0417 1643 00", "[iban]"),
+    ("iban", "NL91ABNA0417164300", "[iban]"),
+    ("iban", "GB82 WEST 1234 5698 7654 32", "[iban]"),
+    ("iban", "GB82WEST12345698765432", "[iban]"),
+    ("iban", "FR14 2004 1010 0505 0001 3M02 606", "[iban]"),
+    ("iban", "Lastschrift IBAN DE89370400440532013000 Mandat", "Lastschrift IBAN [iban] Mandat"),
+    ("iban", "IBAN: DE89 3704 0044 0532 0130 00, BIC", "IBAN: [iban], BIC"),
+    # a word after a spaced IBAN is not one of its groups
+    ("iban", "AT61 1904 3002 3457 3201 EUR", "[iban] EUR"),
+    ("iban", "AT61 1904 3002 3457 3201 BANK", "[iban] BANK"),
+    ("iban", "AT61 1904 3002 3457 3201 BANKING", "[iban] BANKING"),
+    # a rejected candidate right before it doesn't hide the IBAN
+    ("iban", "XX12 DE89 3704 0044 0532 0130 00", "XX12 [iban]"),
+    # masked IBANs on direct-debit receipts: no checksum to verify
+    ("iban_masked", "DE89 **** **** **** **30 00", "[iban]"),
+    ("iban_masked", "DE89XXXXXXXXXXXXXX3000", "[iban]"),
+    ("iban_masked", "DE89 XXXX XXXX XXXX XXXX 00", "[iban]"),
+    ("iban_masked", "DE89 3704 **** **** **30 00", "[iban]"),
+    ("iban_masked", "DE89****3000", "[iban]"),
+    ("iban_masked", "IBAN: DE89 #### #### #### ##30 00 Mandat", "IBAN: [iban] Mandat"),
     ("card", "4111 1111 1111 1111", "[card]"),
     ("card", "5500-0000-0000-0004", "[card]"),
     ("card", "Karte 4242424242424242 gelesen", "Karte [card] gelesen"),
@@ -162,6 +188,27 @@ NEGATIVES = [
     # a label inside a word
     "Kassenbon 1234",
     "BONBON 3",
+    # uppercase item names shaped like the start of an IBAN
+    "PC24 BLAUBEEREN",
+    "XL12 HANDTUCH",
+    "AB12 CDEF GHIJ",
+    "AB12 CDEF GHIJ KLMN",
+    "DE12 BIO MILCH",
+    "XXL24 SHIRT",
+    "GR12 TOMATEN 500G",
+    # IBAN-shaped, but one digit off: the checksum fails
+    "DE89 3704 0044 0532 0130 01",
+    "DE89370400440532013001",
+    "GB82 WEST 1234 5698 7654 33",
+    # a valid checksum, but glued to a word or with two spaces between groups
+    "DE89 3704 0044 0532 0130 00ABC",
+    "DE89370400440532013000ABC",
+    "DE89  3704  0044  0532  0130  00",
+    # a valid DE IBAN cut short: the length doesn't match the country
+    "DE89 3704 0044 0532",
+    # masked, but nothing shown after the mask, or no mask at all
+    "DE89 **** **** ****",
+    "DE12 1234 5678 9012",
 ]
 
 # Contact data the schema keeps out of every field but `merchant`, and `clean_merchant`
@@ -210,7 +257,13 @@ def test_must_survive(text: str) -> None:
 
 
 def test_rule_table() -> None:
-    assert [rule.kind for rule in RULES] == ["iban", "card", "card_masked", "labelled_id"]
+    assert [rule.kind for rule in RULES] == [
+        "iban",
+        "iban_masked",
+        "card",
+        "card_masked",
+        "labelled_id",
+    ]
     assert sorted(PLACEHOLDERS) == ["[card]", "[iban]", "[id]"]
 
 
@@ -328,6 +381,35 @@ def test_luhn(digits: str, valid: bool) -> None:
     assert luhn_valid(digits) is valid
 
 
+@pytest.mark.parametrize(
+    ("iban", "valid"),
+    [
+        ("DE89370400440532013000", True),
+        ("DE89 3704 0044 0532 0130 00", True),
+        ("GB82WEST12345698765432", True),
+        ("NL91ABNA0417164300", True),
+        ("CH9300762011623852957", True),
+        ("FR1420041010050500013M02606", True),
+        ("DE89370400440532013001", False),
+        ("DE88370400440532013000", False),
+        ("GB82WEST12345698765433", False),
+        ("PC24BLAUBEEREN", False),
+        ("de89370400440532013000", False),
+        ("DE89-3704-0044-0532-0130-00", False),
+        ("DE89٣70400440532013000", False),  # a non-ASCII digit
+        ("DE89", False),
+        ("", False),
+    ],
+)
+def test_iban_checksum(iban: str, valid: bool) -> None:
+    assert iban_checksum_valid(iban) is valid
+
+
+def test_iban_checksum_is_linear_on_a_long_input() -> None:
+    # Digit by digit, no big integer: a million digits stay within a few budgets.
+    assert timed(iban_checksum_valid, "DE00" + "9" * 1_000_000) < 5 * BUDGET_S
+
+
 def test_luhn_invalid_card_number_survives() -> None:
     assert redact_text("4111 1111 1111 1112") == "4111 1111 1111 1112"
 
@@ -360,8 +442,10 @@ def test_a_labelled_id_is_cut_back_to_an_earlier_finding() -> None:
 
 
 def test_rules_without_fit_lose_on_any_overlap() -> None:
-    # a card number inside an IBAN: the IBAN came first
-    assert find_personal_data("DE00 4111 1111 1111 1111") == [Finding("iban", 0, 24)]
+    # a Luhn-valid card number inside a valid IBAN: the IBAN came first
+    assert find_personal_data("DE89 4111 1111 1111 1111 11") == [Finding("iban", 0, 27)]
+    # the same digits with a wrong checksum: only the card is left
+    assert find_personal_data("DE00 4111 1111 1111 1111") == [Finding("card", 5, 24)]
     # a mask that runs into a card number is dropped, not cut back
     assert find_personal_data("**** 4111 1111 1111 1111") == [Finding("card", 5, 24)]
 
@@ -479,6 +563,20 @@ RUNS = {
     "0-12 groups": "0" + "-12" * (RUN // 3),
     "postcodes": "12345 " * (RUN // 6),
     "label, digit groups, a unit": "Kasse " + "1 " * RUN + "kg",
+    # IBAN-shaped runs: every word start is a candidate the checksum has to judge
+    "DE89 groups": "DE89 " * (RUN // 5),
+    "AB12CDEF": "AB12CDEF" * (RUN // 8),
+    "AB12 CDEF groups": "AB12 CDEF " * (RUN // 10),
+    "DE89 0000 groups": "DE89 0000 " * (RUN // 10),
+    "uppercase and digit groups": "AB12 " + "C3D4 " * (RUN // 5),
+    "masked IBAN groups": "DE89 " + "**** " * (RUN // 5) + "30",
+    "DE89XXXX": "DE89" + "X" * RUN + "3000",
+    "valid IBAN repeated": "DE89 3704 0044 0532 0130 00 " * (RUN // 28),
+    # the same at about 200k characters
+    **{
+        f"{chunk!r} x {LONG * 7 // len(chunk)}": chunk * (LONG * 7 // len(chunk))
+        for chunk in ("DE89 ", "AB12CDEF", "GB82 WEST ", "AB12 C3D4 ", "DE89****")
+    },
     # Inputs that took 2.3 s at 28k repetitions when a lookahead scanned ahead of the
     # value run: the label repeated without spaces, so one value run holds every label.
     **{

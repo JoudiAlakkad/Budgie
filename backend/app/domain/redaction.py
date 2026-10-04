@@ -5,8 +5,9 @@ type and enum, so free text reaches only three places: the line-item description
 payment and terminal lines slip in), `merchant` (where the receipt header slips in) and
 the stored raw output. This module is the safety net for those three.
 
-- `redact_text(text)` runs a small, ordered rule table: IBAN, card number, masked card
-  digits and labelled ids (terminal, trace, receipt, till, TSE, ...). Earlier rules win
+- `redact_text(text)` runs a small, ordered rule table: IBAN (mod-97 checksum), masked
+  IBAN, card number (Luhn), masked card digits and labelled ids (terminal, trace,
+  receipt, till, TSE, ...). Earlier rules win
   on overlap; a `labelled_id` value that runs into an earlier finding is cut back to the
   part before it (`Bon 12 <card>` -> `Bon [id] [card]`). A rule with a `value` group
   keeps its label and replaces only the value. Placeholders never match a rule, so
@@ -18,9 +19,11 @@ the stored raw output. This module is the safety net for those three.
 
 Linear time: no regex here has a repeat that can split its input in more than one way,
 and `labelled_id` has no lookahead: it matches label, separator and value run, and
-`_fit_id` judges the value in Python. `finditer` goes on after every match, accepted or
-not. tests/unit/test_redaction.py times every rule on long runs of each character class
-and of every label joined by `/`, `.`, `=` and `-`.
+`_fit_id` judges the value in Python. The `iban` rule's lookahead is bounded to 43
+characters per word start, and `_fit_iban` judges it with the mod-97 checksum.
+`finditer` goes on after every match, accepted or not. tests/unit/test_redaction.py
+times every rule on long runs of each character class, of IBAN-shaped groups and of
+every label joined by `/`, `.`, `=` and `-`.
 """
 
 import re
@@ -76,6 +79,90 @@ def _ean13_valid(digits: str) -> bool:
 def _is_card(match: str) -> bool:
     digits = re.sub(r"\D", "", match)
     return 13 <= len(digits) <= 19 and luhn_valid(digits) and not _ean13_valid(digits)
+
+
+_ASCII_DIGITS = frozenset("0123456789")
+_IBAN_CHARS = re.compile(r"[A-Z0-9]{5,}+")
+
+
+def _mod97(chars: str, remainder: int = 0) -> int:
+    """Extend the ISO 13616 remainder by `chars`: ASCII digits, and letters A=10 ... Z=35.
+
+    One step per character, so the cost is linear and no big integer is built.
+    """
+    for char in chars:
+        if char in _ASCII_DIGITS:
+            remainder = (remainder * 10 + ord(char) - 48) % 97
+        else:
+            remainder = (remainder * 100 + ord(char) - 55) % 97
+    return remainder
+
+
+def iban_checksum_valid(iban: str) -> bool:
+    """True if `iban` passes the ISO 13616 mod-97 check; single spaces are ignored.
+
+    The first four characters (country code and check digits) move to the end, letters
+    become 10 ... 35, and the number must leave remainder 1 when divided by 97. Length
+    and shape are not checked here.
+    """
+    compact = iban.replace(" ", "")
+    if _IBAN_CHARS.fullmatch(compact) is None:
+        return False
+    return _mod97(compact[:4], _mod97(compact[4:])) == 1
+
+
+# IBAN lengths of the countries a German receipt most likely shows (SWIFT IBAN registry).
+# Other country codes only need 15-34 characters; the checksum is the main guard.
+IBAN_LENGTHS: dict[str, int] = {
+    "AD": 24, "AT": 20, "BE": 16, "BG": 22, "CH": 21, "CY": 28, "CZ": 24, "DE": 22,
+    "DK": 18, "EE": 20, "ES": 24, "FI": 18, "FR": 27, "GB": 22, "GR": 27, "HR": 21,
+    "HU": 28, "IE": 22, "IS": 26, "IT": 27, "LI": 21, "LT": 20, "LU": 20, "LV": 21,
+    "MC": 27, "MT": 31, "NL": 18, "NO": 15, "PL": 28, "PT": 25, "RO": 24, "SE": 24,
+    "SI": 19, "SK": 24, "SM": 27, "TR": 26,
+}  # fmt: skip
+_IBAN_MIN, _IBAN_MAX = 15, 34
+_WORD = re.compile(r"\w")
+
+
+def _fit_iban(text: str, start: int, end: int) -> int | None:
+    """The end of the longest IBAN in `text[start:end]`, or None.
+
+    The span is the 4-character head (country code, check digits), then either one
+    compact run or space-separated groups. A candidate ends after a group, never before a
+    word character, has 15-34 characters (the country's length if it is in
+    `IBAN_LENGTHS`) and passes the mod-97 check. Trailing groups may be dropped, so a
+    word after a spaced IBAN (`... 3201 BANK`) is not part of it. The span is at most 43
+    characters, and the remainder is carried group by group, so this is constant time.
+    """
+    head = text[start : start + 4]
+    want = IBAN_LENGTHS.get(head[:2])
+    remainder = 0
+    length = 4
+    position = start + 4
+    best = None
+    for group in text[position:end].split(" "):  # the regex let only [A-Z0-9] through
+        position += len(group) + 1
+        if not group:  # the space after the head of a spaced IBAN
+            continue
+        remainder = _mod97(group, remainder)
+        length += len(group)
+        group_end = position - 1
+        if (
+            _IBAN_MIN <= length <= _IBAN_MAX
+            and (want is None or length == want)
+            and _WORD.match(text, group_end) is None
+            and _mod97(head, remainder) == 1
+        ):
+            best = group_end
+    return best
+
+
+_MASK = frozenset("*Xx#")
+
+
+def _is_masked_iban(match: str) -> bool:
+    """A masked IBAN hides at least four characters and ends in a shown digit."""
+    return sum(char in _MASK for char in match[4:]) >= 4 and match[-1] in _ASCII_DIGITS
 
 
 # Labels whose value is an id. A trailing `.` is matched after the label, not in it, so
@@ -149,8 +236,28 @@ def _rule(
     return Rule(kind, re.compile(pattern), placeholder, check, fit)
 
 
+# An IBAN candidate: country code and check digits, then one compact run or 2-7 groups of
+# four after single spaces and an optional short last group. Every repeat is possessive
+# and bounded (at most 43 characters), and `_fit_iban` judges it. The candidate sits in a
+# lookahead, so `finditer` tries every word start: a rejected candidate (`XX12 DE89 ...`)
+# doesn't hide an IBAN that starts inside it.
+_IBAN = (
+    r"\b(?=(?P<value>[A-Z]{2}[0-9]{2}"
+    r"(?:[A-Z0-9]{11,30}+|(?:[ ][A-Z0-9]{4}){2,7}+(?:[ ][A-Z0-9]{1,3}+)?+)))"
+)
+# A masked IBAN on a direct-debit receipt: country code and check digits, then a compact
+# run of shown digits, mask characters and shown digits (`DE89XXXXXXXXXXXXXX3000`), or
+# groups of four after single spaces (`DE89 **** **** **** **30 00`). `_is_masked_iban`
+# wants four mask characters and a shown digit at the end.
+_IBAN_MASKED = (
+    r"\b[A-Z]{2}[0-9]{2}"
+    r"(?:[0-9]*+[*Xx#]{4,}+[0-9]{2,6}+|(?:[ ][0-9*Xx#]{4}){2,7}+(?:[ ][0-9*Xx#]{1,3}+)?+)"
+    r"(?![\w*#])"
+)
+
 RULES: tuple[Rule, ...] = (
-    _rule("iban", r"\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){2,7}(?:[ ]?[A-Z0-9]{1,3})?\b", "[iban]"),
+    _rule("iban", _IBAN, "[iban]", fit=_fit_iban),
+    _rule("iban_masked", _IBAN_MASKED, "[iban]", _is_masked_iban),
     _rule("card", r"(?<![\w.,])\d{4,6}(?:[ -]?\d{4,6}){1,3}(?![\w]|[.,]\d)", "[card]", _is_card),
     _rule(
         "card_masked",
