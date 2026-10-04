@@ -54,24 +54,30 @@ Each detector returns `Leak {type, category?, merchant?, amount, explanation}`.
 The thresholds are constants in the module, listed here once they're fixed.
 
 ## `redaction.py` (F3)
-Removes personal data from text the model produced ([0017](../decisions/0017-personal-data-is-redacted-by-code.md)).
-- `find_personal_data(text)` returns `Finding {kind, start, end}` for each rule in a fixed, ordered table: IBAN, card number (13–19 digits, Luhn-valid), masked card digits, e-mail, URL, phone, VAT/tax id, street and house number, postcode and city, labelled ids (terminal, trace, receipt, till, transaction, TSE, customer or card number, …), cashier name.
-- `redact_text(text)` replaces each match with a typed placeholder (`[card]`, `[iban]`, `[address]`, `[id]`, `[name]`, …). It is idempotent.
-- Prices, dates, times, quantities, weights, EAN codes, item names and plain chain names must survive. The table-driven tests check these negatives as well as each rule.
-- Used by the pipeline before storing (F05), by `scripts/make_fixtures.py`, and by the fixture privacy test.
-- **Details from F3:**
-  - The rules see JSON escapes decoded (`ß` → `ß`), and a match never splits an escape or crosses a `"`, so redacted JSON stays valid.
-  - A valid EAN-13 is never treated as a card number, even if it is Luhn-valid.
-  - An unlabelled phone number needs a separator or a leading `+`, so UPC codes survive.
-  - Labels are kept for phone, tax id, labelled ids and cashier (`Tel. [phone]`, `Es bediente Sie [name]`).
+The safety net for personal data in the three places where the model writes free text: `merchant`, item descriptions and the stored raw output ([0017](../decisions/0017-personal-data-is-redacted-by-code.md)). The first line of defence is the schema: fixed keys, enums for `payment_method` and `unreadable_fields`, and no field for card or address data.
+- **Rules** (ordered, each in linear time; a timing test guards long inputs):
+  - `iban` → `[iban]`
+  - `card`: a 13–19 digit run, Luhn-valid and not a valid EAN-13 → `[card]`
+  - `card_masked`: `****1234`, `XXXX XXXX 1234`, … → `[card]`
+  - `labelled_id`: terminal, trace, receipt, till, transaction, TSE, customer or card number and similar labels; the label stays and the value becomes `[id]`. Prices (either decimal separator), ISO dates and quantities with a unit are never treated as a value.
+- `find_personal_data(text)` returns `Finding {kind, start, end}`. `redact_text(text)` replaces each match and is idempotent. The rules see JSON escapes decoded, and a match never splits an escape or crosses a `"`, so redacted JSON stays valid.
+- `clean_merchant(text)` keeps the shop name:
+  1. take the first non-blank line
+  2. cut it before a 5-digit postcode, a run of 6 or more digits, `http`, `www.`, `@`, or a `Tel`/`Telefon`/`Fon`/`Fax` label
+  3. strip trailing punctuation
+  4. return `None` if nothing is left, otherwise the `redact_text` result
+- **F05 applies it:** `clean_merchant` to `merchant`, and `redact_text` to the descriptions and the raw output.
+- **Must survive:** prices, dates, times, quantities, weights, EAN codes, item names (including `APFELRING 2` and `Holzweg 2`) and chain names.
+- **Why only these rules:** the address, URL, phone, tax-id and cashier rules were written for the spike's base schema, where `unreadable_fields` was free text. Once the schema closed that field, they mostly hit item names (`Hering 2` → `[address]`), and one of them hung on a line of `*` (catastrophic backtracking). They were removed.
 - **Known limits:**
-  - A bare number after a word, like `ZWIEBELRING 12`, can be read as a house number and become `[address]`.
-  - A street without a listed suffix (`An der Kirche 5`) is missed.
-  - Company names, like a fuel station's operator GmbH, are kept: they aren't personal data.
+  - In a merchant like `Markt | info@markt.example`, the part before the `@` survives the cut.
+  - Header text the model copies into `merchant` is cleaned in the `merchant` column but stays in the stored raw output, unless F05 replaces it there too.
 
 ### Fixture generator (`scripts/make_fixtures.py`)
 - `python scripts/make_fixtures.py --spike data/spike --out tests/fixtures/recorded_responses [--check]`.
-- It picks each spike file by name: base runs are `<stamp>_gemma3-4b_<image>_r1.json` and strict runs are `<stamp>_gemma3-4b_strict_<image>_r1.json`.
-- Spike-based cases use `max_tokens` 1024, the spike's setting; synthetic ones use 2048.
-- It exits 2 and writes nothing on a missing or ambiguous file, or on personal data left after redaction. It exits 1 when `--check` finds a difference.
+- **Only strict spike runs** are read, by file name (`<stamp>_gemma3-4b_strict_<image>_r1.json`): `valid_receipt` (+ `_fenced`) and `non_receipt_claimed_receipt`. They were recorded before `payment_method` existed, so the generator inserts `"payment_method": null` and says so in `source`.
+- **Synthetic:** every other case, including `missing_fields` and `cut_off_length`, which copy the shape of the spike's base-schema failures (`source` says so).
+- Spike-based cases and `cut_off_length` use `max_tokens` 1024; the other synthetic cases use 2048.
+- It writes into a temp folder, then replaces the files and removes stale `.json` files. It exits 2 and writes nothing on a missing or ambiguous file, on personal data left after redaction, or on an IO error. It exits 1 when `--check` finds a difference.
+- **Second check:** `tests/unit/fixture_shape.py` has an independent, broader scan (5+ digit runs, `@`, streets, `Tel`, `USt`, …) that shares no code with `redaction.py`. It is the only check for addresses, URLs and phone numbers in fixtures.
 - It is not covered by `make lint`, which only checks `backend` and `tests`.

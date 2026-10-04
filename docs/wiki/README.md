@@ -34,7 +34,7 @@ back; the parent records them.
 - [0014 — Status line skill](decisions/0014-statusline-skill.md)
 - [0015 — Non-receipt is a failure with retry or manual entry](decisions/0015-non-receipt-is-a-failure-with-retry-or-manual-entry.md)
 - [0016 — API representation and stub convention](decisions/0016-api-representation-and-stub-convention.md)
-- [0017 — Personal data is redacted by code](decisions/0017-personal-data-is-redacted-by-code.md)
+- [0017 — Personal data is kept out by the schema and redacted by code](decisions/0017-personal-data-is-redacted-by-code.md)
 
 ## Areas
 

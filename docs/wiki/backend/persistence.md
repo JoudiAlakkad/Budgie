@@ -17,7 +17,7 @@ The data is stored in SQLite through SQLAlchemy, and only `app/db/` touches it (
 | `budgets` | category (PK), monthly_limit |
 | `savings_goal` | id=1, target_amount, target_date, monthly_income? |
 
-- `receipts.raw_model_output`, `expenses.merchant` and `line_items.description` are stored **redacted** with `domain.redaction.redact_text` ([0017](../decisions/0017-personal-data-is-redacted-by-code.md)); the pipeline applies it in F05.
+- Stored **redacted** by the pipeline in F05 ([0017](../decisions/0017-personal-data-is-redacted-by-code.md)): `expenses.merchant` through `domain.redaction.clean_merchant`, and `line_items.description` and `receipts.raw_model_output` through `redact_text`.
 - Tables are created on startup with `metadata.create_all`. There is no migration tool, which is fine for the scope of this project.
 - F1 builds only the engine, the session factory and `Base` (`db/session.py`, `db/models.py`). Each table arrives with the feature that first uses it.
 - The seed rows for `item_categories` are inserted when the table is empty.
