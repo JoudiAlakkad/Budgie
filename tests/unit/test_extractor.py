@@ -4,6 +4,7 @@ import ast
 import base64
 import json
 import logging
+import time
 from pathlib import Path
 
 import httpx
@@ -30,7 +31,6 @@ from app.errors import (
     UnreadableImage,
 )
 from tests.recorded import case_names, load_case, replay
-from tests.unit.timing import assert_linear
 
 IMAGE = b"\xff\xd8\xff\xe0fake-jpeg-bytes\x00\x01"
 IMAGE_B64 = base64.b64encode(IMAGE).decode("ascii")
@@ -177,12 +177,17 @@ def test_strip_fence(raw: str, expected: str) -> None:
     assert strip_fence(raw) == expected
 
 
+# Hostile answers of a fixed size, each run once under a fixed limit (the run-time tests
+# in tests/unit/test_redaction.py explain the margin). The size is far above any answer
+# within `LLM_MAX_TOKENS` (2048 tokens, about 8-10 KB).
+SIZE = 65_536
+SLOW_S = 2.0
 WHITESPACE_RUNS = {
-    "spaces inside": lambda size: "{" + " " * size + "}",
-    "spaces before a fence": lambda size: "{}" + " " * size + "```",
-    "newlines inside a fence": lambda size: "```json\n{" + "\n" * size + "}\n```",
-    "spaces then text": lambda size: " " * size + "x",
-    "backticks and spaces": lambda size: "` " * (size // 2),
+    "spaces inside": "{" + " " * SIZE + "}",
+    "spaces before a fence": "{}" + " " * SIZE + "```",
+    "newlines inside a fence": "```json\n{" + "\n" * SIZE + "}\n```",
+    "spaces then text": " " * SIZE + "x",
+    "backticks and spaces": "` " * (SIZE // 2),
 }
 
 
@@ -192,11 +197,13 @@ def strip_and_parse(raw: str) -> None:
         parse_output(raw)
 
 
-@pytest.mark.parametrize("make_raw", WHITESPACE_RUNS.values(), ids=WHITESPACE_RUNS.keys())
-def test_strip_fence_is_linear_on_long_whitespace(make_raw) -> None:
-    # 20k spaces took 0.5 s with the old `re.sub` (quadratic); now the time grows with
-    # the input (`tests/unit/timing.py`).
-    assert_linear(strip_and_parse, make_raw)
+@pytest.mark.parametrize("raw", WHITESPACE_RUNS.values(), ids=WHITESPACE_RUNS.keys())
+def test_strip_fence_is_fast_on_long_whitespace(raw: str) -> None:
+    # 20k spaces took 0.5 s with the old `re.sub` (quadratic); now 64k take about a
+    # millisecond.
+    started = time.perf_counter()
+    strip_and_parse(raw)
+    assert time.perf_counter() - started < SLOW_S
 
 
 def completion(content: str) -> dict:

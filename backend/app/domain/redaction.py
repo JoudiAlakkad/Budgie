@@ -17,17 +17,25 @@ the stored raw output. This module is the safety net for those three.
   the receipt header's contact block (postcode, phone, URL, e-mail, phone label) is cut
   off, then redacts what is left.
 
+Bounded input: all three functions look at no more than `MAX_TEXT_CHARS` characters (see
+`_bound`). The input is model output capped by `LLM_MAX_TOKENS` (about 8-10 KB), so the
+bound is far above any real answer; it only limits the work a hostile string can cause.
+A longer text is cut there (a little earlier if the cut would split a JSON escape, a card
+number or an IBAN) and gets the `TRUNCATED` suffix. Nothing after the cut is returned, so
+no unredacted text leaks past the limit.
+
 Linear time: no regex here has a repeat that can split its input in more than one way,
 and `labelled_id` has no lookahead: it matches label, separator and value run, and
 `_fit_id` judges the value in Python. The `iban` rule's lookahead is bounded to 43
 characters per word start, and `_fit_iban` judges it with the mod-97 checksum.
 `finditer` goes on after every match, accepted or not. tests/unit/test_redaction.py
-times every rule on long runs of each character class, of IBAN-shaped groups and of
-every label joined by `/`, `.`, `=` and `-`.
+runs every rule on hostile strings of `MAX_TEXT_CHARS` characters (runs of each
+character class, IBAN-shaped groups, every label joined by `/`, `.`, `=` and `-`) under a
+fixed limit that only an exponential rule can reach.
 """
 
 import re
-from bisect import bisect_left
+from bisect import bisect_left, bisect_right
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -300,13 +308,89 @@ def _unescape(text: str) -> tuple[str, list[int]]:
     return "".join(chars), offsets
 
 
+# The most characters the functions here look at. Model output is capped by
+# `LLM_MAX_TOKENS` (2048 tokens, about 8-10 KB), so a real answer is never cut.
+MAX_TEXT_CHARS = 65_536
+# Appended to a text that was cut at MAX_TEXT_CHARS. Not a rule placeholder: no rule
+# matches it, and it never stands for personal data.
+TRUNCATED = " [truncated]"
+_LONGEST_ESCAPE = 6  # `\uXXXX`
+# The longest `iban` candidate: head and seven groups of four, each after a space, and a
+# last group (4 + 35 + 4); a `card` candidate has at most 27 characters.
+_LONGEST_NUMBER = 43
+# The run of card and IBAN characters at the end of the searched window. `search` starts
+# at the leftmost position, so it finds the whole run (the window is bounded).
+_NUMBER_TAIL = re.compile(r"[0-9A-Z -]+\Z")
+_LONGEST_PLACEHOLDER = max(len(placeholder) for placeholder in PLACEHOLDERS)
+
+
+def _size(text: str) -> int:
+    """The length of `text`, with each placeholder counted as one character.
+
+    Redaction can make a text longer (`Bon.1,` -> `Bon.[id],`), but never larger by this
+    measure: a finding never touches `[` or `]`, so the placeholders already in the text
+    survive, and each new one replaces at least one character. Placeholders can't overlap
+    each other (each holds one `[`, at its start), so `str.count` finds each one.
+    """
+    if len(text) <= MAX_TEXT_CHARS:
+        return len(text)
+    if len(text) > _LONGEST_PLACEHOLDER * MAX_TEXT_CHARS:
+        return len(text)  # over the limit by any measure: no need to count
+    return len(text) - sum(text.count(p) * (len(p) - 1) for p in PLACEHOLDERS)
+
+
+def _cut(text: str) -> str:
+    """The first MAX_TEXT_CHARS characters of `text`, or fewer: no JSON escape is split,
+    and no card number or IBAN is cut in two.
+
+    `_unescape` gives the offset of every decoded character; the cut goes at one of them,
+    so never inside an escape. An escape that starts before the limit ends within
+    `_LONGEST_ESCAPE` characters, so only that much more is decoded.
+
+    A card number or IBAN that runs over the limit would lose its checksum and survive
+    with most of its digits (`4111 1111 1111 111|1`). Both are at most `_LONGEST_NUMBER`
+    characters of `[0-9A-Z -]`, so the cut moves back over such a run at the end, at most
+    that far. A cut-off labelled id keeps its label and is still redacted.
+    """
+    scan, offsets = _unescape(text[: MAX_TEXT_CHARS + _LONGEST_ESCAPE])
+    end = bisect_right(offsets, MAX_TEXT_CHARS) - 1  # decoded characters before the limit
+    if (tail := _NUMBER_TAIL.search(scan, max(end - _LONGEST_NUMBER, 0), end)) is not None:
+        end = tail.start()
+    return text[: offsets[end]]
+
+
+def _bound(text: str) -> tuple[str, bool]:
+    """The part of `text` to process, and whether the result gets the TRUNCATED suffix.
+
+    A text that ends in TRUNCATED keeps it, and the part before it is processed. That
+    part, or the whole text, is cut at MAX_TEXT_CHARS if its `_size` is over the limit.
+
+    Idempotent: a cut part has at most MAX_TEXT_CHARS characters, and redacting it doesn't
+    raise its `_size`, so a second pass finds the suffix and a part within the limit, and
+    doesn't cut again. A result without the suffix came from a text without it, of a
+    `_size` within the limit, so it stays within the limit.
+    """
+    marked = text.endswith(TRUNCATED)
+    body = text[: -len(TRUNCATED)] if marked else text
+    if _size(body) > MAX_TEXT_CHARS:
+        return _cut(body), True
+    return body, marked
+
+
 def find_personal_data(text: str) -> list[Finding]:
     """Return the personal-data spans in `text`, sorted by start and never overlapping.
 
     Earlier rules win. A later match that overlaps a taken span is dropped, unless its
     rule has a `fit` and it starts before that span: then it is cut back to the part
     before the span and kept if `fit` still accepts it.
+
+    Only the part `redact_text` keeps is searched (`_bound`): nothing after the cut of a
+    text longer than MAX_TEXT_CHARS.
     """
+    return _find(_bound(text)[0])
+
+
+def _find(text: str) -> list[Finding]:
     scan, offsets = _unescape(text)
     # The spans taken so far, sorted by start; they never overlap, so the ends are sorted too.
     starts: list[int] = []
@@ -335,10 +419,19 @@ def find_personal_data(text: str) -> list[Finding]:
 
 
 def redact_text(text: str) -> str:
-    """Replace every finding with its typed placeholder. Idempotent."""
+    """Replace every finding with its typed placeholder. Idempotent.
+
+    A text longer than MAX_TEXT_CHARS is cut there first, and the result ends in
+    TRUNCATED (`_bound`).
+    """
+    body, marked = _bound(text)
+    return _redact(body) + (TRUNCATED if marked else "")
+
+
+def _redact(text: str) -> str:
     parts: list[str] = []
     last = 0
-    for finding in find_personal_data(text):
+    for finding in _find(text):
         parts += [text[last : finding.start], _PLACEHOLDER[finding.kind]]
         last = finding.end
     return "".join(parts) + text[last:]
@@ -374,11 +467,17 @@ def clean_merchant(text: str | None) -> str | None:
     first postcode, phone number, URL, e-mail or phone label, and stripped of whitespace
     and trailing punctuation; the first one with text left is redacted and returned
     (`Tel. 0231 123456\\nREWE` -> `REWE`). Returns `None` if none has text left.
+
+    A text longer than MAX_TEXT_CHARS is cut there first (`_bound`). If the name comes
+    from the line the cut ends, it gets the TRUNCATED suffix.
     """
     if text is None:
         return None
-    lines = (line for line in text.splitlines() if line.strip())
-    for _, line in zip(range(MERCHANT_LINES), lines, strict=False):
-        if name := _merchant_name(line):
-            return redact_text(name)
+    body, marked = _bound(text)
+    lines = body.splitlines()
+    shown = (i for i, line in enumerate(lines) if line.strip())
+    for _, i in zip(range(MERCHANT_LINES), shown, strict=False):
+        if name := _merchant_name(lines[i]):
+            cut = marked and i == len(lines) - 1 and body.endswith(lines[i])
+            return _redact(name) + (TRUNCATED if cut else "")
     return None

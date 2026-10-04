@@ -1,6 +1,7 @@
 """Every committed recorded response has the fixture shape and no personal data (0017)."""
 
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -13,7 +14,6 @@ from tests.unit.fixture_shape import (
     suspicious,
     suspicious_texts,
 )
-from tests.unit.timing import assert_linear
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "recorded_responses"
 FILES = sorted(FIXTURES.glob("*.json")) if FIXTURES.is_dir() else []
@@ -86,20 +86,26 @@ def test_independent_scan_flags(text: str, found: list[str]) -> None:
     assert suspicious(text) == found
 
 
+# Hostile texts of a fixed size, each scanned once under a fixed limit (the run-time tests
+# in tests/unit/test_redaction.py explain the margin).
+SIZE = 65_536
+SLOW_S = 2.0
 SCAN_RUNS = {
-    "word": lambda size: "a" * size,
-    "hyphenated word": lambda size: "a-" * (size // 2) + ".",
-    "Am then spaces": lambda size: "Am" + " " * size,
-    "zeros": lambda size: "0" * size,
-    "zero groups": lambda size: "0 1" * (size // 3),
-    "street suffixes": lambda size: "ring weg " * (size // 9),
+    "word": "a" * SIZE,
+    "hyphenated word": "a-" * (SIZE // 2) + ".",
+    "Am then spaces": "Am" + " " * SIZE,
+    "zeros": "0" * SIZE,
+    "zero groups": "0 1" * (SIZE // 3),
+    "street suffixes": "ring weg " * (SIZE // 9),
 }
 
 
-@pytest.mark.parametrize("make_text", SCAN_RUNS.values(), ids=SCAN_RUNS.keys())
-def test_independent_scan_is_linear_on_long_runs(make_text) -> None:
-    # About 40 ms per 100k characters; the time must grow with the input, not faster.
-    assert_linear(suspicious, make_text)
+@pytest.mark.parametrize("text", SCAN_RUNS.values(), ids=SCAN_RUNS.keys())
+def test_independent_scan_is_fast_on_long_runs(text: str) -> None:
+    # About 40 ms per 100k characters on a dev machine.
+    started = time.perf_counter()
+    suspicious(text)
+    assert time.perf_counter() - started < SLOW_S
 
 
 @pytest.mark.parametrize(

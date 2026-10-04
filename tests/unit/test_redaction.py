@@ -2,13 +2,18 @@
 and `clean_merchant`."""
 
 import json
+import subprocess
+import sys
+import time
 from collections.abc import Callable
 
 import pytest
 
 from app.domain.redaction import (
+    MAX_TEXT_CHARS,
     PLACEHOLDERS,
     RULES,
+    TRUNCATED,
     Finding,
     clean_merchant,
     find_personal_data,
@@ -16,7 +21,6 @@ from app.domain.redaction import (
     luhn_valid,
     redact_text,
 )
-from tests.unit.timing import assert_linear
 
 # (rule kind, input, expected output)
 POSITIVES = [
@@ -406,9 +410,9 @@ def test_iban_checksum(iban: str, valid: bool) -> None:
     assert iban_checksum_valid(iban) is valid
 
 
-def test_iban_checksum_is_linear_on_a_long_input() -> None:
-    # Digit by digit, no big integer, so the cost grows with the number of digits.
-    assert_linear(iban_checksum_valid, lambda size: "DE00" + "9" * size, (100_000, 400_000))
+def test_iban_checksum_is_fast_on_a_long_input() -> None:
+    # Digit by digit, no big integer: about a millisecond per 64k digits.
+    assert seconds(iban_checksum_valid, "DE00" + "9" * MAX_TEXT_CHARS) < SLOW_S
 
 
 def test_luhn_invalid_card_number_survives() -> None:
@@ -505,18 +509,153 @@ def test_clean_merchant_is_idempotent(text: str | None, expected: str | None) ->
     assert clean_merchant(expected) == expected
 
 
+# ---------------------------------------------------------------- bounded input
+# Every function looks at no more than MAX_TEXT_CHARS characters. A longer text is cut
+# there (a little earlier so no escape, card number or IBAN is split) and gets TRUNCATED.
+
+LIMIT = MAX_TEXT_CHARS
+CARD = "4111 1111 1111 1111"
+
+
+def test_a_text_at_the_limit_is_not_cut() -> None:
+    text = "a" * (LIMIT - len(CARD) - 1) + " " + CARD
+    assert len(text) == LIMIT
+    assert redact_text(text) == text[: -len(CARD)] + "[card]"
+    assert find_personal_data(text) == [Finding("card", LIMIT - len(CARD), LIMIT)]
+
+
+def test_one_character_over_the_limit_is_cut() -> None:
+    assert redact_text("a" * (LIMIT + 1)) == "a" * LIMIT + TRUNCATED
+
+
+def test_nothing_after_the_cut_is_returned_or_searched() -> None:
+    text = "a" * LIMIT + CARD + " Terminal-ID: 55501234"
+    assert redact_text(text) == "a" * LIMIT + TRUNCATED
+    assert find_personal_data(text) == []
+
+
+NUMBERS = [CARD, "4111111111111111", "4111-1111-1111-1111", "DE89 3704 0044 0532 0130 00"]
+
+
+@pytest.mark.parametrize(
+    ("number", "before"),
+    [(n, before) for n in NUMBERS for before in (1, 5, 14, 18, 26) if before < len(n)],
+)
+def test_a_number_across_the_cut_is_dropped_whole(number: str, before: int) -> None:
+    # `before` characters of the number sit before the limit. Cut there, it would lose its
+    # checksum and survive with most of its digits.
+    head = "a" * (LIMIT - before - 1)
+    result = redact_text(head + " " + number + " und mehr")
+    assert result == head + TRUNCATED
+    assert redact_text(result) == result
+
+
+def test_a_labelled_id_across_the_cut_is_dropped() -> None:
+    result = redact_text("a" * (LIMIT - 17) + " Terminal-ID 5550" + "1234")
+    assert result.endswith(TRUNCATED) and "5550" not in result
+
+
+ESCAPES = ["\\u00df", '\\"', "\\\\", "\\n"]
+
+
+@pytest.mark.parametrize(
+    ("escape", "before"), [(e, before) for e in ESCAPES for before in range(1, len(e))]
+)
+def test_the_cut_never_splits_a_json_escape(escape: str, before: int) -> None:
+    # `before` characters of the escape sit before the limit, the rest after it.
+    head = "a" * (LIMIT - before)
+    result = redact_text(head + escape + "a" * 10)
+    assert result == head + TRUNCATED
+    assert redact_text(result) == result
+
+
+def test_an_escape_that_ends_at_the_limit_is_kept() -> None:
+    head = "a" * (LIMIT - 6) + "\\u00df"
+    assert redact_text(head + "aaa") == head + TRUNCATED
+
+
+def test_a_cut_json_string_still_decodes() -> None:
+    raw = json.dumps({"merchant": "Straße " * (LIMIT // 7 + 10)}, ensure_ascii=True)
+    body = redact_text(raw).removesuffix(TRUNCATED)
+    assert len(body) <= LIMIT
+    assert json.loads('"' + body.split('": "', 1)[1] + '"').startswith("Straße Straße")
+
+
+def test_redaction_may_grow_a_text_past_the_limit_without_a_second_cut() -> None:
+    # `[id]` is longer than `1`, so the result has more than LIMIT characters. Its
+    # placeholders count as one character each, so a second pass doesn't cut it.
+    text = "Bon.1," * (LIMIT // 6)
+    once = redact_text(text)
+    assert once == "Bon.[id]," * (LIMIT // 6)
+    assert len(once) > LIMIT
+    assert redact_text(once) == once
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "a" * (LIMIT + 1),
+        "a" * LIMIT + TRUNCATED,
+        "a" * (2 * LIMIT) + TRUNCATED,
+        "Bon 1 " * LIMIT,
+        "Bon.1," * (LIMIT // 6 + 100),
+        "[card] " * LIMIT,
+        "[id]" * (LIMIT + 1),
+        "Karte ****4242 " * (LIMIT // 15 + 1) + CARD,
+        "Markt [truncated]",
+        "Bon 12 [truncated]",
+    ],
+)
+def test_bounding_is_idempotent(text: str) -> None:
+    once = redact_text(text)
+    assert redact_text(once) == once
+
+
+def test_a_short_text_that_ends_in_the_suffix_is_redacted_as_before() -> None:
+    assert redact_text("Bon 12 [truncated]") == "Bon [id] [truncated]"
+    assert redact_text("[truncated]") == "[truncated]"
+
+
+def test_clean_merchant_is_bounded() -> None:
+    name = "Markt " + "a" * LIMIT
+    assert clean_merchant(name) == "Markt " + "a" * (LIMIT - 6) + TRUNCATED
+    assert clean_merchant(clean_merchant(name)) == clean_merchant(name)
+    # the name comes from a line before the cut: nothing of it was cut off
+    assert clean_merchant("Markt\n" + "a" * LIMIT) == "Markt"
+    # a line after the cut is never looked at
+    assert clean_merchant("Tel. 0231 " * (LIMIT // 10 + 1) + "\nREWE") is None
+    assert clean_merchant("Markt [truncated]") == "Markt [truncated]"
+
+
 # ---------------------------------------------------------------- run time
-# Receipts print separator lines like `*****` and `-----`. Every rule must stay linear on
-# long runs of one character class: a backtracking rule once took 5.7 s on 40 `*`.
+# The guard against ReDoS: a regex so slow that one string freezes the pipeline. Two
+# happened in F03: `card_masked` was exponential (5.7 s on 40 `*`) and `labelled_id`
+# quadratic. Redaction only sees model output, capped by `LLM_MAX_TOKENS` (about 8-10 KB),
+# and never looks at more than MAX_TEXT_CHARS (64k) characters. At that size a quadratic
+# rule costs well under a second, so only exponential behaviour matters, and that blows
+# up even on short inputs.
 #
-# These tests assert growth, not wall-clock time (`tests/unit/timing.py`): each input is
-# built at 12.5k and 50k characters, and the time may grow at most 8x for the 4x input.
-# Linear code grows about 4x, a quadratic rule 16x (and takes seconds at 50k).
+# So every hostile string below has exactly MAX_TEXT_CHARS characters, and each function
+# runs on it once and must finish under SLOW_S. The margin: on a dev machine most cases
+# take a few milliseconds at 64k, and the slowest (`redact_text` and `clean_merchant` on
+# IBAN-shaped groups, where every word start is a checksum candidate) about 70 ms: about
+# 30x below the limit, while the shared CI runner was about 2.3x slower than a dev
+# machine. An exponential rule passes the limit after a few dozen characters
+# (test_the_limit_catches_an_exponential_rule).
+SLOW_S = 2.0
 
 
-def run(chunk: str, prefix: str = "", suffix: str = "") -> Callable[[int], str]:
-    """An input of at least `size` characters: `chunk` repeated between `prefix` and `suffix`."""
-    return lambda size: prefix + chunk * -(-size // len(chunk)) + suffix
+def seconds(func: Callable[[str], object], arg: str) -> float:
+    """The duration of one call of `func(arg)`."""
+    started = time.perf_counter()
+    func(arg)
+    return time.perf_counter() - started
+
+
+def hostile(chunk: str, prefix: str = "", suffix: str = "") -> str:
+    """`chunk` repeated between `prefix` and `suffix`: exactly MAX_TEXT_CHARS characters."""
+    middle = LIMIT - len(prefix) - len(suffix)
+    return prefix + (chunk * -(-middle // len(chunk)))[:middle] + suffix
 
 
 ID_LABELS = [
@@ -543,101 +682,101 @@ LABELS = (
     "Terminal-ID Trace-Nr. Beleg Bon Kasse Transaktion TSE-Signatur Kunden-Nr. Filiale AID "
     "Tel. Fax USt-IdNr. Es bediente Sie Bediener Musterstraße 44227 "
 )
-RUNS: dict[str, Callable[[int], str]] = {
-    "*": run("*"),
-    "X": run("X"),
-    "x": run("x"),
-    "#": run("#"),
-    "digits": run("1"),
-    "1234 groups": run("1234 "),
-    "12345a groups": run("12345a"),
-    "1 2 3 4 5 groups": run("1 2 3 4 5 a "),
-    "uppercase": run("A"),
-    "lowercase": run("a"),
-    "-": run("-"),
-    ".": run("."),
-    "a.": run("a."),
-    "a-": run("a-"),
-    "spaces": run(" "),
-    "punctuation": run(" ,;:-–|/"),
-    "label repeated": run("Kasse "),
-    "every label repeated": run(LABELS),
-    "www. x.de": run("x.de ", prefix="www."),
-    "**** groups": run("**** "),
-    "label then spaces": lambda size: "Tel" + " " * (size // 2) + ":" + " " * (size // 2),
-    "a@": run("a@"),
-    "word then @": run("a", suffix="@"),
-    "capitalised word": run("a", prefix="A", suffix=" "),
-    "0-12 groups": run("-12", prefix="0"),
-    "postcodes": run("12345 "),
-    "label, digit groups, a unit": run("1 ", prefix="Kasse ", suffix="kg"),
+SEPARATORS = "*" * 40 + "\n" + "-" * 40 + "\n" + "#" * 40 + "\n" + "X" * 40 + "\n"
+HALF = LIMIT // 2
+HOSTILE: dict[str, str] = {
+    "*": hostile("*"),
+    "X": hostile("X"),
+    "x": hostile("x"),
+    "#": hostile("#"),
+    "digits": hostile("1"),
+    "1234 groups": hostile("1234 "),
+    "12345a groups": hostile("12345a"),
+    "1 2 3 4 5 groups": hostile("1 2 3 4 5 a "),
+    "uppercase": hostile("A"),
+    "lowercase": hostile("a"),
+    "-": hostile("-"),
+    ".": hostile("."),
+    "a.": hostile("a."),
+    "a-": hostile("a-"),
+    "spaces": hostile(" "),
+    "punctuation": hostile(" ,;:-–|/"),
+    "label repeated": hostile("Kasse "),
+    "every label repeated": hostile(LABELS),
+    "www. x.de": hostile("x.de ", prefix="www."),
+    "**** groups": hostile("**** "),
+    "label then spaces": "Tel" + " " * (HALF - 3) + ":" + " " * (LIMIT - HALF - 1),
+    "a@": hostile("a@"),
+    "word then @": hostile("a", suffix="@"),
+    "capitalised word": hostile("a", prefix="A", suffix=" "),
+    "0-12 groups": hostile("-12", prefix="0"),
+    "postcodes": hostile("12345 "),
+    "label, digit groups, a unit": hostile("1 ", prefix="Kasse ", suffix="kg"),
+    "mask then digits": hostile("*", suffix="1234"),
     # IBAN-shaped runs: every word start is a candidate the checksum has to judge
-    "DE89 groups": run("DE89 "),
-    "AB12CDEF": run("AB12CDEF"),
-    "AB12 CDEF groups": run("AB12 CDEF "),
-    "GB82 WEST groups": run("GB82 WEST "),
-    "AB12 C3D4 groups": run("AB12 C3D4 "),
-    "DE89****": run("DE89****"),
-    "DE89 0000 groups": run("DE89 0000 "),
-    "uppercase and digit groups": run("C3D4 ", prefix="AB12 "),
-    "masked IBAN groups": run("**** ", prefix="DE89 ", suffix="30"),
-    "DE89XXXX": run("X", prefix="DE89", suffix="3000"),
-    "valid IBAN repeated": run("DE89 3704 0044 0532 0130 00 "),
-    # Inputs that took 2.3 s at 200k characters when a lookahead scanned ahead of the
-    # value run: the label repeated without spaces, so one value run holds every label.
+    "DE89 groups": hostile("DE89 "),
+    "AB12CDEF": hostile("AB12CDEF"),
+    "AB12 CDEF groups": hostile("AB12 CDEF "),
+    "GB82 WEST groups": hostile("GB82 WEST "),
+    "AB12 C3D4 groups": hostile("AB12 C3D4 "),
+    "DE89****": hostile("DE89****"),
+    "DE89 0000 groups": hostile("DE89 0000 "),
+    "uppercase and digit groups": hostile("C3D4 ", prefix="AB12 "),
+    "masked IBAN groups": hostile("**** ", prefix="DE89 ", suffix="30"),
+    "DE89XXXX": hostile("X", prefix="DE89", suffix="3000"),
+    "valid IBAN repeated": hostile("DE89 3704 0044 0532 0130 00 "),
+    # the label repeated without spaces, so one value run holds every label (quadratic
+    # while a lookahead scanned ahead of the value run)
     **{
-        f"{label!r} repeated{end}": run(label, suffix=end)
+        f"{label!r} repeated{end}": hostile(label, suffix=end)
         for label in ("Bon-Nr.", "Kasse.", "AID.", "Filiale=", "TID/", "TID-")
         for end in ("", "1 kg")
     },
     **{
-        f"labels joined by {joint!r}{end}": run(joint.join(ID_LABELS) + joint, suffix=end)
+        f"labels joined by {joint!r}{end}": hostile(joint.join(ID_LABELS) + joint, suffix=end)
         for joint in "/.=-"
         for end in ("", "1 kg")
     },
+    # separator lines and a full receipt, over and over
+    "receipts": hostile(SEPARATORS + RECEIPT + "\n"),
+    # one long merchant line: the store name, then a header that never hits a cut
+    "merchant line": hostile("Filiale 1234 " + "*" * 20 + " 1234 " + " ,;:-|/ ", prefix="Markt "),
 }
-SEPARATORS = "*" * 40 + "\n" + "-" * 40 + "\n" + "#" * 40 + "\n" + "X" * 40 + "\n"
-# Separator lines and a full receipt, over and over.
-MIXED = run(SEPARATORS + RECEIPT + "\n")
-# One long merchant line: the store name, then a header that never hits a cut.
-MERCHANT_LINE = run("Filiale 1234 " + "*" * 20 + " 1234 " + " ,;:-|/ ", prefix="Markt ")
 
 
-@pytest.mark.parametrize("make_text", RUNS.values(), ids=RUNS.keys())
-def test_redact_text_is_linear_on_long_runs(make_text: Callable[[int], str]) -> None:
-    assert_linear(redact_text, make_text)
+def test_the_hostile_strings_have_the_limit_size() -> None:
+    assert {len(text) for text in HOSTILE.values()} == {LIMIT}
+
+
+@pytest.mark.parametrize("text", HOSTILE.values(), ids=HOSTILE.keys())
+def test_redact_text_is_fast_on_hostile_input(text: str) -> None:
+    assert seconds(redact_text, text) < SLOW_S
 
 
 @pytest.mark.parametrize("rule", RULES, ids=[f"{i}-{rule.kind}" for i, rule in enumerate(RULES)])
-def test_every_rule_is_linear_on_long_runs(rule) -> None:
-    failures = {}
-    for name, make_text in RUNS.items():
-        try:
-            assert_linear(lambda text: list(rule.pattern.finditer(text)), make_text)
-        except AssertionError as exc:
-            failures[name] = str(exc).splitlines()[0]
-    assert failures == {}
+def test_every_rule_is_fast_on_hostile_input(rule) -> None:
+    def scan(text: str) -> None:
+        for _ in rule.pattern.finditer(text):
+            pass
+
+    durations = {name: seconds(scan, text) for name, text in HOSTILE.items()}
+    assert {name: s for name, s in durations.items() if s >= SLOW_S} == {}
 
 
-@pytest.mark.parametrize("make_text", RUNS.values(), ids=RUNS.keys())
-def test_clean_merchant_is_linear_on_long_runs(make_text: Callable[[int], str]) -> None:
-    assert_linear(clean_merchant, make_text)
+@pytest.mark.parametrize("text", HOSTILE.values(), ids=HOSTILE.keys())
+def test_clean_merchant_is_fast_on_hostile_input(text: str) -> None:
+    assert seconds(clean_merchant, text) < SLOW_S
 
 
-def test_clean_merchant_is_linear_on_a_long_line() -> None:
-    line = MERCHANT_LINE(20_000)
-    assert len(line) >= 20_000 and "\n" not in line
+def test_a_long_merchant_line_is_cleaned_and_redacted() -> None:
+    line = HOSTILE["merchant line"]
+    assert "\n" not in line
     cleaned = clean_merchant(line)
     assert cleaned and cleaned.startswith("Markt Filiale [id]") and "1234" not in cleaned
-    assert_linear(clean_merchant, MERCHANT_LINE)
-    assert_linear(clean_merchant, MIXED)
 
 
-def test_realistic_mixed_text_is_linear_and_redacted() -> None:
-    text = MIXED(20_000)
-    assert len(text) >= 20_000
-    assert_linear(redact_text, MIXED)
-    once = redact_text(text)
+def test_a_long_realistic_text_is_redacted_and_idempotent() -> None:
+    once = redact_text(HOSTILE["receipts"])
     assert "4242" not in once and "55501234" not in once
     assert "*" * 40 in once and "#" * 40 in once
     assert redact_text(once) == once
@@ -647,3 +786,21 @@ def test_runaway_text_is_idempotent() -> None:
     text = "Kasse 3 Bon 4 " * 1000 + "Karte ****4242 Terminal-ID: 55501234"
     once = redact_text(text)
     assert redact_text(once) == once
+
+
+# The `card_masked` pattern before F03's fix: `(?:[ -]?[*Xx#]{2,})*` can split a run of
+# `*` in exponentially many ways. It took 5.7 s on 40 `*` when it was found, and grows
+# about 1.6x per character (0.8 s at 34 and about 14 s at 40 on a dev machine).
+OLD_CARD_MASKED = r"[*Xx#]{4,}(?:[ -]?[*Xx#]{2,})*[ -]?\d{2,4}"
+STARS = 44  # about 100 s on a dev machine, so even a runner 50x faster passes the limit
+
+
+def test_the_limit_catches_an_exponential_rule() -> None:
+    # In a child process that is killed at the limit, so it can't hang the suite. A child
+    # that fails at once (a typo in the code) raises CalledProcessError and fails the test.
+    code = f"import re; list(re.finditer({OLD_CARD_MASKED!r}, '*' * {STARS}))"
+    with pytest.raises(subprocess.TimeoutExpired):
+        subprocess.run([sys.executable, "-c", code], timeout=SLOW_S, check=True)
+    # the rule that replaced it makes nothing of the same string
+    [rule] = [rule for rule in RULES if rule.kind == "card_masked"]
+    assert seconds(lambda text: list(rule.pattern.finditer(text)), "*" * STARS) < 0.01
