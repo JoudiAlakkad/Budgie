@@ -38,6 +38,10 @@ _UNREADABLE_IMAGE = re.compile(
 MAX_REASON_MESSAGE = 200
 # Configuration errors: a bad LLM_BASE_URL. Retrying can't help, so they are never retried.
 _CONFIG_ERRORS = (httpx.InvalidURL, httpx.UnsupportedProtocol)
+# What `response.json()` raises on a body it can't decode: JSONDecodeError and
+# UnicodeDecodeError are ValueErrors, as is a huge integer (the int-digit limit);
+# deep nesting raises a RecursionError.
+_UNDECODABLE = (ValueError, RecursionError)
 
 
 @dataclass(frozen=True)
@@ -149,7 +153,7 @@ def _transport_error(exc: Exception, attempts: int) -> LLMUnavailable | LLMTimeo
 def _error_message(response: httpx.Response) -> str:
     try:
         body = response.json()
-    except ValueError:
+    except _UNDECODABLE:
         return response.text
     if isinstance(body, dict):
         error = body.get("error")
@@ -187,7 +191,8 @@ def _parse_response(response: httpx.Response, max_tokens: int, api_key: str) -> 
         usage = payload.get("usage") or {}
         prompt_tokens = _int_or_none(usage.get("prompt_tokens"))
         completion_tokens = _int_or_none(usage.get("completion_tokens"))
-    except (ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
+    # The reason names only the exception type: its text may quote the body.
+    except (*_UNDECODABLE, KeyError, IndexError, TypeError, AttributeError) as exc:
         reason = f"HTTP {response.status_code}: broken envelope ({type(exc).__name__})"
         raise LLMError(reason) from None
     cut_off = finish_reason == "length" or (

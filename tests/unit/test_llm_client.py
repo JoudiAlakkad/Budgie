@@ -9,7 +9,7 @@ import httpx
 import pytest
 
 from app.ai.client import ChatCompletion, LLMClient
-from app.errors import LLMError, LLMTimeout, LLMUnavailable, UnreadableImage
+from app.errors import ExtractionError, LLMError, LLMTimeout, LLMUnavailable, UnreadableImage
 
 API_KEY = "sk-test-not-a-real-key"
 SECRET_TEXT = "Kassenbon Inhalt geheim"
@@ -408,3 +408,81 @@ def test_logs_contain_no_message_content(caplog: pytest.LogCaptureFixture, outco
     logged = "\n".join(record.getMessage() for record in caplog.records)
     for secret in (SECRET_TEXT, IMAGE_B64, "Transcribe", API_KEY):
         assert secret not in logged
+
+
+DEEP = b"[" * 100_000
+
+
+@pytest.mark.parametrize("status", [200, 500])
+def test_deeply_nested_body_is_llm_error_without_retry(status: int) -> None:
+    handler, seen = recording(httpx.Response(status, content=DEEP))
+
+    with pytest.raises(LLMError) as raised:
+        call(client_with(handler, api_key=API_KEY, max_retries=3))
+    assert type(raised.value) is LLMError
+    assert len(seen) == 1
+    assert API_KEY not in str(raised.value)
+    if status == 200:
+        assert raised.value.reason == "HTTP 200: broken envelope (RecursionError)"
+    else:
+        # The error message falls back to the raw text, still cut to 200 characters.
+        assert raised.value.reason == "HTTP 500: " + "[" * 200
+
+
+def _choice(message: object) -> dict:
+    return {"choices": [{"message": message, "finish_reason": "stop"}]}
+
+
+def _with_usage(raw_usage: bytes) -> bytes:
+    return json.dumps(_choice({"content": "x"}))[:-1].encode() + b', "usage": ' + raw_usage + b"}"
+
+
+# Bodies a broken or hostile server could send. Each must end in an ExtractionError (or,
+# where the envelope is still usable, a ChatCompletion), never in another exception.
+HOSTILE_BODIES = {
+    "deep nesting": DEEP,
+    "5000-digit integer": b"1" * 5000,
+    "5000-digit token count": _with_usage(b'{"prompt_tokens": ' + b"9" * 5000 + b"}"),
+    "non-UTF-8 bytes": b'{"error": "\xff\xfe ' + API_KEY.encode() + b' \xc3"}',
+    "JSON null": b"null",
+    "a list": b"[1, 2, 3]",
+    "choices as a string": json.dumps({"choices": "abc"}).encode(),
+    "choices as an object": json.dumps({"choices": {"0": {}}}).encode(),
+    "message as a list": json.dumps(_choice(["content"])).encode(),
+    "content as an object": json.dumps(_choice({"content": {"a": 1}})).encode(),
+    "usage as a string": _with_usage(b'"lots"'),
+    "usage as a list": _with_usage(b"[1]"),
+    "NaN token count": _with_usage(b'{"prompt_tokens": NaN, "completion_tokens": Infinity}'),
+    "error as a list": json.dumps({"error": [{"message": "x"}]}).encode(),
+    "error message as an object": json.dumps({"error": {"message": {"a": 1}}}).encode(),
+}
+# Hostile bodies whose envelope is still usable at 200: the junk fields are dropped.
+USABLE_AT_200 = {"NaN token count"}
+
+
+@pytest.mark.parametrize("status", [200, 500])
+@pytest.mark.parametrize("name", HOSTILE_BODIES)
+def test_hostile_bodies_raise_only_extraction_errors(name: str, status: int) -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(
+            status,
+            headers={"Content-Type": "application/json; charset=utf-8"},
+            content=HOSTILE_BODIES[name],
+        )
+
+    client = client_with(handler, api_key=API_KEY, max_retries=3)
+    if status == 200 and name in USABLE_AT_200:
+        result = call(client)
+        assert result.content == "x"
+        assert result.prompt_tokens is None
+        assert result.completion_tokens is None
+    else:
+        with pytest.raises(ExtractionError) as raised:
+            call(client)
+        assert type(raised.value) is LLMError
+        assert API_KEY not in str(raised.value)
+        assert len(raised.value.reason) <= len("HTTP 500: ") + 200
+    assert len(seen) == 1
