@@ -32,6 +32,8 @@ back; the parent records them.
 - [0012 — Dev-log skill](decisions/0012-dev-log-skill.md)
 - [0013 — Deterministic item categorisation by lookup](decisions/0013-deterministic-item-categorisation-by-lookup.md)
 - [0014 — Status line skill](decisions/0014-statusline-skill.md)
+- [0015 — Non-receipt is a failure with retry or manual entry](decisions/0015-non-receipt-is-a-failure-with-retry-or-manual-entry.md)
+- [0016 — API representation and stub convention](decisions/0016-api-representation-and-stub-convention.md)
 
 ## Areas
 

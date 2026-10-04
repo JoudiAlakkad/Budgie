@@ -9,8 +9,6 @@ on:
 
 permissions:
   contents: read
-  # gitleaks-action lists PR commits and comments on the PR when it finds a leak.
-  pull-requests: write
 
 jobs:
   lint:
@@ -60,6 +58,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - uses: gitleaks/gitleaks-action@v2
+      # The CLI, not gitleaks-action: the action's user/org API lookup fails on
+      # GitHub hiccups and then demands a license. Same version as pre-commit.
+      - name: gitleaks
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: 8.21.2
+          SHA256: 5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba
+        run: |
+          curl -sSLo gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
+          echo "${SHA256}  gitleaks.tgz" | sha256sum -c -
+          tar xzf gitleaks.tgz gitleaks
+          ./gitleaks git --redact --no-banner -v

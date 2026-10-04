@@ -120,3 +120,31 @@ Modified: the original spike write-up was partly wrong (the photo description an
 
 **7. Observation (benefit, limitation or risk)**
 *Risk:* the agent didn't check whether the output of the model was correct, so an invented receipt went into the project as fact. The user asked the agent directly to check, since there was an image that is not a receipt, and only then did the agent correct it.
+
+## Episode 4 — F02 contracts: two review rounds
+- **Date:** 2026-10-03 · **Feature:** F02 · **Commits:** `b761583..e09acb2` · **Outcome:** partial
+
+**1. Task given to the agent**
+"Now lets move to f02." The issue `.github/issues/F02.md` asks for request and response DTOs for every endpoint, one shared error format, a generated `docs/openapi.json`, and contract pages marked final.
+
+**2. Context and instructions**
+CLAUDE.md and the workflow (`docs/wiki/plan/workflow.md`); all of `docs/wiki/contracts/`; decisions 0007, 0008, 0009, 0013; the spike results (`ai-spike.md`, `ai-extraction.md`). The user decided four points: a non-receipt is a failed receipt with Retry or Enter manually rather than a `rejected` review (the user's own rule, recorded as [0015](wiki/decisions/0015-non-receipt-is-a-failure-with-retry-or-manual-entry.md)); money is a JSON number; unbuilt endpoints are stub routes answering 501 ([0016](wiki/decisions/0016-api-representation-and-stub-convention.md)); `backend-dev` may edit `schemas.py` and `docs/openapi.json` for F02 only.
+
+**3. Agent's proposed contribution**
+- **Plan agent** (read-only): about 26 gaps in the draft contract (missing error codes, an undefined extract response, undefined DTOs, no money rule) and the missing `python-multipart` dependency, which was confirmed.
+- **Main session:** rewrote the four contract pages, added decisions 0015 and 0016, aligned 8 other wiki pages and sharpened the issue (`b761583`).
+- **`backend-dev`** (worktree): the shared error format, all DTOs, 22 stub routes and 4 test files (`0d8e298`, `0950f6b`; 178 tests). Its worktree again started from `main` instead of `b761583`; it noticed this itself and reset before starting. It reported 13 places where the wiki left room and it made its own choice.
+
+**4. Tools and permissions used**
+Plan (built-in, read-only). `backend-dev` (Read, Edit, Write, Bash, Grep, Glob) in a worktree with the F02 authorisation above, using its own venv in the scratchpad. `reviewer` (Read, Grep, Glob, Bash, read-only). `/code-review` (forked skill, medium effort). The main session edited the wiki, merged, fixed the two `/code-review` findings and ran `pip install -e backend[dev]` for `python-multipart`. `git commit` and `pip install` are on the `ask` list; nothing was pushed.
+
+**5. Verification**
+- `reviewer`: "merge after fixes"; every acceptance criterion met, 4 should-fix findings. The main one: with the frontend mounted, as in production, an unknown `/api` path gave 405 and a wrong method gave 404. The agent's tests only ran without the frontend. `backend-dev` fixed them (`219dffc`, 284 tests).
+- `/code-review` then found 2 more: a wrong method on `/expenses/export.csv` gave 422 instead of 405, and malformed JSON reported a field called `"1"`. The main session fixed both (`e09acb2`).
+- Final `make check`: 290 passed, 4 import contracts kept, `docs/openapi.json` up to date. The user's manual check and CI (including the drift check on Python 3.12) are unknown at the time of writing.
+
+**6. Accepted / modified / rejected**
+Modified: the Plan agent's design was accepted, except for the non-receipt path, which the user changed. `backend-dev`'s code was accepted after two rounds of fixes: one by the agent after the reviewer, one by the main session after `/code-review`. Its 13 choices were kept and recorded in the wiki.
+
+**7. Observation (benefit, limitation or risk)**
+*Limitation:* the implementing agent's own tests only covered the setup it had in mind (no frontend). The bugs that matter in production only came out through separate read-only reviews. A green test suite wasn't enough evidence on its own.
