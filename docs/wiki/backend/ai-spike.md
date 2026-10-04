@@ -64,7 +64,7 @@ The model returned `is_receipt: true` in every run, although the prompt says to 
 
 ## Fixtures
 - The raw outputs (truncated loop, missing keys, extra items, invented date, `is_receipt=true` on a non-receipt) are the failure cases F03 needs as recorded responses.
-- They contain personal data (store addresses, partial card numbers in some receipts), so F03 copies anonymised versions into `tests/fixtures/recorded_responses/`, never the raw files.
+- They contain personal data (store addresses, partial card numbers in some receipts). F03 generates the fixtures in `tests/fixtures/recorded_responses/` from them with `scripts/make_fixtures.py`, which redacts with the app's own redaction module ([0017](../decisions/0017-personal-data-is-redacted-by-code.md)). The raw files are never copied, and nothing is anonymised by hand or by an agent.
 
 ## Open
 - The model comparison planned in 0004 (`qwen2.5vl:3b`, which keeps more image resolution) was not run in the spike. It moves to the F11 evaluation.

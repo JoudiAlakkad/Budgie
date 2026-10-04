@@ -46,5 +46,7 @@ Every failed receipt offers **Enter manually**, and all but `unreadable_image` a
 
 ## Tests
 - Recorded responses in `tests/fixtures/recorded_responses/`: valid, malformed then repaired, malformed twice, cut off at the token limit, missing fields, `is_receipt=false`, `is_receipt=true` on a non-receipt (from the spike), an injection attempt.
+- `scripts/make_fixtures.py` generates them, redacted, from the local spike outputs ([0017](../decisions/0017-personal-data-is-redacted-by-code.md)). Rerunning it gives identical files, and a test scans every fixture for personal data.
+- Logs never contain raw model output, prompts or image bytes. The pipeline stores the raw output redacted.
 - A fake client covers timeouts and connection errors.
 - An optional `@pytest.mark.integration` test runs against a live Ollama.

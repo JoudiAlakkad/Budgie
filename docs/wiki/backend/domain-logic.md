@@ -52,3 +52,10 @@ Each detector returns `Leak {type, category?, merchant?, amount, explanation}`.
 - `small_frequent`: at least M purchases under X € in a category, adding up to at least Y % of that category's spend
 
 The thresholds are constants in the module, listed here once they're fixed.
+
+## `redaction.py` (F3)
+Removes personal data from text the model produced ([0017](../decisions/0017-personal-data-is-redacted-by-code.md)).
+- `find_personal_data(text)` returns `Finding {kind, start, end}` for each rule in a fixed, ordered table: IBAN, card number (13–19 digits, Luhn-valid), masked card digits, e-mail, URL, phone, VAT/tax id, street and house number, postcode and city, labelled ids (terminal, trace, receipt, till, transaction, TSE, customer or card number, …), cashier name.
+- `redact_text(text)` replaces each match with a typed placeholder (`[card]`, `[iban]`, `[address]`, `[id]`, `[name]`, …). It is idempotent.
+- Prices, dates, times, quantities, weights, EAN codes, item names and plain chain names must survive. The table-driven tests check these negatives as well as each rule.
+- Used by the pipeline before storing (F05), by `scripts/make_fixtures.py`, and by the fixture privacy test.
