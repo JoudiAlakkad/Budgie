@@ -1,0 +1,55 @@
+{
+  "description": "Base schema without merchant, date and total; then the strict answer with them null.",
+  "source": "spike 2026-10-03 base IMG_1549 r1, redacted by app.domain.redaction",
+  "max_tokens": 1024,
+  "responses": [
+    {
+      "status_code": 200,
+      "body": {
+        "id": "chatcmpl-missing_fields-1",
+        "object": "chat.completion",
+        "created": 1790000000,
+        "model": "gemma3:4b",
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "stop",
+            "message": {
+              "role": "assistant",
+              "content": "{\n  \"is_receipt\": true,\n  \"line_items\": [\n    {\n      \"description\": \"Diesel-Schwefelarm addit.\",\n      \"amount\": 52.7,\n      \"unit_price\": 231.90\n    }\n  ],\n  \"unreadable_fields\": [\n    \"Verrechnung RAISE GmbH - On GmbH\",\n    \"[address]\",\n    \"[address]\",\n    \"Gesamtpreis brutto\",\n    \"Anzahl Posten\",\n    \"Anzahl Artikel\",\n    \"Kundenkarte\",\n    \"Karteninnr.\",\n    \"Igenr.\",\n    \"Bez. : TND UTA\",\n    \"Gültig bis\",\n    \"Es bediente Sie [name].\",\n    \"Vielen Dank für Ihren Einkauf.\",\n    \"Volumen auf 15 Grad kompensiert\",\n    \"Auf Wunsch kann dieser ausgestellt werde\"\n  ]\n}"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 377,
+          "completion_tokens": 228,
+          "total_tokens": 605
+        }
+      }
+    },
+    {
+      "status_code": 200,
+      "body": {
+        "id": "chatcmpl-missing_fields-2",
+        "object": "chat.completion",
+        "created": 1790000000,
+        "model": "gemma3:4b",
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "stop",
+            "message": {
+              "role": "assistant",
+              "content": "{\n  \"is_receipt\": true,\n  \"merchant\": null,\n  \"date\": null,\n  \"currency\": null,\n  \"subtotal\": null,\n  \"tax\": null,\n  \"total\": null,\n  \"line_items\": [\n    {\n      \"description\": \"Diesel-Schwefelarm addit.\",\n      \"qty\": null,\n      \"unit_price\": 231.9,\n      \"amount\": 52.7\n    }\n  ],\n  \"unreadable_fields\": [\n    \"merchant\",\n    \"date\",\n    \"total\"\n  ]\n}"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 312,
+          "completion_tokens": 180,
+          "total_tokens": 492
+        }
+      }
+    }
+  ]
+}

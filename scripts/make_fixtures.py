@@ -217,7 +217,9 @@ def strip_fence(raw: str) -> str:
 
 
 def load_spike(folder: Path, variant: str, image: str) -> dict:
-    pattern = f"*_gemma3-4b_{variant}_{image}_r1.json"
+    # scripts/ai_spike.py names base runs without a variant: <stamp>_<model>_<image>_r1.json.
+    infix = "" if variant == "base" else f"{variant}_"
+    pattern = f"*_gemma3-4b_{infix}{image}_r1.json"
     matches = sorted(folder.glob(pattern))
     if len(matches) != 1:
         raise FixtureError(f"{pattern}: expected one spike file, found {len(matches)}")

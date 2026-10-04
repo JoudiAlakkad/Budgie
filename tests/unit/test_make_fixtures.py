@@ -60,7 +60,8 @@ def spike_file(folder: Path, variant: str, image: str, raw: str, completion: int
         "checks": None,
         "run": 1,
     }
-    name = f"{STAMP}_gemma3-4b_{variant}_{image}_r1.json"
+    infix = "" if variant == "base" else f"{variant}_"  # the spike's real naming
+    name = f"{STAMP}_gemma3-4b_{infix}{image}_r1.json"
     (folder / name).write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
 
 
@@ -217,7 +218,7 @@ def test_check_reports_a_changed_file(script: ModuleType, spike_dir: Path, tmp_p
 def test_missing_spike_file_writes_nothing(
     script: ModuleType, spike_dir: Path, tmp_path: Path
 ) -> None:
-    next(spike_dir.glob("*_base_IMG_1549_r1.json")).unlink()
+    next(spike_dir.glob("*_gemma3-4b_IMG_1549_r1.json")).unlink()
     out = tmp_path / "out"
     assert run(script, spike_dir, out) != 0
     assert not out.exists()

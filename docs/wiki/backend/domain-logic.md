@@ -59,3 +59,19 @@ Removes personal data from text the model produced ([0017](../decisions/0017-per
 - `redact_text(text)` replaces each match with a typed placeholder (`[card]`, `[iban]`, `[address]`, `[id]`, `[name]`, …). It is idempotent.
 - Prices, dates, times, quantities, weights, EAN codes, item names and plain chain names must survive. The table-driven tests check these negatives as well as each rule.
 - Used by the pipeline before storing (F05), by `scripts/make_fixtures.py`, and by the fixture privacy test.
+- **Details from F3:**
+  - The rules see JSON escapes decoded (`ß` → `ß`), and a match never splits an escape or crosses a `"`, so redacted JSON stays valid.
+  - A valid EAN-13 is never treated as a card number, even if it is Luhn-valid.
+  - An unlabelled phone number needs a separator or a leading `+`, so UPC codes survive.
+  - Labels are kept for phone, tax id, labelled ids and cashier (`Tel. [phone]`, `Es bediente Sie [name]`).
+- **Known limits:**
+  - A bare number after a word, like `ZWIEBELRING 12`, can be read as a house number and become `[address]`.
+  - A street without a listed suffix (`An der Kirche 5`) is missed.
+  - Company names, like a fuel station's operator GmbH, are kept: they aren't personal data.
+
+### Fixture generator (`scripts/make_fixtures.py`)
+- `python scripts/make_fixtures.py --spike data/spike --out tests/fixtures/recorded_responses [--check]`.
+- It picks each spike file by name: base runs are `<stamp>_gemma3-4b_<image>_r1.json` and strict runs are `<stamp>_gemma3-4b_strict_<image>_r1.json`.
+- Spike-based cases use `max_tokens` 1024, the spike's setting; synthetic ones use 2048.
+- It exits 2 and writes nothing on a missing or ambiguous file, or on personal data left after redaction. It exits 1 when `--check` finds a difference.
+- It is not covered by `make lint`, which only checks `backend` and `tests`.

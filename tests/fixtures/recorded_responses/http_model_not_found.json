@@ -1,0 +1,18 @@
+{
+  "description": "The model server doesn't know the model.",
+  "source": "synthetic",
+  "max_tokens": 2048,
+  "responses": [
+    {
+      "status_code": 404,
+      "body": {
+        "error": {
+          "message": "model \"gemma3:404b\" not found, try pulling it first",
+          "type": "api_error",
+          "param": null,
+          "code": null
+        }
+      }
+    }
+  ]
+}

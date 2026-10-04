@@ -1,0 +1,31 @@
+{
+  "description": "A runaway answer cut off at max_tokens (finish_reason length).",
+  "source": "spike 2026-10-03 base IMG_1554 r1, redacted by app.domain.redaction",
+  "max_tokens": 1024,
+  "responses": [
+    {
+      "status_code": 200,
+      "body": {
+        "id": "chatcmpl-cut_off_length-1",
+        "object": "chat.completion",
+        "created": 1790000000,
+        "model": "gemma3:4b",
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "length",
+            "message": {
+              "role": "assistant",
+              "content": "{\n  \"is_receipt\": true,\n  \"line_items\": [\n    {\n      \"description\": \"Bio Ribber 10.5% TL\",\n      \"amount\": 3.99\n    },\n    {\n      \"description\": \"Bio Pflanzenöl 5.0% TL\",\n      \"amount\": 2.19\n    },\n    {\n      \"description\": \"Bio Olivenöl 10.0% FL\",\n      \"amount\": 1.83\n    },\n    {\n      \"description\": \"Leberkäule 0.25 EUR\",\n      \"amount\": 0.25\n    },\n    {\n      \"description\": \"Taschentücher Box 100s\",\n      \"amount\": 2.35\n    }\n  ],\n  \"unreadable_fields\": [\n    \"Summe\",\n    \"Kartenzahlung EUR\",\n    \"Terminal ID\",\n    \"POS-Code\",\n    \"Card-Code\",\n    \"Approved\",\n    \"Erfolgreiche Transaktion\",\n    \"Payback\",\n    \"Ihr Parktestand von den Einkauf:\",\n    \"Für die folgenden Artikeln Sie:\",\n    \"Bitte lesen Sie künftig keine\",\n    \"Rabatte entwerfen mit der App\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"[url]\",\n    \"www"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 377,
+          "completion_tokens": 1024,
+          "total_tokens": 1401
+        }
+      }
+    }
+  ]
+}

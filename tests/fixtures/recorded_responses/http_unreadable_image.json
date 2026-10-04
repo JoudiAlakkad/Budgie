@@ -1,0 +1,18 @@
+{
+  "description": "The model server can't decode the image.",
+  "source": "synthetic, to be replaced by a live capture",
+  "max_tokens": 2048,
+  "responses": [
+    {
+      "status_code": 500,
+      "body": {
+        "error": {
+          "message": "image: unknown format",
+          "type": "api_error",
+          "param": null,
+          "code": null
+        }
+      }
+    }
+  ]
+}

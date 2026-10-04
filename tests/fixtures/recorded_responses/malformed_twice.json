@@ -1,0 +1,55 @@
+{
+  "description": "An amount as a string, then truncated JSON: malformed after one repair.",
+  "source": "synthetic",
+  "max_tokens": 2048,
+  "responses": [
+    {
+      "status_code": 200,
+      "body": {
+        "id": "chatcmpl-malformed_twice-1",
+        "object": "chat.completion",
+        "created": 1790000000,
+        "model": "gemma3:4b",
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "stop",
+            "message": {
+              "role": "assistant",
+              "content": "{\n  \"is_receipt\": true,\n  \"merchant\": \"Beispiel Markt\",\n  \"date\": null,\n  \"currency\": null,\n  \"subtotal\": null,\n  \"tax\": null,\n  \"total\": null,\n  \"line_items\": [\n    {\n      \"description\": \"BROT\",\n      \"qty\": 1,\n      \"unit_price\": \"1,99\",\n      \"amount\": \"1,99\"\n    }\n  ],\n  \"unreadable_fields\": []\n}"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 312,
+          "completion_tokens": 180,
+          "total_tokens": 492
+        }
+      }
+    },
+    {
+      "status_code": 200,
+      "body": {
+        "id": "chatcmpl-malformed_twice-2",
+        "object": "chat.completion",
+        "created": 1790000000,
+        "model": "gemma3:4b",
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "stop",
+            "message": {
+              "role": "assistant",
+              "content": "{\n  \"is_receipt\": true,\n  \"merchant\": \"Beispiel Markt\",\n  \"line_items\": [\n"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 312,
+          "completion_tokens": 180,
+          "total_tokens": 492
+        }
+      }
+    }
+  ]
+}
