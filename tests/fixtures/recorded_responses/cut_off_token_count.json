@@ -1,0 +1,31 @@
+{
+  "description": "Cut off mid-item; completion_tokens equals max_tokens.",
+  "source": "synthetic",
+  "max_tokens": 2048,
+  "responses": [
+    {
+      "status_code": 200,
+      "body": {
+        "id": "chatcmpl-cut_off_token_count-1",
+        "object": "chat.completion",
+        "created": 1790000000,
+        "model": "gemma3:4b",
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "length",
+            "message": {
+              "role": "assistant",
+              "content": "{\n  \"is_receipt\": true,\n  \"merchant\": \"Beispiel Markt\",\n  \"date\": \"2026-09-17\",\n  \"currency\": \"EUR\",\n  \"line_items\": [\n    {\"description\": \"BIO EIER 10 STK.\", \"qty\": 1, \"unit_price\": 2.99, \"amount\": 2.99},\n    {\"description\": \"VOLLMILCH 3,5%\", \"qty\": 1, \"unit_pr"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 312,
+          "completion_tokens": 2048,
+          "total_tokens": 2360
+        }
+      }
+    }
+  ]
+}

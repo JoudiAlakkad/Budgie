@@ -28,4 +28,8 @@ user="$(docker exec "$NAME" id -u)"
 
 mode="$(docker exec "$NAME" stat -c %a /data)"
 [[ "$mode" == "700" ]] || { echo "/data has mode $mode, expected 700"; exit 1; }
+
+# The prompts are package data; a non-editable install drops them without package-data.
+docker exec "$NAME" python -c "from app.ai.prompts import load_prompts; load_prompts('v1')" \
+  || { echo "prompts v1 missing from the image"; exit 1; }
 echo "docker check passed"

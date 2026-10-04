@@ -55,16 +55,16 @@ The model returned `is_receipt: true` in every run, although the prompt says to 
 - **Configuration:**
   - the 11-item receipt used 695 output tokens, so `LLM_MAX_TOKENS` should be 2048
   - `LLM_TIMEOUT_S=120` is tight for long receipts on CPU; 180 is safer
-  - these are changed in F03 together with the code defaults
+  - done in F03: the defaults are now 2048 and 180 ([configuration](configuration.md))
 - **F04 validation matters most:** the sum-versus-total and plausible-date checks would have flagged both wrong receipts. The model doesn't report what it couldn't read, so `unreadable_fields` can't be trusted to mark the risky fields.
-- **Non-receipt detection** needs more than the model's `is_receipt`. Untested options for F03/F04:
+- **Non-receipt detection** needs more than the model's `is_receipt`. Untested options for F03/F04 (decided in F03: the plausibility rule, in F04; see [ai-extraction](ai-extraction.md)):
   - a separate yes/no classification call before extraction
   - a rule that treats a result with no merchant, no total and at most one item as `not_a_receipt`
 - **Image preprocessing** (crop to the receipt, or split long receipts) is a candidate improvement for F03 or F11.
 
 ## Fixtures
 - The raw outputs (truncated loop, missing keys, extra items, invented date, `is_receipt=true` on a non-receipt) are the failure cases F03 needs as recorded responses.
-- They contain personal data (store addresses, partial card numbers in some receipts), so F03 copies anonymised versions into `tests/fixtures/recorded_responses/`, never the raw files.
+- They contain personal data (store addresses, partial card numbers in some receipts). F03 generates the fixtures in `tests/fixtures/recorded_responses/` with `scripts/make_fixtures.py`. It reads only the strict-schema outputs (ALDI and the pinboard photo) and redacts them with the app's own redaction module; the base-schema failures are rebuilt as synthetic cases ([0017](../decisions/0017-personal-data-is-redacted-by-code.md)). The raw files are never copied, and nothing is anonymised by hand or by an agent.
 
 ## Open
 - The model comparison planned in 0004 (`qwen2.5vl:3b`, which keeps more image resolution) was not run in the spike. It moves to the F11 evaluation.

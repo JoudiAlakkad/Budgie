@@ -1,0 +1,31 @@
+{
+  "description": "A strict, valid answer.",
+  "source": "spike 2026-10-03 strict IMG_1557 r1, redacted by app.domain.redaction; payment_method: null added (recorded before the field existed)",
+  "max_tokens": 1024,
+  "responses": [
+    {
+      "status_code": 200,
+      "body": {
+        "id": "chatcmpl-valid_receipt-1",
+        "object": "chat.completion",
+        "created": 1790000000,
+        "model": "gemma3:4b",
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "stop",
+            "message": {
+              "role": "assistant",
+              "content": "{\n  \"is_receipt\": true,\n  \"merchant\": \"ALDI\",\n  \"date\": \"2026-09-17\",\n  \"currency\": \"€\",\n  \"line_items\": [\n    {\n      \"description\": \"RISPENTOMATEN KG-WARE\",\n      \"qty\": 1,\n      \"unit_price\": 1.51,\n      \"amount\": 1.51\n    },\n    {\n      \"description\": \"BIOPLASTIK-KNOBENBUTE\",\n      \"qty\": 2,\n      \"unit_price\": 0.02,\n      \"amount\": 0.04\n    },\n    {\n      \"description\": \"BIO EIER OKT 12 STK.\",\n      \"qty\": 1,\n      \"unit_price\": 3.99,\n      \"amount\": 3.99\n    },\n    {\n      \"description\": \"JOGHURT NACH GRIECH. A\",\n      \"qty\": 1,\n      \"unit_price\": 2.19,\n      \"amount\": 2.19\n    },\n    {\n      \"description\": \"KARTOFFELN FK 2,5KG\",\n      \"qty\": 1,\n      \"unit_price\": 2.19,\n      \"amount\": 2.19\n    },\n    {\n      \"description\": \"ÄPFEL PINK LADY 1KG\",\n      \"qty\": 1,\n      \"unit_price\": 2.79,\n      \"amount\": 2.79\n    },\n    {\n      \"description\": \"RUCOLA\",\n      \"qty\": 1,\n      \"unit_price\": 0.89,\n      \"amount\": 0.89\n    },\n    {\n      \"description\": \"PFLÜCKSALAT\",\n      \"qty\": 1,\n      \"unit_price\": 1.29,\n      \"amount\": 1.29\n    },\n    {\n      \"description\": \"ZU ZAHLEN\",\n      \"qty\": 1,\n      \"unit_price\": 15.17,\n      \"amount\": 15.17\n    },\n    {\n      \"description\": \"BAR\",\n      \"qty\": 1,\n      \"unit_price\": 20.00,\n      \"amount\": 20.00\n    },\n    {\n      \"description\": \"ZURÜCK\",\n      \"qty\": 1,\n      \"unit_price\": 4.83,\n      \"amount\": 4.83\n    }\n  ],\n  \"subtotal\": 14.16,\n  \"tax\": 0.99,\n  \"total\": 15.15,\n  \"payment_method\": null,\n  \"unreadable_fields\": [\n    \"merchant\",\n    \"date\",\n    \"total\",\n    \"currency\"\n  ]\n}"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 457,
+          "completion_tokens": 695,
+          "total_tokens": 1152
+        }
+      }
+    }
+  ]
+}

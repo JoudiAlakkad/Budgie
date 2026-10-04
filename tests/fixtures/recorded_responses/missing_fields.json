@@ -1,0 +1,55 @@
+{
+  "description": "Base schema without merchant, date and total; then the strict answer with them null.",
+  "source": "synthetic, modelled on spike base-schema failure (optional keys left out)",
+  "max_tokens": 2048,
+  "responses": [
+    {
+      "status_code": 200,
+      "body": {
+        "id": "chatcmpl-missing_fields-1",
+        "object": "chat.completion",
+        "created": 1790000000,
+        "model": "gemma3:4b",
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "stop",
+            "message": {
+              "role": "assistant",
+              "content": "{\n  \"is_receipt\": true,\n  \"line_items\": [\n    {\n      \"description\": \"VOLLMILCH 3,5%\",\n      \"qty\": 1,\n      \"unit_price\": 1.19,\n      \"amount\": 1.19\n    },\n    {\n      \"description\": \"BROT\",\n      \"amount\": 2.49\n    }\n  ],\n  \"unreadable_fields\": []\n}"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 312,
+          "completion_tokens": 180,
+          "total_tokens": 492
+        }
+      }
+    },
+    {
+      "status_code": 200,
+      "body": {
+        "id": "chatcmpl-missing_fields-2",
+        "object": "chat.completion",
+        "created": 1790000000,
+        "model": "gemma3:4b",
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "stop",
+            "message": {
+              "role": "assistant",
+              "content": "{\n  \"is_receipt\": true,\n  \"merchant\": null,\n  \"date\": null,\n  \"currency\": null,\n  \"subtotal\": null,\n  \"tax\": null,\n  \"total\": null,\n  \"payment_method\": null,\n  \"line_items\": [\n    {\n      \"description\": \"VOLLMILCH 3,5%\",\n      \"qty\": 1,\n      \"unit_price\": 1.19,\n      \"amount\": 1.19\n    },\n    {\n      \"description\": \"BROT\",\n      \"qty\": null,\n      \"unit_price\": null,\n      \"amount\": 2.49\n    }\n  ],\n  \"unreadable_fields\": [\n    \"merchant\",\n    \"date\",\n    \"total\"\n  ]\n}"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 312,
+          "completion_tokens": 180,
+          "total_tokens": 492
+        }
+      }
+    }
+  ]
+}

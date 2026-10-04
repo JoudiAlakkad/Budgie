@@ -52,3 +52,55 @@ Each detector returns `Leak {type, category?, merchant?, amount, explanation}`.
 - `small_frequent`: at least M purchases under X € in a category, adding up to at least Y % of that category's spend
 
 The thresholds are constants in the module, listed here once they're fixed.
+
+## `redaction.py` (F3)
+The safety net for personal data in the three places where the model writes free text: `merchant`, item descriptions and the stored raw output ([0017](../decisions/0017-personal-data-is-redacted-by-code.md)). The first line of defence is the schema: fixed keys, enums for `payment_method` and `unreadable_fields`, and no field for card or address data.
+- **Bounded input:** `redact_text`, `clean_merchant` and `find_personal_data` look at no more than `MAX_TEXT_CHARS` = 65,536 characters, far above model output capped by `LLM_MAX_TOKENS` (about 8–10 KB). The F05 pipeline must know that a stored raw output ending in ` [truncated]` is no longer valid JSON. A longer text:
+  - is cut at the limit, or earlier if the cut would split a JSON escape, a card number or an IBAN (that number's trailing run of up to 43 characters is dropped whole, so it can't leak half-redacted)
+  - gets the suffix ` [truncated]`
+  - nothing after the cut is returned or searched
+- **Idempotence with the limit:** placeholders count as one character towards it, because redaction can make a text longer (`Bon.1,` → `Bon.[id],`). A text that already ends in the suffix keeps it, so a second pass never cuts again.
+- **Slow-regex guard:** a fixed-size test. Every hostile run is built at exactly 65,536 characters, and `redact_text`, `clean_merchant` and every rule's `finditer` must finish each one, run once, under `SLOW_S` = 2 s.
+  - The runs: each character class, digit groups, IBAN-shaped and masked groups, labels joined by `/` `.` `=` `-` with and without `1 kg`, a full receipt, and a long merchant line.
+  - The linear rules take at most about 70 ms (IBAN-shaped groups), about 30× below the limit.
+  - An exponential rule passes the limit after a few dozen characters: a child-process test shows the old `card_masked` pattern doing so on 44 `*`.
+- **Rules** (ordered, each linear):
+- `_fit_iban` stops walking groups once the length passes the country's IBAN length (or 34).
+- Rules:
+  - `iban` → `[iban]`: an IBAN that passes the ISO 13616 **mod-97 checksum** (`iban_checksum_valid`, computed digit by digit).
+    - Shape: 2 uppercase letters and 2 check digits, then one compact run or groups of 4 after exactly one space, 15–34 characters in all. For the common countries the length must also match `IBAN_LENGTHS` (DE 22, AT 20, CH 21, NL 18, FR 27, GB 22, …).
+    - The regex is a bounded lookahead, and `_fit_iban` judges it in Python. It drops trailing groups that aren't part of the IBAN (`AT61 … 3201 BANK` → `[iban] BANK`). A rejected candidate doesn't hide an IBAN that starts inside it.
+    - Not matched: lowercase IBANs, and separators other than one ASCII space.
+  - `iban_masked` → `[iban]`: the country code and check digits, then at least 4 mask characters (`*`, `X`, `x`, `#`) and a shown digit at the end (`DE89 **** **** **** **30 00`, `DE89****3000`). It has no checksum to check.
+  - `card`: a 13–19 digit run, Luhn-valid and not a valid EAN-13 → `[card]`
+  - `card_masked`: `****1234`, `XXXX XXXX 1234`, … → `[card]`
+  - `labelled_id`: terminal, trace, receipt, till, transaction, TSE, customer or card number and similar labels. The label stays and the value becomes `[id]`.
+    - The regex is only label, separator and value, with no lookahead; `_fit_id` decides in Python whether the value is an id.
+    - The separator may be spaces, tabs or no-break spaces around `:`, `#` or `Nr.`, or a hyphen followed by a digit (`TID-123` → `TID-[id]`).
+    - Never treated as a value: dates, prices (either decimal separator), thousands (`3.500`), times, and quantities with a unit, with or without a space (`500g`, `2kg`, `3x`, `5 kg`).
+- Earlier rules win when matches overlap. A `labelled_id` value that runs into an earlier finding is cut back to the part before it (`Bon 12 4111…` → `Bon [id] [card]`), so `redact_text` is idempotent.
+- `find_personal_data(text)` returns `Finding {kind, start, end}`. `redact_text(text)` replaces each match and is idempotent. The rules see JSON escapes decoded, and a match never splits an escape or crosses a `"`, so redacted JSON stays valid.
+- `clean_merchant(text)` keeps the shop name:
+  1. take the first of up to three non-blank lines that still has text after steps 2–3 (`Tel. 0231 123456\nREWE` → `REWE`)
+  2. cut it before a 5-digit postcode, a run of 6 or more digits, `http`, `www.`, `@`, or a `Tel`/`Telefon`/`Fon`/`Fax` label
+  3. strip trailing punctuation
+  4. return `None` if nothing is left, otherwise the `redact_text` result
+- **F05 applies it:** `clean_merchant` to `merchant`, and `redact_text` to the descriptions and the raw output.
+- **Must survive:** prices, dates, times, quantities, weights, EAN codes, item names (including `APFELRING 2`, `Holzweg 2`, and uppercase names that look like the start of an IBAN, such as `PC24 BLAUBEEREN`, `XL12 HANDTUCH` or `GR12 TOMATEN 500G`), IBAN-shaped strings with a wrong checksum, and chain names.
+- **Why only these rules:** the address, URL, phone, tax-id and cashier rules were written for the spike's base schema, where `unreadable_fields` was free text. Once the schema closed that field, they mostly hit item names (`Hering 2` → `[address]`), and one of them hung on a line of `*` (catastrophic backtracking). They were removed.
+- **Known limits:**
+  - In a merchant like `Markt | info@markt.example`, the part before the `@` survives the cut, and `Shop @ Home` becomes `Shop`.
+  - A label glued into a rejected value isn't seen: in `Kasse-Bon 1234`, the `1234` survives.
+  - Header text the model copies into `merchant` is cleaned in the `merchant` column but stays in the stored raw output, unless F05 replaces it there too.
+
+### Fixture generator (`scripts/make_fixtures.py`)
+- `python scripts/make_fixtures.py --spike data/spike --out tests/fixtures/recorded_responses [--check]`.
+- **Only strict spike runs** are read, by file name (`<stamp>_gemma3-4b_strict_<image>_r1.json`): `valid_receipt` (+ `_fenced`) and `non_receipt_claimed_receipt`. They were recorded before `payment_method` existed, so the generator inserts `"payment_method": null` and says so in `source`.
+- **Synthetic:** every other case, including `missing_fields` and `cut_off_length`, which copy the shape of the spike's base-schema failures (`source` says so).
+- Spike-based cases and `cut_off_length` use `max_tokens` 1024; the other synthetic cases use 2048.
+- **Merchant:** the `merchant` of a spike answer goes through `clean_merchant`, the same way F05 stores it. `source` notes this only if it changed something.
+- **Synthetic cases** build without a spike folder (`render_synthetic`), and a test compares them byte for byte with the committed files.
+- **Writing:** every file is written into a temp folder, then moved in with `os.replace` (atomic per file), and stale `.json` files are removed.
+- **Exit codes:** 2, writing nothing, on a missing or ambiguous spike file, on personal data left after redaction, on a hit of the independent scan, or on a write error. 1 when `--check` finds a difference.
+- **Second check:** `scripts/fixture_scan.py` is an independent, broader scan that shares no code with `redaction.py`. It flags 5+ digit runs, `@`, masked digits, streets with or without a house number, `Am`/`An der`/`Im <Name> <n>`, URLs and bare domains, phone-like digit groups, and `Tel`/`Telefon`/`Fon`/`Fax`/`USt` with a value. The generator runs it and refuses to write on a hit, and the tests run it on every committed fixture. It also flags item names like `APFELRING 2`, so a future fixture with one needs an allowlist entry. It catches compact masked IBANs (`DE89****3000`) but not the spaced form; `iban_masked` redacts both before the scan runs.
+- `make lint` covers `scripts/`, which became shared code in F3.

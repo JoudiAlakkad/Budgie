@@ -1,0 +1,31 @@
+{
+  "description": "A pinboard photo the model calls a receipt and fills with invented data.",
+  "source": "spike 2026-10-03 strict 24C13256-1D52-42BA-A8B0-B52F4E2B26A4 r1, redacted by app.domain.redaction; payment_method: null added (recorded before the field existed)",
+  "max_tokens": 1024,
+  "responses": [
+    {
+      "status_code": 200,
+      "body": {
+        "id": "chatcmpl-non_receipt_claimed_receipt-1",
+        "object": "chat.completion",
+        "created": 1790000000,
+        "model": "gemma3:4b",
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "stop",
+            "message": {
+              "role": "assistant",
+              "content": "{\n  \"is_receipt\": true,\n  \"merchant\": \"Red Rock Trading Post\",\n  \"date\": \"2023-10-26\",\n  \"currency\": \"USD\",\n  \"line_items\": [\n    {\n      \"description\": \"Mandala Coloring Book\",\n      \"qty\": 1,\n      \"unit_price\": 12.99,\n      \"amount\": 12.99\n    },\n    {\n      \"description\": \"Mandala Coloring Pencils\",\n      \"qty\": 1,\n      \"unit_price\": 9.99,\n      \"amount\": 9.99\n    }\n  ],\n  \"subtotal\": 23.00,\n  \"tax\": 2.00,\n  \"total\": 25.00,\n  \"payment_method\": null,\n  \"unreadable_fields\": [\n    \"total\",\n    \"tax\"\n  ]\n}"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 457,
+          "completion_tokens": 217,
+          "total_tokens": 674
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "description": "A runaway answer cut off at max_tokens (finish_reason length).",
+  "source": "synthetic, modelled on spike base-schema failure (runaway answer cut off at max_tokens)",
+  "max_tokens": 1024,
+  "responses": [
+    {
+      "status_code": 200,
+      "body": {
+        "id": "chatcmpl-cut_off_length-1",
+        "object": "chat.completion",
+        "created": 1790000000,
+        "model": "gemma3:4b",
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "length",
+            "message": {
+              "role": "assistant",
+              "content": "{\n  \"is_receipt\": true,\n  \"line_items\": [\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTIKEL\", \"amount\": 0.99},\n    {\"description\": \"ARTI"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 312,
+          "completion_tokens": 1024,
+          "total_tokens": 1336
+        }
+      }
+    }
+  ]
+}

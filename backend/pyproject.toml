@@ -35,6 +35,10 @@ dev = [
 where = ["."]
 include = ["app*"]
 
+# The Dockerfile runs a non-editable `pip install ./backend`; the prompts must ship with it.
+[tool.setuptools.package-data]
+app = ["ai/prompts/*/*.txt"]
+
 # ---------------------------------------------------------------- ruff
 [tool.ruff]
 target-version = "py312"

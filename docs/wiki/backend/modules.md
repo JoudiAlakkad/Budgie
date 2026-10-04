@@ -12,16 +12,19 @@ backend/
 │   │   ├── errors.py      # error format and exception → HTTP mapping
 │   │   └── receipts.py, expenses.py, item_categories.py, budgets.py (budgets and goal), insights.py, health.py
 │   ├── services/          # dependencies.py (FastAPI providers), health.py, storage.py; later receipt_pipeline.py, expenses.py, insights.py
-│   ├── domain/            # pure: validation, confidence, categorize, duplicates, budget, leaks
+│   ├── domain/            # pure: redaction (F3), validation, confidence, categorize, duplicates, budget, leaks
 │   │   └── data/item_categories_seed.yaml
-│   ├── ai/                # client.py, extractor.py, schema.py, prompts/*.txt
+│   ├── ai/                # client.py, extractor.py, schema.py, prompts/__init__.py (load_prompts) + prompts/<version>/{system,user,repair}.txt (package data)
 │   ├── db/                # models.py, session.py, repositories/*.py
 │   └── seed.py            # python -m app.seed, loads the demo data through services
 ├── pyproject.toml         # deps, ruff, pytest, import-linter config
-tests/                     # at the repo root: unit/, api/, fixtures/recorded_responses/
+tests/                     # at the repo root: unit/, api/, integration/ (-m integration, live model),
+                           # fixtures/recorded_responses/ (generated), recorded.py (replay helper)
 
 At the repo root: Makefile (install, check, run, openapi, docker-check),
-Dockerfile, .github/workflows/ci.yml, scripts/docker-health-check.sh.
+Dockerfile, .github/workflows/ci.yml, scripts/docker-health-check.sh,
+scripts/make_fixtures.py (generates the redacted recorded responses, decision 0017) and
+scripts/fixture_scan.py (independent privacy scan, used by the generator and the tests).
 ```
 
 ## Dependency direction
