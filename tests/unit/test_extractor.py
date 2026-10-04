@@ -11,9 +11,15 @@ import pytest
 
 import app.ai
 from app.ai.client import LLMClient
-from app.ai.extractor import ExtractionResult, Extractor, InvalidOutput, parse_output
+from app.ai.extractor import (
+    ExtractionResult,
+    Extractor,
+    InvalidOutput,
+    parse_output,
+    system_prompt,
+)
 from app.ai.prompts import load_prompts
-from app.ai.schema import RESPONSE_FORMAT
+from app.ai.schema import EXAMPLE_JSON, RESPONSE_FORMAT
 from app.errors import (
     ExtractionError,
     LLMError,
@@ -37,6 +43,7 @@ VALID = {
     "subtotal": None,
     "tax": None,
     "total": 2.49,
+    "payment_method": "cash",
     "unreadable_fields": [],
 }
 VALID_TEXT = json.dumps(VALID)
@@ -321,15 +328,26 @@ def test_http_errors_propagate(name: str, error: type[ExtractionError]) -> None:
 # ---------------------------------------------------------------- the request
 
 
+def answering(*contents: str) -> tuple[httpx.MockTransport, list[httpx.Request]]:
+    """A transport answering each call with the next content (no recorded fixture)."""
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=completion(contents[len(seen) - 1]))
+
+    return httpx.MockTransport(handler), seen
+
+
 def test_request_carries_image_prompts_and_settings() -> None:
-    transport, seen = replay(load_case("valid_receipt"))
+    transport, seen = answering(VALID_TEXT)
     extractor = make_extractor(transport, max_tokens=1234)
 
     extractor.extract(IMAGE, "image/png")
 
     sent = body(seen[0])
     system, user = sent["messages"]
-    assert system == {"role": "system", "content": PROMPTS.system}
+    assert system == {"role": "system", "content": system_prompt(PROMPTS)}
     assert user["role"] == "user"
     assert user["content"][0] == {"type": "text", "text": PROMPTS.user}
     url = user["content"][1]["image_url"]["url"]
@@ -338,6 +356,31 @@ def test_request_carries_image_prompts_and_settings() -> None:
     assert base64.b64decode(url.split(",", 1)[1]) == IMAGE
     assert sent["response_format"] == RESPONSE_FORMAT
     assert (sent["temperature"], sent["max_tokens"], sent["model"]) == (0, 1234, "gemma3:4b")
+
+
+def test_sent_system_prompt_holds_the_example_answer() -> None:
+    transport, seen = answering(VALID_TEXT)
+
+    make_extractor(transport).extract(IMAGE, "image/jpeg")
+
+    system = body(seen[0])["messages"][0]["content"]
+    assert EXAMPLE_JSON in system
+    assert "{example}" not in system
+    assert "{" + "example" not in system
+    assert system.startswith(PROMPTS.system.split("{example}")[0])
+    # the example is the last thing in the system prompt and parses as one answer
+    assert parse_output(system.split("never copy its shop, date, items or amounts.")[1])
+
+
+def test_repair_call_sends_the_same_filled_system_prompt() -> None:
+    transport, seen = answering("not json", VALID_TEXT)
+
+    make_extractor(transport).extract(IMAGE, "image/jpeg")
+
+    assert len(seen) == 2
+    first, second = (body(request)["messages"][0] for request in seen)
+    assert first == second
+    assert EXAMPLE_JSON in second["content"]
 
 
 def test_extractor_exposes_model_and_prompt_version() -> None:
@@ -392,7 +435,14 @@ MIN_DISTINCTIVE = 6  # shorter values ("BROT", "ALDI") could appear by chance
 
 def distinctive_values(case: dict) -> set[str]:
     """Values from a case that must never reach a log: answers, merchants, items, errors."""
-    values = {IMAGE_B64, PROMPTS.system.splitlines()[0], PROMPTS.user.strip(), PROMPTS.repair}
+    values = {
+        IMAGE_B64,
+        PROMPTS.system.splitlines()[0],
+        PROMPTS.user.strip(),
+        PROMPTS.repair,
+        EXAMPLE_JSON,
+        '"Beispiel Markt"',
+    }
     for response in case["responses"]:
         if response["status_code"] != 200:
             values.add(response["body"]["error"]["message"])

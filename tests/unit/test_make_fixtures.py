@@ -31,14 +31,20 @@ CASES = {
 }
 
 
-@pytest.fixture(scope="module")
-def script() -> ModuleType:
+def _load_script() -> ModuleType:
+    if "make_fixtures" in sys.modules:
+        return sys.modules["make_fixtures"]
     spec = importlib.util.spec_from_file_location("make_fixtures", SCRIPT)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
+
+@pytest.fixture(scope="module")
+def script() -> ModuleType:
+    return _load_script()
 
 
 def spike_file(folder: Path, variant: str, image: str, raw: str, completion: int) -> None:
@@ -167,6 +173,7 @@ def test_spike_content_is_redacted(script: ModuleType, spike_dir: Path, tmp_path
     assert extraction["line_items"][1]["description"] == "Karte [card]"
     assert valid["source"] == (
         "spike 2026-10-03 strict IMG_1557 r1, redacted by app.domain.redaction"
+        "; payment_method: null added (recorded before the field existed)"
     )
     assert valid["responses"][0]["body"]["usage"]["completion_tokens"] == 250
     [fenced] = contents(load(out, "valid_receipt_fenced"))
@@ -189,6 +196,83 @@ def test_missing_fields_fills_strict_keys(
         {"description": "JOGHURT NACH GRIECH.", "qty": None, "unit_price": None, "amount": 0.79},
         {"description": "Es bediente Sie: [name]", "qty": None, "unit_price": None, "amount": 1.0},
     ]
+
+
+@pytest.mark.parametrize(
+    ("case", "added"),
+    [
+        ("valid_receipt", True),
+        ("valid_receipt_fenced", True),
+        ("non_receipt_claimed_receipt", True),
+        ("cut_off_length", False),
+        ("missing_fields", False),
+    ],
+)
+def test_spike_answers_expected_valid_get_payment_method(
+    script: ModuleType, spike_dir: Path, tmp_path: Path, case: str, added: bool
+) -> None:
+    out = tmp_path / "out"
+    run(script, spike_dir, out)
+    data = load(out, case)
+    first = contents(data)[0]
+
+    assert data["source"].endswith(script.PAYMENT_METHOD_NOTE) is added
+    if not added:
+        assert '"payment_method"' not in first
+        return
+    answer = json.loads(script.strip_fence(first))
+    keys = list(answer)
+    assert answer["payment_method"] is None
+    assert keys[keys.index("total") + 1] == "payment_method"
+
+
+def test_payment_method_is_inserted_into_the_text_as_it_was() -> None:
+    indented = '{\n  "subtotal": 2.90,\n  "total": 2.90,\n  "tax": null\n}'
+    last = '{\n    "total": null\n}'
+    compact = '{"subtotal": 1, "total": 1.5e1, "x": 1}'
+    module = _load_script()
+
+    assert module.add_payment_method(indented, "c") == (
+        '{\n  "subtotal": 2.90,\n  "total": 2.90,\n  "payment_method": null,\n  "tax": null\n}'
+    )
+    assert (
+        module.add_payment_method(last, "c")
+        == '{\n    "total": null,\n    "payment_method": null\n}'
+    )
+    assert module.add_payment_method(compact, "c") == (
+        '{"subtotal": 1, "total": 1.5e1, "payment_method": null, "x": 1}'
+    )
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '{"subtotal": 1}',
+        '{"total": 1, "payment_method": "card"}',
+        '{"a": {"total": 1}}',
+        '{"total": 1, "b": {"total": 2}}',
+    ],
+    ids=["no total", "already there", "nested total", "two totals"],
+)
+def test_payment_method_insert_refuses_odd_answers(text: str) -> None:
+    module = _load_script()
+    with pytest.raises(module.FixtureError):
+        module.add_payment_method(text, "c")
+
+
+def test_synthetic_answers_vary_payment_method(
+    script: ModuleType, spike_dir: Path, tmp_path: Path
+) -> None:
+    out = tmp_path / "out"
+    run(script, spike_dir, out)
+
+    def last_answer(case: str) -> dict:
+        return json.loads(contents(load(out, case))[-1])
+
+    assert last_answer("malformed_then_repaired")["payment_method"] == "card"
+    assert last_answer("injection_text_as_data")["payment_method"] == "cash"
+    assert last_answer("not_a_receipt")["payment_method"] is None
+    assert last_answer("missing_fields")["payment_method"] is None
 
 
 def test_synthetic_cases_add_up(script: ModuleType, spike_dir: Path, tmp_path: Path) -> None:

@@ -10,6 +10,7 @@ Fill every key of the schema:
 - currency: the ISO 4217 code, e.g. EUR.
 - total: the amount paid, the line labelled SUMME or ZU ZAHLEN. Never take it from a row of the tax table.
 - subtotal and tax: only if they are printed on the receipt; otherwise null.
+- payment_method: how the receipt was paid. cash for BAR; card for EC-Karte, girocard, credit cards, contactless or mobile payment; voucher for a Gutschein; other for anything else; null if no payment line is printed.
 
 Line items: one item per purchased product.
 - description: exactly as printed.
@@ -18,8 +19,13 @@ Line items: one item per purchased product.
 - The letter or digit after a price (A, B, 1, 2) is the tax class, not a quantity.
 - Discounts and deposit returns (Pfand) are items with a negative amount.
 
-These lines are not items: SUMME, ZU ZAHLEN, BAR, GEGEBEN, ZURÜCK or RÜCKGELD, Kartenzahlung, EC-Karte or VISA, the rows of the tax table, and change.
+These lines are not items: SUMME, ZU ZAHLEN, BAR, GEGEBEN, ZURÜCK or RÜCKGELD, Kartenzahlung, EC-Karte or VISA, the rows of the tax table, and change. A payment line only sets payment_method.
+
+Never copy card numbers, IBANs, terminal, transaction or receipt numbers, addresses or names of staff into any field.
 
 Use a dot as the decimal separator in every number, e.g. 3.99.
 
 If you cannot read a value, set it to null and put its key in unreadable_fields. Do not guess. Do not categorise items.
+
+This is an example answer for a different, made-up receipt. It shows the shape only: never copy its shop, date, items or amounts.
+{example}

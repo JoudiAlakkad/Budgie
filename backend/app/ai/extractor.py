@@ -4,7 +4,8 @@ One call, then at most one repair call. Output cut off at `max_tokens` is
 `MalformedOutput` without a repair; `is_receipt=false` is `NotAReceipt`. The
 extractor does not redact: `raw_output` is the model's own text, and the pipeline
 redacts it before storing (decision 0017). Nothing from the prompts, the image or
-the model's answer is logged.
+the model's answer is logged. The system prompt's `{example}` is filled here with
+`schema.EXAMPLE_JSON` (`system_prompt`), so `ai.prompts` stays plain text.
 """
 
 import base64
@@ -19,12 +20,13 @@ from pydantic import ValidationError
 
 from app.ai.client import ChatCompletion
 from app.ai.prompts import Prompts
-from app.ai.schema import RESPONSE_FORMAT, ReceiptExtraction
+from app.ai.schema import EXAMPLE_JSON, RESPONSE_FORMAT, ReceiptExtraction
 from app.errors import ExtractionError, MalformedOutput, NotAReceipt
 
 logger = logging.getLogger(__name__)
 
 MAX_ERROR_LINES = 10
+EXAMPLE_PLACEHOLDER = "{example}"
 _FENCE = re.compile(r"^```[A-Za-z]*\s*|\s*```$")
 
 
@@ -114,6 +116,15 @@ def parse_output(raw: str) -> ReceiptExtraction:
         raise InvalidOutput(_validation_lines(exc)) from None
 
 
+def system_prompt(prompts: Prompts) -> str:
+    """The system prompt with `{example}` filled with `EXAMPLE_JSON`.
+
+    It is filled here, not in `ai.prompts`, so the prompt loader stays free of the
+    schema: the prompt files are text, and the example is built from the models.
+    """
+    return prompts.system.replace(EXAMPLE_PLACEHOLDER, EXAMPLE_JSON)
+
+
 def _says_not_a_receipt(raw: str) -> bool:
     """True if the answer is a JSON object with `is_receipt: false`, valid or not."""
     try:
@@ -178,7 +189,7 @@ class Extractor:
     def _extract(self, image: bytes, mime: str, started: float) -> ExtractionResult:
         data_url = f"data:{mime};base64,{base64.b64encode(image).decode('ascii')}"
         messages: list[dict[str, Any]] = [
-            {"role": "system", "content": self._prompts.system},
+            {"role": "system", "content": system_prompt(self._prompts)},
             {
                 "role": "user",
                 "content": [

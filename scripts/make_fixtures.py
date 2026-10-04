@@ -39,9 +39,14 @@ class FixtureError(Exception):
 
 @dataclass(frozen=True)
 class Spike:
-    """The spike output's `raw_output`, optionally wrapped in a ```json fence."""
+    """The spike output's `raw_output`, optionally wrapped in a ```json fence.
+
+    `add_payment_method` inserts `"payment_method": null` after `total`: the spike ran
+    before the field existed, and an answer expected to be valid needs every key.
+    """
 
     fenced: bool = False
+    add_payment_method: bool = False
 
 
 @dataclass(frozen=True)
@@ -79,7 +84,9 @@ class Case:
 
 def answer(**fields: object) -> str:
     """A strict answer: every key present, the ones not given null or empty."""
-    nulls = dict.fromkeys(("merchant", "date", "currency", "subtotal", "tax", "total"))
+    nulls = dict.fromkeys(
+        ("merchant", "date", "currency", "subtotal", "tax", "total", "payment_method")
+    )
     data = {"is_receipt": True, **nulls, "line_items": [], "unreadable_fields": []}
     return json.dumps({**data, **fields}, indent=2)
 
@@ -95,6 +102,7 @@ BEISPIEL = answer(
     currency="EUR",
     line_items=[item("BIO EIER 10 STK.", 2.99), item("VOLLMILCH 3,5%", 1.19), item("BROT", 2.49)],
     total=6.67,
+    payment_method="card",
 )
 TRAILING_COMMA = """{
   "is_receipt": true,
@@ -126,20 +134,21 @@ INJECTION = answer(
         item("H-MILCH", 1.09),
     ],
     total=7.39,
+    payment_method="cash",
 )
 
 CASES = [
     Case(
         "valid_receipt",
         "A strict, valid answer.",
-        (Spike(),),
+        (Spike(add_payment_method=True),),
         spike=("strict", "IMG_1557"),
         max_tokens=SPIKE_MAX_TOKENS,
     ),
     Case(
         "valid_receipt_fenced",
         "The valid answer wrapped in a ```json code fence.",
-        (Spike(fenced=True),),
+        (Spike(fenced=True, add_payment_method=True),),
         spike=("strict", "IMG_1557"),
         max_tokens=SPIKE_MAX_TOKENS,
     ),
@@ -186,7 +195,7 @@ CASES = [
     Case(
         "non_receipt_claimed_receipt",
         "A pinboard photo the model calls a receipt and fills with invented data.",
-        (Spike(),),
+        (Spike(add_payment_method=True),),
         spike=("strict", "24C13256-1D52-42BA-A8B0-B52F4E2B26A4"),
         max_tokens=SPIKE_MAX_TOKENS,
     ),
@@ -248,6 +257,33 @@ def fill_missing(previous: str, keys: tuple[str, ...]) -> str:
     return answer(line_items=items, **kept, unreadable_fields=list(keys))
 
 
+PAYMENT_METHOD_NOTE = "; payment_method: null added (recorded before the field existed)"
+# `"total": <number or null>`, with the line's indentation if the JSON is indented.
+# `"subtotal"` can't match: the quote must come right before `total`.
+_TOTAL = re.compile(
+    r'(?P<indent>\n[ \t]*)?"total"[ \t]*:[ \t]*(?:null|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)'
+)
+
+
+def add_payment_method(text: str, name: str) -> str:
+    """Insert `"payment_method": null` right after the top-level `total`, keeping the
+    rest of the model's text (spacing, number format) as it was."""
+    matches = list(_TOTAL.finditer(text))
+    if len(matches) != 1 or '"payment_method"' in text:
+        raise FixtureError(f"{name}: expected one total and no payment_method")
+    match = matches[0]
+    entry = f',{match["indent"] or " "}"payment_method": null'
+    result = text[: match.end()] + entry + text[match.end() :]
+    try:
+        data = json.loads(result)
+    except ValueError as exc:
+        raise FixtureError(f"{name}: payment_method insert broke the JSON") from exc
+    keys = list(data) if isinstance(data, dict) else []
+    if "total" not in keys or keys[keys.index("total") + 1 :][:1] != ["payment_method"]:
+        raise FixtureError(f"{name}: total is not a top-level key")
+    return result
+
+
 def envelope(case: Case, n: int, content: str, usage: dict) -> dict:
     """An OpenAI chat-completion body; cut off when the usage reaches max_tokens."""
     length = usage["completion_tokens"] >= case.max_tokens
@@ -281,6 +317,8 @@ def build(case: Case, folder: Path) -> dict:
             if isinstance(reply, Spike):
                 usage = {key: spike["usage"][key] for key in SYNTHETIC_USAGE}
                 text = redact_text(spike["raw_output"])
+                if reply.add_payment_method:
+                    text = add_payment_method(text, case.name)
                 text = f"```json\n{text}\n```" if reply.fenced else text
             elif isinstance(reply, FillMissing):
                 text, usage = fill_missing(previous, reply.keys), SYNTHETIC_USAGE
@@ -295,6 +333,8 @@ def build(case: Case, folder: Path) -> dict:
     if case.spike:
         variant, image = case.spike
         source = f"spike 2026-10-03 {variant} {image} r1, redacted by app.domain.redaction"
+        if any(isinstance(r, Spike) and r.add_payment_method for r in case.responses):
+            source += PAYMENT_METHOD_NOTE
     return {
         "description": case.description,
         "source": source,

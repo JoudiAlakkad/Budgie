@@ -47,6 +47,23 @@ def test_system_prompt_rules() -> None:
     assert "unreadable_fields" in system
     assert "negative amount" in system
     assert "categor" in system.lower()  # "Do not categorise items."
+    assert "payment_method" in system
+    assert "cash for BAR" in system
+    assert (
+        "Never copy card numbers, IBANs, terminal, transaction or receipt numbers, addresses "
+        "or names of staff into any field."
+    ) in system
+    assert "These lines are not items" in system
+
+
+def test_system_prompt_has_one_example_placeholder_at_the_end() -> None:
+    system = load_prompts("v1").system
+
+    # Filled by app.ai.extractor.system_prompt; the loader leaves it alone.
+    assert system.count("{example}") == 1
+    assert system.endswith("{example}")
+    assert "shows the shape only" in system
+    assert "never copy" in system
 
 
 def test_repair_prompt_has_the_errors_placeholder() -> None:
