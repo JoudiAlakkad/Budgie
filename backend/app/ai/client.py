@@ -5,6 +5,7 @@ reasons never contain message contents, image bytes, model output or the API key
 """
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -28,7 +29,14 @@ UNREADABLE_IMAGE_MESSAGES = (
     "invalid image",
     "unsupported image",
 )
+# Whole words only: `invalid image_url` is a request error, not an undecodable image.
+_UNREADABLE_IMAGE = re.compile(
+    r"(?<!\w)(?:" + "|".join(re.escape(m) for m in UNREADABLE_IMAGE_MESSAGES) + r")(?!\w)",
+    re.IGNORECASE,
+)
 MAX_REASON_MESSAGE = 200
+# Configuration errors: a bad LLM_BASE_URL. Retrying can't help, so they are never retried.
+_CONFIG_ERRORS = (httpx.InvalidURL, httpx.UnsupportedProtocol)
 
 
 @dataclass(frozen=True)
@@ -88,7 +96,8 @@ class LLMClient:
     ) -> ChatCompletion:
         """POST `{base_url}/chat/completions` and return the first choice.
 
-        Retries up to `max_retries` times on timeouts and transport errors only.
+        Retries up to `max_retries` times on timeouts and transport errors only; an
+        invalid base URL or protocol is `LLMError` at once.
         Raises `LLMUnavailable`, `LLMTimeout`, `UnreadableImage` or `LLMError`.
         """
         body: dict[str, Any] = {
@@ -108,19 +117,18 @@ class LLMClient:
                 try:
                     response = client.post(url, json=body)
                     break
+                # UnsupportedProtocol is a TransportError: this clause must come first.
+                except _CONFIG_ERRORS as exc:
+                    name = type(exc).__name__
+                    logger.warning("LLM call failed: invalid model server URL (%s)", name)
+                    # The exception text may quote the URL; the reason names only the type.
+                    raise LLMError(f"invalid model server URL ({name})") from None
                 except (httpx.TimeoutException, httpx.TransportError) as exc:
                     name = type(exc).__name__
                     logger.warning("LLM call attempt %d/%d failed: %s", attempt, attempts, name)
                     if attempt == attempts:
                         raise _transport_error(exc, attempts) from None
-        try:
-            return _parse_response(response, max_tokens)
-        except (LLMError, UnreadableImage) as exc:
-            # A server may echo the Authorization header in its error message.
-            if self.api_key and self.api_key in exc.reason:
-                exc.reason = exc.reason.replace(self.api_key, "[key]")
-                exc.args = (f"{exc.code}: {exc.reason}",)
-            raise
+        return _parse_response(response, max_tokens, self.api_key)
 
 
 def _transport_error(exc: Exception, attempts: int) -> LLMUnavailable | LLMTimeout:
@@ -145,20 +153,21 @@ def _error_message(response: httpx.Response) -> str:
     return response.text
 
 
-def _http_error(response: httpx.Response) -> LLMError | UnreadableImage:
+def _http_error(response: httpx.Response, api_key: str) -> LLMError | UnreadableImage:
     message = _error_message(response)
+    # A server may echo the Authorization header. Scrub before truncating, so a key that
+    # straddles the cut can't leave a prefix behind.
+    if api_key:
+        message = message.replace(api_key, "[key]")
     reason = f"HTTP {response.status_code}: {message[:MAX_REASON_MESSAGE]}"
-    lowered = message.lower()
-    if response.status_code in UNREADABLE_IMAGE_STATUSES and any(
-        fragment in lowered for fragment in UNREADABLE_IMAGE_MESSAGES
-    ):
+    if response.status_code in UNREADABLE_IMAGE_STATUSES and _UNREADABLE_IMAGE.search(message):
         return UnreadableImage(reason)
     return LLMError(reason)
 
 
-def _parse_response(response: httpx.Response, max_tokens: int) -> ChatCompletion:
+def _parse_response(response: httpx.Response, max_tokens: int, api_key: str) -> ChatCompletion:
     if not response.is_success:
-        error = _http_error(response)
+        error = _http_error(response, api_key)
         logger.warning("LLM call failed: HTTP %d", response.status_code)
         raise error
     try:

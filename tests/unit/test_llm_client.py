@@ -278,6 +278,9 @@ def test_broken_envelope_raises_llm_error(response: httpx.Response) -> None:
         (503, "invalid image", LLMError),
         (500, "this model is missing data required for image input", LLMError),
         (400, "bad request", LLMError),
+        (400, "invalid image_url: expected a data URL", LLMError),
+        (400, "unsupported image_url scheme", LLMError),
+        (500, "decode: invalid image.", UnreadableImage),
     ],
 )
 def test_unreadable_image(status: int, message: str, expected: type[Exception]) -> None:
@@ -296,6 +299,56 @@ def test_api_key_never_appears_in_a_reason() -> None:
     with pytest.raises(LLMError) as raised:
         call(client_with(handler, api_key=API_KEY))
     assert API_KEY not in raised.value.reason
+    assert API_KEY not in str(raised.value)
+
+
+@pytest.mark.parametrize("before", [180, 190, 195, 199, 200])
+@pytest.mark.parametrize("error", [LLMError, UnreadableImage])
+def test_api_key_straddling_the_cut_leaves_no_prefix(before: int, error: type) -> None:
+    # Scrubbing after truncation would leave the key's first characters in the reason.
+    tail = " image: unknown format" if error is UnreadableImage else ""
+    echo = {"error": {"message": "x" * before + API_KEY + tail}}
+    handler, _ = recording(httpx.Response(500, json=echo))
+
+    with pytest.raises(error) as raised:
+        call(client_with(handler, api_key=API_KEY))
+    reason = raised.value.reason
+    assert type(raised.value) is error
+    for size in range(4, len(API_KEY) + 1):
+        assert API_KEY[:size] not in reason
+    assert reason.startswith("HTTP 500: " + "x" * min(before, 200))
+
+
+@pytest.mark.parametrize(
+    "exc", [httpx.UnsupportedProtocol, httpx.InvalidURL], ids=["protocol", "url"]
+)
+def test_config_errors_are_llm_error_without_retry(exc: type[Exception]) -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if exc is httpx.InvalidURL:
+            raise httpx.InvalidURL(f"bad url with {API_KEY}")
+        raise exc(f"bad scheme with {API_KEY}", request=request)
+
+    with pytest.raises(LLMError) as raised:
+        call(client_with(handler, api_key=API_KEY, max_retries=3))
+    assert len(seen) == 1
+    assert raised.value.reason == f"invalid model server URL ({exc.__name__})"
+    assert API_KEY not in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    ("base_url", "name"),
+    [("ftp://model-server/v1", "UnsupportedProtocol"), ("http://[::1/v1", "InvalidURL")],
+)
+def test_bad_base_url_without_a_mock_is_llm_error(base_url: str, name: str) -> None:
+    # No transport is given, so httpx itself rejects the URL; nothing leaves the process.
+    client = LLMClient(base_url=base_url, api_key=API_KEY, model="m", timeout=5, max_retries=2)
+
+    with pytest.raises(LLMError) as raised:
+        call(client)
+    assert raised.value.reason == f"invalid model server URL ({name})"
     assert API_KEY not in str(raised.value)
 
 

@@ -1,15 +1,19 @@
 """Redaction rules (decision 0017): each rule, the must-survive negatives, idempotence."""
 
 import json
+import time
 
 import pytest
 
 from app.domain.redaction import (
+    ALL_KINDS,
+    DESCRIPTION_KINDS,
     PLACEHOLDERS,
     RULES,
     Finding,
     find_personal_data,
     luhn_valid,
+    redact_description,
     redact_text,
 )
 
@@ -26,6 +30,7 @@ POSITIVES = [
     ("card_masked", "XXXX XXXX 1234", "[card]"),
     ("card_masked", "#### 1234", "[card]"),
     ("card_masked", "xxxxxxxxxxxx1234", "[card]"),
+    ("card_masked", "MAX ****1234", "MAX [card]"),
     ("email", "info@beispiel-markt.de", "[email]"),
     ("email", "Kontakt: max.muster+bon@example.com", "Kontakt: [email]"),
     ("url", "https://www.beispiel-markt.de/filialen", "[url]"),
@@ -50,6 +55,10 @@ POSITIVES = [
     ("street", "An der Ruhrallee 5", "[address]"),
     ("street", "Kölner Straße 12-14", "[address]"),
     ("street", "MUSTERWEG 7", "[address]"),
+    ("street", "Musterstraße 12a, 44227 Dortmund", "[address], [address]"),
+    ("street", "Hauptstraße 12 44227 Dortmund", "[address] [address]"),
+    ("street", "Hauptstraße 12\n44227 Dortmund", "[address]\n[address]"),
+    ("street", '{"merchant": "Markt, Lindenweg 4"}', '{"merchant": "Markt, [address]"}'),
     ("postcode_city", "44227 Dortmund", "[address]"),
     ("postcode_city", "80331 München", "[address]"),
     ("postcode_city", "01067 DRESDEN", "[address]"),
@@ -98,6 +107,10 @@ NEGATIVES = [
     "14:32",
     "14:32:05",
     "Datum: 17.09.2026 Uhrzeit: 14:32:05",
+    "01-09-2026",
+    "05/10/2026",
+    "Datum 01/09/2026",
+    "02-10-2026 14:32",
     # weights and quantities
     "0,456 kg",
     "1 KG",
@@ -120,6 +133,16 @@ NEGATIVES = [
     "ZWIEBELRING 12 STK",
     "BEDIENUNGSTHEKE",
     "Kassenbon",
+    "Hering 2",
+    "APFELRING 2 x 1,99",
+    "STREUSELRING 1 STK",
+    "Holzweg 2 Stück",
+    "KÖNIGSBERGER PLATZ 2 x 3,49",
+    # counts that look like a postcode and city
+    "10000 BONUSPUNKTE",
+    "12345 Meilen",
+    "50000 Punkte",
+    "25000 Mal",
     # chain names
     "ALDI SÜD",
     "Netto",
@@ -131,7 +154,28 @@ NEGATIVES = [
     "0815",
     "123456",
     "Kasse 14:32",
+    # prices and quantities after an id label
+    "Bon 2.49",
+    "Bon 12.5",
+    "Kasse 2,49",
+    "Bon 1.234,56",
+    "Filiale 2,5 kg",
+    "Filiale 2 kg",
+    "Seriennr. 2026-09-17",
 ]
+
+# Item names that end in a street suffix and a count. The full table can't tell the
+# count from a house number when nothing follows; line items use the description mode.
+ADDRESS_LIKE_ITEMS = [
+    "Hering 2",
+    "APFELRING 2",
+    "STREUSELRING 1",
+    "Holzweg 2",
+    "KÖNIGSBERGER PLATZ 2",
+    "10000 BONUSPUNKTE",
+    "12345 Meilen",
+]
+FULL_MODE_LIMITS = {"APFELRING 2", "STREUSELRING 1", "Holzweg 2", "KÖNIGSBERGER PLATZ 2"}
 
 
 @pytest.mark.parametrize(("kind", "text", "expected"), POSITIVES)
@@ -144,6 +188,66 @@ def test_rule_redacts(kind: str, text: str, expected: str) -> None:
 def test_must_survive(text: str) -> None:
     assert find_personal_data(text) == []
     assert redact_text(text) == text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        pytest.param(
+            text,
+            marks=pytest.mark.xfail(
+                strict=True,
+                reason="full mode can't tell a trailing item count from a house number",
+            ),
+        )
+        if text in FULL_MODE_LIMITS
+        else text
+        for text in ADDRESS_LIKE_ITEMS
+    ],
+)
+def test_address_like_items_survive_the_full_table(text: str) -> None:
+    assert redact_text(text) == text
+
+
+@pytest.mark.parametrize("text", ADDRESS_LIKE_ITEMS + NEGATIVES)
+def test_address_like_items_survive_the_description_mode(text: str) -> None:
+    assert find_personal_data(text, kinds=DESCRIPTION_KINDS) == []
+    assert redact_description(text) == text
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Karte ****4242", "Karte [card]"),
+        ("Terminal-ID: 55501234", "Terminal-ID: [id]"),
+        ("Tel. 0231 9876543", "Tel. [phone]"),
+        ("Es bediente Sie: Erika", "Es bediente Sie: [name]"),
+        ("www.beispiel-markt.de", "[url]"),
+        ("Musterstraße 12a, 44227 Dortmund", "Musterstraße 12a, 44227 Dortmund"),
+    ],
+)
+def test_description_mode_keeps_every_rule_but_addresses(text: str, expected: str) -> None:
+    assert redact_description(text) == expected
+
+
+def test_description_kinds_are_all_but_the_address_rules() -> None:
+    assert {rule.kind for rule in RULES} == ALL_KINDS
+    left_out = ALL_KINDS - DESCRIPTION_KINDS
+    assert left_out == {"street", "postcode_city"}
+
+
+def test_kinds_none_is_the_full_table() -> None:
+    assert redact_text(RECEIPT, kinds=None) == redact_text(RECEIPT)
+    assert redact_text(RECEIPT, kinds=ALL_KINDS) == redact_text(RECEIPT)
+
+
+def test_kinds_select_rules() -> None:
+    assert redact_text("Tel. 0231 9876543 ****4242", kinds={"phone"}) == "Tel. [phone] ****4242"
+
+
+def test_unknown_kind_is_an_error() -> None:
+    with pytest.raises(ValueError, match="addresss"):
+        redact_text("x", kinds={"addresss"})
 
 
 @pytest.mark.parametrize(("kind", "text", "expected"), POSITIVES)
@@ -282,3 +386,78 @@ def test_findings_sorted_and_not_overlapping() -> None:
 def test_earlier_rule_wins_on_overlap() -> None:
     # The url rule also matches the domain, but the e-mail rule comes first.
     assert find_personal_data("an info@example.de") == [Finding("email", 3, 18)]
+
+
+# ---------------------------------------------------------------- run time
+# Receipts print separator lines like `*****` and `-----`. Every rule must stay linear on
+# long runs of one character class: a backtracking rule once took 5.7 s on 40 `*`.
+
+BUDGET_S = 0.5
+RUN = 10_000
+LABELS = (
+    "Terminal-ID Trace-Nr. Beleg Bon Kasse Transaktion TSE-Signatur Kunden-Nr. Filiale AID "
+    "Tel. Fax USt-IdNr. Es bediente Sie Bediener Musterstraße 44227 "
+)
+RUNS = {
+    "*": "*" * RUN,
+    "X": "X" * RUN,
+    "x": "x" * RUN,
+    "#": "#" * RUN,
+    "digits": "1" * RUN,
+    "1234 groups": "1234 " * (RUN // 5),
+    "uppercase": "A" * RUN,
+    "lowercase": "a" * RUN,
+    "-": "-" * RUN,
+    ".": "." * RUN,
+    "a.": "a." * (RUN // 2),
+    "a-": "a-" * (RUN // 2),
+    "spaces": " " * RUN,
+    "label repeated": "Kasse " * (RUN // 6),
+    "every label repeated": LABELS * (RUN // len(LABELS)),
+    "www. x.de": "www." + "x.de " * (RUN // 5),
+    "**** groups": "**** " * (RUN // 5),
+    "label then spaces": "Tel" + " " * RUN + ":" + " " * RUN,
+    "a@": "a@" * (RUN // 2),
+    "word then @": "a" * RUN + "@",
+    "capitalised word": "A" + "a" * RUN + " ",
+    "0-12 groups": "0" + "-12" * (RUN // 3),
+    "postcodes": "12345 " * (RUN // 6),
+}
+SEPARATORS = "*" * 40 + "\n" + "-" * 40 + "\n" + "#" * 40 + "\n" + "X" * 40 + "\n"
+MIXED = (SEPARATORS + RECEIPT + "\n") * (20_000 // len(SEPARATORS + RECEIPT + "\n") + 1)
+
+
+def timed(func, *args) -> float:
+    started = time.perf_counter()
+    func(*args)
+    return time.perf_counter() - started
+
+
+@pytest.mark.parametrize("text", RUNS.values(), ids=RUNS.keys())
+def test_redact_text_is_fast_on_long_runs(text: str) -> None:
+    assert timed(redact_text, text) < BUDGET_S
+
+
+@pytest.mark.parametrize("rule", RULES, ids=[f"{i}-{rule.kind}" for i, rule in enumerate(RULES)])
+def test_every_rule_is_fast_on_long_runs(rule) -> None:
+    slow = {
+        name: seconds
+        for name, text in RUNS.items()
+        if (seconds := timed(lambda t: list(rule.pattern.finditer(t)), text)) >= BUDGET_S
+    }
+    assert slow == {}
+
+
+def test_realistic_mixed_text_is_fast_and_redacted() -> None:
+    assert len(MIXED) >= 20_000
+    assert timed(redact_text, MIXED) < BUDGET_S
+    once = redact_text(MIXED)
+    assert "Musterstraße" not in once and "4242" not in once
+    assert "*" * 40 in once and "#" * 40 in once
+    assert redact_text(once) == once
+
+
+def test_runaway_url_text_is_idempotent() -> None:
+    text = "www." + "x.de " * 1000 + "Tel 0231 1234567 Kasse 3 Bon 4"
+    once = redact_text(text)
+    assert redact_text(once) == once

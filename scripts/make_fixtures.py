@@ -7,13 +7,18 @@ Spike-based cases take a spike output's `raw_output` and `usage`; synthetic case
 written inline below. Every content goes through `app.domain.redaction.redact_text`, and
 the script writes nothing if `find_personal_data` still finds anything, or if a spike
 pattern matches no file or several. The output is deterministic: `--check` writes
-nothing and exits 1 if the files on disk differ from what would be generated.
+nothing and exits 1 if the files on disk differ from what would be generated. Writing
+goes through a temp folder next to `--out`; stale `.json` files are removed, other files
+are kept, and an IO error leaves `--out` unchanged (exit 2).
 """
 
 import argparse
 import json
+import os
 import re
+import shutil
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -338,11 +343,37 @@ def main(argv: list[str] | None = None) -> int:
             print(f"make_fixtures: differs from generated: {name}", file=sys.stderr)
         return 1 if stale else 0
 
-    args.out.mkdir(parents=True, exist_ok=True)
-    for name, text in files.items():
-        (args.out / name).write_text(text, encoding="utf-8")
-    print(f"make_fixtures: wrote {len(files)} files to {args.out}")
+    try:
+        stale = write(args.out, files)
+    except OSError as exc:
+        print(f"make_fixtures: {exc}; {args.out} left unchanged", file=sys.stderr)
+        return 2
+    print(f"make_fixtures: wrote {len(files)} files to {args.out}, removed {len(stale)} stale")
     return 0
+
+
+def write(out: Path, files: dict[str, str]) -> list[str]:
+    """Write `files` into `out` and return the stale `.json` names it removed.
+
+    Every file is written into a temp folder next to `out` first, so an IO error leaves
+    `out` as it was. Then each file is moved in with `os.replace` (atomic per file), and
+    `.json` files no case produces (e.g. from a renamed case) are removed. Other files in
+    `out`, such as a README, are left alone.
+    """
+    out.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(dir=out.parent, prefix=f".{out.name}.tmp-"))
+    try:
+        for name, text in files.items():
+            (staging / name).write_text(text, encoding="utf-8")
+        out.mkdir(exist_ok=True)
+        for name in files:
+            os.replace(staging / name, out / name)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    stale = sorted(path.name for path in out.glob("*.json") if path.name not in files)
+    for name in stale:
+        (out / name).unlink()
+    return stale
 
 
 if __name__ == "__main__":

@@ -1,5 +1,7 @@
 """Shape of a recorded-response fixture written by scripts/make_fixtures.py."""
 
+import re
+
 from app.domain.redaction import find_personal_data
 
 USAGE_KEYS = {"prompt_tokens", "completion_tokens", "total_tokens"}
@@ -56,3 +58,48 @@ def texts(data: dict) -> list[str]:
 def personal_data(data: dict) -> list[str]:
     """The kinds of personal data left in a fixture's texts."""
     return sorted({f.kind for text in texts(data) for f in find_personal_data(text)})
+
+
+# ---------------------------------------------------------------- independent scan
+# `personal_data` uses the redaction rules themselves, so it can only prove that
+# redacting again changes nothing. This scan shares no code with app.domain.redaction:
+# it is deliberately broader, and everything it may see is listed in the allowlist.
+
+# Removed before scanning. Each entry is something the fixtures legitimately hold.
+KNOWN_PLACEHOLDERS = ("[address]", "[card]", "[email]", "[iban]", "[id]", "[name]", "[phone]")
+KNOWN_PLACEHOLDERS += ("[taxid]", "[url]")
+ALLOWLIST = [
+    # placeholders written by the redaction (test_recorded_fixtures checks the list)
+    *(re.escape(placeholder) for placeholder in KNOWN_PLACEHOLDERS),
+    # dates and times: 2026-09-17, 17.09.2026, 14:32(:05)
+    r"\b\d{4}-\d{2}-\d{2}\b",
+    r"\b\d{1,2}\.\d{1,2}\.\d{2,4}\b",
+    r"\b\d{1,2}:\d{2}(?::\d{2})?\b",
+    # prices and amounts as JSON numbers or receipt text: 7.39, -0.25, 1.234,56
+    r"-?\b\d{1,3}(?:\.\d{3})*,\d{2}\b",
+    r"-?\b\d+\.\d{1,2}\b",
+]
+_ALLOWED = re.compile("|".join(f"(?:{pattern})" for pattern in ALLOWLIST))
+
+SUSPICIOUS = {
+    # ids, card or phone numbers. Token counts live in `usage`, which isn't scanned.
+    "5+ digits": r"\d{5,}",
+    "at sign": r"@",
+    "masked digits": r"[*Xx#]{3,}[ -]?\d",
+    "street": r"(?i:str\.|straße|strasse)",
+    # A label alone is fine (the prompts and the redaction keep `Tel. [phone]`); a label
+    # followed by a digit within the same short stretch is not.
+    "contact or tax label with a value": r"(?i:\b(?:Tel|Fax|USt)\b[^\n\"\d\[]{0,20}\d)",
+}
+_SUSPICIOUS = {name: re.compile(pattern) for name, pattern in SUSPICIOUS.items()}
+
+
+def suspicious(text: str) -> list[str]:
+    """Names of the suspicious patterns left in `text` once the allowlist is removed."""
+    rest = _ALLOWED.sub(" ", text)
+    return sorted(name for name, pattern in _SUSPICIOUS.items() if pattern.search(rest))
+
+
+def suspicious_texts(data: dict) -> list[str]:
+    """The suspicious pattern names found in any text of a fixture."""
+    return sorted({name for text in texts(data) for name in suspicious(text)})

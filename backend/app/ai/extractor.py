@@ -68,16 +68,28 @@ def _load_json(raw: str) -> object:
         raise InvalidOutput("The answer is empty.")
     try:
         return json.loads(text)
-    except json.JSONDecodeError as exc:
+    except (ValueError, RecursionError) as exc:
+        # JSONDecodeError is a ValueError; a huge integer raises a plain ValueError and
+        # deep nesting a RecursionError.
         first_error = exc
     start, end = text.find("{"), text.rfind("}")
     if 0 <= start < end:
         try:
             return json.loads(text[start : end + 1])
-        except json.JSONDecodeError:
+        except (ValueError, RecursionError):
             pass
-    # The decoder's message names a position, never the text itself.
-    raise InvalidOutput(f"Invalid JSON: {first_error.msg} at line {first_error.lineno}")
+    raise InvalidOutput(_json_error(first_error))
+
+
+def _json_error(exc: Exception) -> str:
+    """Describe a decoding failure without quoting the text."""
+    if isinstance(exc, json.JSONDecodeError):
+        # The decoder's message names a position, never the text itself.
+        return f"Invalid JSON: {exc.msg} at line {exc.lineno}"
+    if isinstance(exc, RecursionError):
+        return "Invalid JSON: nested too deeply"
+    # e.g. an integer with more digits than int() accepts.
+    return "Invalid JSON: a value can't be decoded (a number may have too many digits)"
 
 
 def _validation_lines(exc: ValidationError) -> str:

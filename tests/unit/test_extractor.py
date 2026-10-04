@@ -1,12 +1,15 @@
 """The extractor against every recorded response, through a real `LLMClient`."""
 
+import ast
 import base64
 import json
 import logging
+from pathlib import Path
 
 import httpx
 import pytest
 
+import app.ai
 from app.ai.client import LLMClient
 from app.ai.extractor import ExtractionResult, Extractor, InvalidOutput, parse_output
 from app.ai.prompts import load_prompts
@@ -112,6 +115,47 @@ def test_parse_output_rejects(raw: str, expected: str) -> None:
     with pytest.raises(InvalidOutput) as raised:
         parse_output(raw)
     assert expected in raised.value.reason
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ('{"is_receipt": true, "total": ' + "7" * 5000 + "}", "too many digits"),
+        ("[" * 100_000 + "]" * 100_000, "nested too deeply"),
+        ('{"a": ' * 100_000 + "1" + "}" * 100_000, "nested too deeply"),
+    ],
+    ids=["huge integer", "deep list", "deep object"],
+)
+def test_undecodable_json_is_invalid_output(raw: str, expected: str) -> None:
+    with pytest.raises(InvalidOutput) as raised:
+        parse_output(raw)
+    assert raised.value.reason.startswith("Invalid JSON: ")
+    assert expected in raised.value.reason
+    assert "7777" not in raised.value.reason
+
+
+def test_undecodable_json_gets_one_repair_then_malformed() -> None:
+    huge = '{"is_receipt": true, "total": ' + "7" * 5000 + "}"
+    deep = "[" * 100_000 + "]" * 100_000
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        content = huge if len(seen) == 1 else deep
+        return httpx.Response(200, json=completion(content))
+
+    with pytest.raises(MalformedOutput) as raised:
+        make_extractor(httpx.MockTransport(handler)).extract(IMAGE, "image/jpeg")
+    assert len(seen) == 2
+    assert "too many digits" in body(seen[1])["messages"][-1]["content"]
+    assert raised.value.reason == "Invalid after one repair: Invalid JSON: nested too deeply"
+
+
+def completion(content: str) -> dict:
+    return {
+        "choices": [{"index": 0, "message": {"content": content}, "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
+    }
 
 
 def test_validation_errors_leave_out_input_values() -> None:
@@ -333,18 +377,70 @@ def test_cut_off_repair_is_malformed() -> None:
     assert "cut off" in raised.value.reason
 
 
-def test_logs_contain_no_prompt_output_or_image(caplog: pytest.LogCaptureFixture) -> None:
-    caplog.set_level(logging.DEBUG)
-    for name in EXPECTED:
-        run_case(name)
+# Every log template the AI layer may emit. A new template has to be added here, after
+# checking that its arguments are codes, counts, durations or exception type names.
+ALLOWED_TEMPLATES = {
+    "Extraction failed: %s after %.1f s (prompt %s)",
+    "Extraction ok after %.1f s (prompt %s, repaired %s)",
+    "LLM call attempt %d/%d failed: %s",
+    "LLM call failed: HTTP %d",
+    "LLM call failed: invalid model server URL (%s)",
+    "LLM ping failed: %s",
+}
+MIN_DISTINCTIVE = 6  # shorter values ("BROT", "ALDI") could appear by chance
 
-    logged = "\n".join(record.getMessage() for record in caplog.records)
-    assert IMAGE_B64 not in logged
-    assert PROMPTS.system[:40] not in logged
-    assert PROMPTS.user not in logged
-    for name in EXPECTED:
-        case = load_case(name)
-        for response in case["responses"]:
-            if response["status_code"] == 200:
-                content = response["body"]["choices"][0]["message"]["content"]
-                assert content.strip()[:40] not in logged
+
+def distinctive_values(case: dict) -> set[str]:
+    """Values from a case that must never reach a log: answers, merchants, items, errors."""
+    values = {IMAGE_B64, PROMPTS.system.splitlines()[0], PROMPTS.user.strip(), PROMPTS.repair}
+    for response in case["responses"]:
+        if response["status_code"] != 200:
+            values.add(response["body"]["error"]["message"])
+            continue
+        content = response["body"]["choices"][0]["message"]["content"]
+        values.add(content.strip())
+        try:
+            data = json.loads(content.strip().removeprefix("```json").removesuffix("```"))
+        except ValueError:
+            continue
+        if isinstance(data, dict):
+            values.add(str(data.get("merchant") or ""))
+            for entry in data.get("line_items") or []:
+                if isinstance(entry, dict):
+                    values.add(str(entry.get("description") or ""))
+    return {value for value in values if len(value) >= MIN_DISTINCTIVE}
+
+
+def test_every_log_call_in_the_ai_layer_uses_an_allowed_template() -> None:
+    ai_dir = Path(app.ai.__file__).parent
+    templates = set()
+    for path in ai_dir.rglob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "logger"
+            ):
+                first = node.args[0]
+                assert isinstance(first, ast.Constant), f"{path.name}:{node.lineno}"
+                templates.add(first.value)
+    assert templates == ALLOWED_TEMPLATES
+
+
+@pytest.mark.parametrize("name", EXPECTED, ids=EXPECTED.keys())
+def test_logs_contain_no_prompt_output_or_image(
+    caplog: pytest.LogCaptureFixture, name: str
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    run_case(name)
+
+    values = distinctive_values(load_case(name))
+    assert IMAGE_B64 in values and len(values) >= 4
+    assert caplog.records, "the extractor logs its outcome"
+    for record in caplog.records:
+        message = record.getMessage()
+        for value in values:
+            assert value not in message, f"{record.name} logged a value from {name}"
+        if record.name.startswith("app."):
+            assert record.msg in ALLOWED_TEMPLATES

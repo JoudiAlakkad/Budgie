@@ -8,7 +8,7 @@ from types import ModuleType
 
 import pytest
 
-from tests.unit.fixture_shape import assert_fixture_shape, personal_data
+from tests.unit.fixture_shape import assert_fixture_shape, personal_data, suspicious_texts
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "make_fixtures.py"
 STAMP = "20261003T090000Z"
@@ -126,6 +126,7 @@ def test_writes_every_case_in_shape(script: ModuleType, spike_dir: Path, tmp_pat
         data = load(out, case)
         assert_fixture_shape(case, data)
         assert personal_data(data) == []
+        assert suspicious_texts(data) == []
 
 
 @pytest.mark.parametrize(
@@ -232,6 +233,53 @@ def test_ambiguous_spike_pattern_writes_nothing(
     out = tmp_path / "out"
     assert run(script, spike_dir, out) != 0
     assert not out.exists()
+
+
+def test_write_removes_stale_json_and_keeps_other_files(
+    script: ModuleType, spike_dir: Path, tmp_path: Path
+) -> None:
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "renamed_case.json").write_text("{}\n", encoding="utf-8")
+    (out / "README.md").write_text("notes\n", encoding="utf-8")
+    (out / "valid_receipt.json").write_text("old\n", encoding="utf-8")
+
+    assert run(script, spike_dir, out) == 0
+
+    assert {path.stem for path in out.glob("*.json")} == CASES
+    assert (out / "README.md").read_text(encoding="utf-8") == "notes\n"
+    assert (out / "valid_receipt.json").read_text(encoding="utf-8") != "old\n"
+    assert run(script, spike_dir, out, "--check") == 0
+    assert [path.name for path in tmp_path.iterdir() if path.name.startswith(".")] == []
+
+
+def test_io_error_leaves_the_folder_unchanged(
+    script: ModuleType,
+    spike_dir: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "renamed_case.json").write_text("{}\n", encoding="utf-8")
+    (out / "not_a_receipt.json").write_text("old\n", encoding="utf-8")
+    before = {path.name: path.read_bytes() for path in out.iterdir()}
+    real_write_text = Path.write_text
+    calls = []
+
+    def failing_write_text(self: Path, *args, **kwargs) -> int:
+        calls.append(self)
+        if len(calls) == 3:
+            raise OSError(28, "No space left on device")
+        return real_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", failing_write_text)
+
+    assert run(script, spike_dir, out) == 2
+
+    monkeypatch.undo()
+    assert {path.name: path.read_bytes() for path in out.iterdir()} == before
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["out", "spike"]
 
 
 def test_personal_data_left_writes_nothing(

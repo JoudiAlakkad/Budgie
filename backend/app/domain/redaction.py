@@ -5,10 +5,20 @@ labelled ids and cashier names. Earlier rules win on overlap. Rules with a `valu
 keep their label and replace only the value. Placeholders never match a rule, so
 redaction is idempotent. Rules see JSON escapes decoded, and no match crosses a `"` or
 splits an escape, so redacting a JSON document keeps it valid.
+
+Two modes:
+- the full table (`redact_text(text)`) for `merchant` and the raw model output;
+- the description mode (`redact_description(text)`, i.e. `kinds=DESCRIPTION_KINDS`) for
+  line-item descriptions. It leaves out the `street` and `postcode_city` rules: a
+  description holds card and payment lines, never an address, and item names such as
+  `APFELRING 2` or `10000 BONUSPUNKTE` look like addresses to those rules.
+
+Every rule runs in linear time: no repeat can split its input in more than one way.
 """
 
 import re
-from collections.abc import Callable
+from bisect import bisect_left
+from collections.abc import Callable, Collection
 from dataclasses import dataclass
 
 Check = Callable[[str], bool]
@@ -64,44 +74,61 @@ _ID_LABEL = (
     r"|Seriennr\.?|Signatur|Kunden-?Nr\.?|Kundennummer|Karten-?Nr\.?|Kartennummer|AID"
     r"|Genehmigung(?:s-?Nr\.?)?|Autorisierung|VU-?Nr\.?|Filiale|Fil\.?-?Nr\.?)"
 )
-_NOT_CITY = r"(?!(?i:EUR|Euro|STK|Stück|KG|Uhr|Datum|Zeit|Punkte)\b|" + _ID_LABEL + r"\b)"
+# Words after a five-digit number that make it a count, not a postcode and city.
+_NOT_CITY_WORD = (
+    r"(?i:EUR|Euro|STK|Stck|Stück|KG|Uhr|Datum|Zeit|Mal|Pkt|Bonus|Gramm|Liter|Pack(?:ung)?"
+    r"|Artikel|Rabatt|Gutschein|Coupon|Prozent|kcal|[\w-]*?(?:punkte|meilen|points|coins|sterne))"
+)
+_NOT_CITY = r"(?!" + _NOT_CITY_WORD + r"\b|" + _ID_LABEL + r"\b)"
+# Every repeat below has one way to split its input: possessive runs (`*+`, `++`) or a
+# mandatory separator, so no rule backtracks exponentially or quadratically.
+_GAP = r"\.?[ ]*+:?[ ]*+"  # between a label and its value
 _PHONE = (
     r"(?:\+\d{1,3}[ ]?(?:\(0\)[ ]?)?|\(?0)\d{1,%(lead)s}\)?(?:[ /-]{1,2}\d{2,}){%(groups)s}"
     r"(?![\d.,:])"
 )
-_PHONE_LABEL = r"(?i:\b(?:Tel(?:efon)?|Fon|Fax|Mobil|Phone)\b\.?[ ]*:?[ ]*)"
+_PHONE_LABEL = r"(?i:\b(?:Tel(?:efon)?|Fon|Fax|Mobil|Phone)\b" + _GAP + ")"
 # A label allows an unseparated number; without one, a separator or `+` is required.
 _PHONE_LABELLED = _PHONE_LABEL + "(?P<value>" + _PHONE % {"lead": 14, "groups": "0,4"} + ")"
-_PHONE_BARE = r"(?<![\w.,/:+-])" + _PHONE % {"lead": 5, "groups": "1,4"}
+_DATE_SHAPE = r"\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}(?!\d)"  # 01-09-2026, 05/10/2026
+_PHONE_BARE = r"(?<![\w.,/:+-])(?!" + _DATE_SHAPE + ")" + _PHONE % {"lead": 5, "groups": "1,4"}
 _TAXID_LABEL = (
-    r"(?i:\b(?:USt-?Id(?:-?Nr)?|USt-?ID|UID|St\.?-?Nr|Steuer-?(?:nummer|nr))\b\.?[ ]*:?[ ]*)"
+    r"(?i:\b(?:USt-?Id(?:-?Nr)?|USt-?ID|UID|St\.?-?Nr|Steuer-?(?:nummer|nr))\b" + _GAP + ")"
 )
 _URL_TAIL = r"[^\s\"'<>\\]*[^\s\"'<>\\.,;:)]"
 _TLD = r"(?i:de|com|net|org|eu|info|shop|io|at|ch|biz)"
 _DOMAIN = (
-    r"(?<![\w.@-])[A-Za-z0-9][\w-]*(?:\.[\w-]+)*\." + _TLD + r"\b(?!\.\w)(?:/" + _URL_TAIL + ")?"
+    r"(?<![\w.@-])[A-Za-z0-9][\w-]*+(?:\.[\w-]++)*\." + _TLD + r"\b(?!\.\w)(?:/" + _URL_TAIL + ")?"
 )
 _STREET = (
-    r"(?<![\w-])(?:(?i:am|an der|an den|auf dem|auf der|im|in der|zum|zur)[ ]+)?"
-    r"(?:[A-ZÄÖÜ][\w-]*?|[A-ZÄÖÜ][\w-]*[ ](?=[A-ZÄÖÜ]))"
-    r"(?i:stra(?:ße|sse)|str\.|weg|platz|allee|gasse|ring|damm|ufer)[ ]*"
+    r"(?<![\w-])(?:(?i:am|an der|an den|auf dem|auf der|im|in der|zum|zur)[ ]++)?"
+    # a stem of three or more characters, so `Hering` is no street
+    r"(?:[A-ZÄÖÜ][\w-]{2,}?|[A-ZÄÖÜ][\w-]*+[ ](?=[A-ZÄÖÜ]))"
+    r"(?i:stra(?:ße|sse)|str\.|weg|platz|allee|gasse|ring|damm|ufer)[ ]*+"
     # house number (12, 12a, 12-14), not a price, weight or count
     r"\d{1,4}[a-zA-Z]?(?:[ ]?[-/][ ]?\d{1,4}[a-zA-Z]?)?(?!\w|[,.:]\d)"
     r"(?![ ]?(?i:stk|kg|g|x|l|ml)\b|[ ]?%)"
+    # ... and then the end of the line, text or JSON string, a comma, or a postcode
+    r"(?=[ \t]*+(?:[\r\n\",]|\Z|\d{5}(?!\d)))"
 )
 _POSTCODE_CITY = (
-    r"(?<![\w.,/])\d{5}[ ]+" + _NOT_CITY + r"(?:[A-ZÄÖÜ][a-zäöüß]+|[A-ZÄÖÜ]{3,})\b"
+    r"(?<![\w.,/])\d{5}[ ]++" + _NOT_CITY + r"(?:[A-ZÄÖÜ][a-zäöüß]+|[A-ZÄÖÜ]{3,})\b"
     r"(?:-[A-ZÄÖÜ][\wäöüß]+|[ ](?:am|an der|a\.)[ ][A-ZÄÖÜ][\wäöüß]+)?"
 )
-# The value is not a date, price or time, holds a digit, and may go on with digit tokens.
+# The value is not a date, price (either decimal separator), time or quantity with a
+# unit; it holds a digit and may go on with digit tokens. The token is atomic, so the
+# checks after it can't be dodged by giving characters back.
 _LABELLED_ID = (
-    r"\b" + _ID_LABEL + r"(?![\w-])\.?[ ]*(?:[:#]|(?i:Nr)\.?:?)?[ ]*"
-    r"(?P<value>(?!\d{1,2}\.\d{1,2}\.\d{2,4}\b|\d+,\d{2}\b|\d{1,2}:\d{2})"
-    r"(?=[\w/.+=-]*\d)[\w/.+=-]*[\w=](?:[ ]\d[\d/-]*(?=\s|\"|\\|$))*)"
+    r"\b" + _ID_LABEL + r"(?![\w-])\.?[ ]*+(?:[:#]|(?i:Nr)\.?:?)?[ ]*+"
+    r"(?P<value>(?!\d{1,2}\.\d{1,2}\.\d{2,4}\b|\d{4}-\d{2}-\d{2}\b"
+    r"|\d+[.,]\d{1,2}\b(?![.,]\d)|\d{1,2}:\d{2})"
+    r"(?=[\w/.+=-]*\d)(?>[\w/.+=-]*[\w=])"
+    r"(?!,\d|[ ]?(?:(?i:kg|g|l|ml|stk|stück|x)\b|%))"
+    r"(?:[ ]\d[\d/-]*+(?=\s|\"|\\|$))*+)"
 )
 _CASHIER = (
     r"(?i:\b(?:Es[ ]bediente[ ]Sie|Kassierer(?:\(in\)|in)?|Bediener(?:in)?|Bedienung))(?!\w)"
-    r"[ ]*:?[ ]*(?P<value>(?!" + _ID_LABEL + r"\b)[A-ZÄÖÜ][\wäöüß-]*"
+    r"[ ]*+:?[ ]*+(?P<value>(?!" + _ID_LABEL + r"\b)[A-ZÄÖÜ][\wäöüß-]*+"
     r"(?:[ ](?!" + _ID_LABEL + r"\b)[A-ZÄÖÜ](?:\.|[a-zäöüß]+\b))?)"
 )
 
@@ -113,8 +140,14 @@ def _rule(kind: str, pattern: str, placeholder: str, check: Check | None = None)
 RULES: tuple[Rule, ...] = (
     _rule("iban", r"\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){2,7}(?:[ ]?[A-Z0-9]{1,3})?\b", "[iban]"),
     _rule("card", r"(?<![\w.,])\d{4,6}(?:[ -]?\d{4,6}){1,3}(?![\w]|[.,]\d)", "[card]", _is_card),
-    _rule("card_masked", r"(?<![\w*#])[*Xx#]{4,}(?:[ -]?[*Xx#]{2,})*[ -]?\d{2,4}(?!\d)", "[card]"),
-    _rule("email", r"[\w.+-]+@[\w-]+(?:\.[\w-]+)*\.[A-Za-z]{2,}\b", "[email]"),
+    _rule(
+        "card_masked",
+        # A mask run starts only at the start of the run, never after a `**** ` group
+        # (two mask characters, so `MAX ****1234` still matches).
+        r"(?<![\w*#])(?<![*Xx#]{2}[ -])[*Xx#]{4,}+(?:[ -][*Xx#]{2,}+)*+[ -]?\d{2,4}(?!\d)",
+        "[card]",
+    ),
+    _rule("email", r"(?<![\w.+-])[\w.+-]++@[\w-]++(?:\.[\w-]++)*\.[A-Za-z]{2,}\b", "[email]"),
     _rule("url", r"(?i:https?://|www\.)" + _URL_TAIL, "[url]"),
     _rule("url", _DOMAIN, "[url]"),
     _rule("phone", _PHONE_LABELLED, "[phone]", _is_phone),
@@ -129,6 +162,9 @@ RULES: tuple[Rule, ...] = (
 
 PLACEHOLDERS: frozenset[str] = frozenset(rule.placeholder for rule in RULES)
 _PLACEHOLDER = {rule.kind: rule.placeholder for rule in RULES}
+ALL_KINDS: frozenset[str] = frozenset(_PLACEHOLDER)
+ADDRESS_KINDS: frozenset[str] = frozenset({"street", "postcode_city"})
+DESCRIPTION_KINDS: frozenset[str] = ALL_KINDS - ADDRESS_KINDS
 
 _ESCAPE = re.compile(r"\\(?:u[0-9a-fA-F]{4}|[\"\\/bfnrt])")
 _DECODED = {"b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t"}
@@ -155,27 +191,52 @@ def _unescape(text: str) -> tuple[str, list[int]]:
     return "".join(chars), offsets
 
 
-def find_personal_data(text: str) -> list[Finding]:
-    """Return the personal-data spans in `text`, sorted by start and never overlapping."""
+def _selected(kinds: Collection[str] | None) -> tuple[Rule, ...]:
+    if kinds is None:
+        return RULES
+    if unknown := set(kinds) - ALL_KINDS:
+        raise ValueError(f"unknown redaction kinds: {sorted(unknown)}")
+    return tuple(rule for rule in RULES if rule.kind in kinds)
+
+
+def find_personal_data(text: str, *, kinds: Collection[str] | None = None) -> list[Finding]:
+    """Return the personal-data spans in `text`, sorted by start and never overlapping.
+
+    `kinds` limits the rule table to those kinds (default: every rule); an unknown kind
+    raises `ValueError`.
+    """
     scan, offsets = _unescape(text)
+    # The spans taken so far, sorted by start; they never overlap, so the ends are sorted too.
+    starts: list[int] = []
     taken: list[Finding] = []
-    for rule in RULES:
+    for rule in _selected(kinds):
+        group = "value" if "value" in rule.pattern.groupindex else 0
         for match in rule.pattern.finditer(scan):
-            group = "value" if "value" in rule.pattern.groupindex else 0
             start, end = match.span(group)
             if rule.check and not rule.check(match.group(group)):
                 continue
-            if all(end <= f.start or f.end <= start for f in taken):
-                taken.append(Finding(rule.kind, start, end))
-    found = (Finding(f.kind, offsets[f.start], offsets[f.end]) for f in taken)
-    return sorted(found, key=lambda f: f.start)
+            i = bisect_left(starts, start)
+            if (i > 0 and taken[i - 1].end > start) or (i < len(taken) and taken[i].start < end):
+                continue
+            starts.insert(i, start)
+            taken.insert(i, Finding(rule.kind, start, end))
+    return [Finding(f.kind, offsets[f.start], offsets[f.end]) for f in taken]
 
 
-def redact_text(text: str) -> str:
-    """Replace every finding with its typed placeholder. Idempotent."""
+def redact_text(text: str, *, kinds: Collection[str] | None = None) -> str:
+    """Replace every finding with its typed placeholder. Idempotent.
+
+    `kinds=None` runs the full table (merchant, raw model output). Pass a subset, e.g.
+    `DESCRIPTION_KINDS`, to redact one field with fewer rules.
+    """
     parts: list[str] = []
     last = 0
-    for finding in find_personal_data(text):
+    for finding in find_personal_data(text, kinds=kinds):
         parts += [text[last : finding.start], _PLACEHOLDER[finding.kind]]
         last = finding.end
     return "".join(parts) + text[last:]
+
+
+def redact_description(text: str) -> str:
+    """Redact a line-item description: every rule except `street` and `postcode_city`."""
+    return redact_text(text, kinds=DESCRIPTION_KINDS)
