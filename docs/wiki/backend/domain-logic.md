@@ -55,7 +55,16 @@ The thresholds are constants in the module, listed here once they're fixed.
 
 ## `redaction.py` (F3)
 The safety net for personal data in the three places where the model writes free text: `merchant`, item descriptions and the stored raw output ([0017](../decisions/0017-personal-data-is-redacted-by-code.md)). The first line of defence is the schema: fixed keys, enums for `payment_method` and `unreadable_fields`, and no field for card or address data.
-- **Rules** (ordered, each in linear time). Growth tests guard this: each long run is timed at 12.5k and 50k characters, best of 3, and must grow less than 8× for the 4× input (linear is about 4×, quadratic about 16×). There is a 5 ms floor and a 5 s cap per call (`tests/unit/timing.py`). The runs include labels joined by `/` `.` `=` `-` and IBAN-shaped groups.
+- **Bounded input:** `redact_text`, `clean_merchant` and `find_personal_data` look at no more than `MAX_TEXT_CHARS` = 65,536 characters, far above model output capped by `LLM_MAX_TOKENS` (about 8–10 KB). The F05 pipeline must know that a stored raw output ending in ` [truncated]` is no longer valid JSON. A longer text:
+  - is cut at the limit, or earlier if the cut would split a JSON escape, a card number or an IBAN (that number's trailing run of up to 43 characters is dropped whole, so it can't leak half-redacted)
+  - gets the suffix ` [truncated]`
+  - nothing after the cut is returned or searched
+- **Idempotence with the limit:** placeholders count as one character towards it, because redaction can make a text longer (`Bon.1,` → `Bon.[id],`). A text that already ends in the suffix keeps it, so a second pass never cuts again.
+- **Slow-regex guard:** a fixed-size test. Every hostile run is built at exactly 65,536 characters, and `redact_text`, `clean_merchant` and every rule's `finditer` must finish each one, run once, under `SLOW_S` = 2 s.
+  - The runs: each character class, digit groups, IBAN-shaped and masked groups, labels joined by `/` `.` `=` `-` with and without `1 kg`, a full receipt, and a long merchant line.
+  - The linear rules take at most about 70 ms (IBAN-shaped groups), about 30× below the limit.
+  - An exponential rule passes the limit after a few dozen characters: a child-process test shows the old `card_masked` pattern doing so on 44 `*`.
+- **Rules** (ordered, each linear):
 - `_fit_iban` stops walking groups once the length passes the country's IBAN length (or 34).
 - Rules:
   - `iban` → `[iban]`: an IBAN that passes the ISO 13616 **mod-97 checksum** (`iban_checksum_valid`, computed digit by digit).
