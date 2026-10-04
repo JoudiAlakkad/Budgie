@@ -352,6 +352,34 @@ def test_bad_base_url_without_a_mock_is_llm_error(base_url: str, name: str) -> N
     assert API_KEY not in str(raised.value)
 
 
+def test_undecodable_body_is_llm_error_without_retry() -> None:
+    # A 200 that claims gzip but isn't: httpx raises DecodingError while reading the body.
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, headers={"Content-Encoding": "gzip"}, content=b"not gzip")
+
+    with pytest.raises(LLMError) as raised:
+        call(client_with(handler, max_retries=3))
+    assert len(seen) == 1
+    assert raised.value.reason == "request failed (DecodingError)"
+
+
+def test_redirect_loop_is_llm_error_without_retry() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        raise httpx.TooManyRedirects(f"loop with {API_KEY}", request=request)
+
+    with pytest.raises(LLMError) as raised:
+        call(client_with(handler, api_key=API_KEY, max_retries=3))
+    assert len(seen) == 1
+    assert raised.value.reason == "request failed (TooManyRedirects)"
+    assert API_KEY not in str(raised.value)
+
+
 @pytest.mark.parametrize("exc", [httpx.ReadTimeout, httpx.ConnectError])
 def test_api_key_not_in_transport_error_reason(exc: type[Exception]) -> None:
     handler, _ = recording(exc)

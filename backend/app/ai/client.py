@@ -129,6 +129,12 @@ class LLMClient:
                     logger.warning("LLM call attempt %d/%d failed: %s", attempt, attempts, name)
                     if attempt == attempts:
                         raise _transport_error(exc, attempts) from None
+                # Any other request error (e.g. DecodingError on a broken gzip body,
+                # TooManyRedirects) is the server's fault and won't heal on a retry.
+                except httpx.RequestError as exc:
+                    name = type(exc).__name__
+                    logger.warning("LLM call failed: %s", name)
+                    raise LLMError(f"request failed ({name})") from None
         return _parse_response(response, max_tokens, self.api_key)
 
 

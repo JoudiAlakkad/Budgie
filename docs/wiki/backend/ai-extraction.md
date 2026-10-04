@@ -13,6 +13,7 @@ This is planned for F3 and F5. The model choice is explained in [0004](../decisi
   - a non-2xx response raises `UnreadableImage` if its status is 400/415/422/500 and the error message names an image decode error (`image: unknown format`, `illegal base64`, `failed to decode/load image`, `invalid image`, `unsupported image`); any other non-2xx raises `LLMError`. Ollama 0.35.1 answers a broken image with `400` and `Failed to load image or audio file` (captured 2026-10-04, now the `http_unreadable_image` fixture). The other fragments cover other servers. The list stays conservative: a wrong `llm_error` still offers Retry, while a wrong `unreadable_image` would take it away.
   - a 2xx response with a broken envelope raises `LLMError`
   - an invalid `LLM_BASE_URL` (`InvalidURL`, `UnsupportedProtocol`) raises `LLMError` at once, without a retry
+  - any other request error, e.g. a body that claims gzip but isn't (`DecodingError`) or a redirect loop (`TooManyRedirects`), raises `LLMError`, without a retry. So `chat_completion` raises only `ExtractionError`s.
   - image error messages are matched on whole words, so `invalid image_url` is `llm_error`
 - It retries at most `LLM_MAX_RETRIES` times, and only on timeouts or connection errors. Non-2xx responses are never retried.
 - Error reasons never contain the API key: a server echo is replaced with `[key]` before the reason is cut to 200 characters. Logs carry only the exception type, never message contents.

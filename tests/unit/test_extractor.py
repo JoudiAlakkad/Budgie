@@ -492,6 +492,7 @@ ALLOWED_TEMPLATES = {
     "LLM call attempt %d/%d failed: %s",
     "LLM call failed: HTTP %d",
     "LLM call failed: invalid model server URL (%s)",
+    "LLM call failed: %s",
     "LLM ping failed: %s",
 }
 MIN_DISTINCTIVE = 6  # shorter values ("BROT", "ALDI") could appear by chance
