@@ -35,6 +35,8 @@ The first version of that code was a broad regex table: addresses, URLs, phone n
   - header text the model copies into `merchant` stays in the stored raw output, unless F05 also replaces it there
   - the part of an e-mail address before the `@` can survive in `merchant`
   - a label glued into a rejected value isn't seen (`Kasse-Bon 1234`)
+  - an id value without any digit isn't redacted, e.g. a TSE signature like `abc+/==` (real ones almost always contain digits)
+  - IBANs in lowercase, or with groups that aren't 4 characters or separators other than one space, aren't caught
 - If a future schema field adds free text, this decision has to be revisited for that field.
 - The uploaded image is still stored unredacted. It stays local and is deleted with its receipt ([persistence](../backend/persistence.md)).
 - The stored raw output is no longer exactly what the model said. The placeholders show where text was removed.
