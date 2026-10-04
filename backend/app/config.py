@@ -15,10 +15,10 @@ class Settings(BaseSettings):
     llm_model: str = "gemma3:4b"
     # SecretStr keeps the key out of repr() and logs; read it with get_secret_value().
     llm_api_key: SecretStr = SecretStr("ollama")
-    llm_timeout_s: float = 120
+    llm_timeout_s: float = 180
     llm_max_retries: int = 1
     llm_temperature: float = 0
-    llm_max_tokens: int = 1024
+    llm_max_tokens: int = 2048
     prompt_version: str = "v1"
 
     database_url: str = "sqlite:///./data/budgie.db"

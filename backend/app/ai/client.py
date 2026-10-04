@@ -1,12 +1,45 @@
-"""Minimal client for an OpenAI-compatible model server. F03 adds chat completions."""
+"""Client for an OpenAI-compatible model server (docs/wiki/backend/ai-extraction.md).
+
+`chat_completion` maps every failure to a typed `ExtractionError`. Logs and error
+reasons never contain message contents, image bytes, model output or the API key.
+"""
 
 import logging
+from dataclasses import dataclass
+from typing import Any
 
 import httpx
+
+from app.errors import LLMError, LLMTimeout, LLMUnavailable, UnreadableImage
 
 logger = logging.getLogger(__name__)
 
 PING_TIMEOUT_S = 2.0
+CONNECT_TIMEOUT_S = 10.0
+
+# Statuses and message fragments with which servers report an image they can't decode
+# (Ollama answers 500 "image: unknown format"; others use 400, 415 or 422).
+UNREADABLE_IMAGE_STATUSES = frozenset({400, 415, 422, 500})
+UNREADABLE_IMAGE_MESSAGES = (
+    "image: unknown format",
+    "illegal base64",
+    "failed to decode image",
+    "failed to load image",
+    "invalid image",
+    "unsupported image",
+)
+MAX_REASON_MESSAGE = 200
+
+
+@dataclass(frozen=True)
+class ChatCompletion:
+    """The parts of a chat completion the extractor needs."""
+
+    content: str | None
+    finish_reason: str | None
+    prompt_tokens: int | None
+    completion_tokens: int | None
+    cut_off: bool
 
 
 class LLMClient:
@@ -19,14 +52,16 @@ class LLMClient:
         model: str,
         timeout: float,
         transport: httpx.BaseTransport | None = None,
+        max_retries: int = 1,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model = model
         self.timeout = timeout
+        self.max_retries = max(0, max_retries)
         self._transport = transport
 
-    def _client(self, timeout: float) -> httpx.Client:
+    def _client(self, timeout: float | httpx.Timeout) -> httpx.Client:
         return httpx.Client(
             headers={"Authorization": f"Bearer {self.api_key}"},
             timeout=timeout,
@@ -42,3 +77,114 @@ class LLMClient:
         except Exception as exc:  # health must never fail because of the model server
             logger.debug("LLM ping failed: %s", type(exc).__name__)
             return False
+
+    def chat_completion(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        temperature: float,
+        max_tokens: int,
+        response_format: dict[str, Any] | None = None,
+    ) -> ChatCompletion:
+        """POST `{base_url}/chat/completions` and return the first choice.
+
+        Retries up to `max_retries` times on timeouts and transport errors only.
+        Raises `LLMUnavailable`, `LLMTimeout`, `UnreadableImage` or `LLMError`.
+        """
+        body: dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        if response_format is not None:
+            body["response_format"] = response_format
+
+        url = f"{self.base_url}/chat/completions"
+        timeout = httpx.Timeout(self.timeout, connect=min(CONNECT_TIMEOUT_S, self.timeout))
+        attempts = 1 + self.max_retries
+        with self._client(timeout) as client:
+            for attempt in range(1, attempts + 1):
+                try:
+                    response = client.post(url, json=body)
+                    break
+                except (httpx.TimeoutException, httpx.TransportError) as exc:
+                    name = type(exc).__name__
+                    logger.warning("LLM call attempt %d/%d failed: %s", attempt, attempts, name)
+                    if attempt == attempts:
+                        raise _transport_error(exc, attempts) from None
+        try:
+            return _parse_response(response, max_tokens)
+        except (LLMError, UnreadableImage) as exc:
+            # A server may echo the Authorization header in its error message.
+            if self.api_key and self.api_key in exc.reason:
+                exc.reason = exc.reason.replace(self.api_key, "[key]")
+                exc.args = (f"{exc.code}: {exc.reason}",)
+            raise
+
+
+def _transport_error(exc: Exception, attempts: int) -> LLMUnavailable | LLMTimeout:
+    reason = f"{type(exc).__name__} after {attempts} attempt(s)"
+    # A connect timeout means the server isn't reachable, not that the model is slow.
+    if isinstance(exc, httpx.ConnectTimeout) or not isinstance(exc, httpx.TimeoutException):
+        return LLMUnavailable(reason)
+    return LLMTimeout(reason)
+
+
+def _error_message(response: httpx.Response) -> str:
+    try:
+        body = response.json()
+    except ValueError:
+        return response.text
+    if isinstance(body, dict):
+        error = body.get("error")
+        if isinstance(error, dict) and isinstance(error.get("message"), str):
+            return error["message"]
+        if isinstance(error, str):
+            return error
+    return response.text
+
+
+def _http_error(response: httpx.Response) -> LLMError | UnreadableImage:
+    message = _error_message(response)
+    reason = f"HTTP {response.status_code}: {message[:MAX_REASON_MESSAGE]}"
+    lowered = message.lower()
+    if response.status_code in UNREADABLE_IMAGE_STATUSES and any(
+        fragment in lowered for fragment in UNREADABLE_IMAGE_MESSAGES
+    ):
+        return UnreadableImage(reason)
+    return LLMError(reason)
+
+
+def _parse_response(response: httpx.Response, max_tokens: int) -> ChatCompletion:
+    if not response.is_success:
+        error = _http_error(response)
+        logger.warning("LLM call failed: HTTP %d", response.status_code)
+        raise error
+    try:
+        payload = response.json()
+        choice = payload["choices"][0]
+        content = choice["message"]["content"]
+        if content is not None and not isinstance(content, str):
+            raise TypeError("content is not a string")
+        finish_reason = choice.get("finish_reason")
+        usage = payload.get("usage") or {}
+        prompt_tokens = _int_or_none(usage.get("prompt_tokens"))
+        completion_tokens = _int_or_none(usage.get("completion_tokens"))
+    except (ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
+        reason = f"HTTP {response.status_code}: broken envelope ({type(exc).__name__})"
+        raise LLMError(reason) from None
+    cut_off = finish_reason == "length" or (
+        completion_tokens is not None and completion_tokens >= max_tokens
+    )
+    return ChatCompletion(
+        content=content,
+        finish_reason=finish_reason if isinstance(finish_reason, str) else None,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        cut_off=cut_off,
+    )
+
+
+def _int_or_none(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None

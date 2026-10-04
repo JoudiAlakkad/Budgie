@@ -10,6 +10,8 @@ from threading import Lock
 from fastapi import Depends
 
 from app.ai.client import LLMClient
+from app.ai.extractor import Extractor
+from app.ai.prompts import load_prompts
 from app.config import Settings, get_settings
 from app.db.session import Database
 
@@ -49,4 +51,18 @@ def get_llm_client(settings: Settings = Depends(get_settings)) -> LLMClient:
         api_key=settings.llm_api_key.get_secret_value(),
         model=settings.llm_model,
         timeout=settings.llm_timeout_s,
+        max_retries=settings.llm_max_retries,
+    )
+
+
+def get_extractor(
+    settings: Settings = Depends(get_settings),
+    client: LLMClient = Depends(get_llm_client),
+) -> Extractor:
+    """The receipt extractor for `PROMPT_VERSION`; the pipeline (F05) will use it."""
+    return Extractor(
+        client,
+        load_prompts(settings.prompt_version),
+        temperature=settings.llm_temperature,
+        max_tokens=settings.llm_max_tokens,
     )

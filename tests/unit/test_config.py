@@ -3,17 +3,19 @@
 import pytest
 from pydantic import SecretStr
 
+from app.ai.client import ChatCompletion
 from app.config import Settings
-from app.services.dependencies import get_llm_client
+from app.errors import NotAReceipt
+from app.services.dependencies import get_extractor, get_llm_client
 
 DEFAULTS = {
     "llm_base_url": "http://localhost:11434/v1",
     "llm_model": "gemma3:4b",
     "llm_api_key": "ollama",
-    "llm_timeout_s": 120,
+    "llm_timeout_s": 180,
     "llm_max_retries": 1,
     "llm_temperature": 0,
-    "llm_max_tokens": 1024,
+    "llm_max_tokens": 2048,
     "prompt_version": "v1",
     "database_url": "sqlite:///./data/budgie.db",
     "upload_dir": "./data/uploads",
@@ -46,7 +48,7 @@ OVERRIDES = [
     ("LLM_TIMEOUT_S", "30", "llm_timeout_s", 30),
     ("LLM_MAX_RETRIES", "3", "llm_max_retries", 3),
     ("LLM_TEMPERATURE", "0.2", "llm_temperature", 0.2),
-    ("LLM_MAX_TOKENS", "2048", "llm_max_tokens", 2048),
+    ("LLM_MAX_TOKENS", "4096", "llm_max_tokens", 4096),
     ("PROMPT_VERSION", "v2", "prompt_version", "v2"),
     ("DATABASE_URL", "sqlite:////data/budgie.db", "database_url", "sqlite:////data/budgie.db"),
     ("UPLOAD_DIR", "/data/uploads", "upload_dir", "/data/uploads"),
@@ -82,3 +84,31 @@ def test_llm_client_gets_the_plain_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LLM_API_KEY", "sk-test-not-a-real-key")
 
     assert get_llm_client(Settings(_env_file=None)).api_key == "sk-test-not-a-real-key"
+
+
+def test_llm_client_gets_the_retry_setting(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_MAX_RETRIES", "3")
+
+    assert get_llm_client(Settings(_env_file=None)).max_retries == 3
+
+
+def test_extractor_uses_the_llm_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_TEMPERATURE", "0.2")
+    monkeypatch.setenv("LLM_MAX_TOKENS", "4096")
+    settings = Settings(_env_file=None)
+
+    sent: list[dict] = []
+
+    class RecordingClient:
+        model = "gemma3:4b"
+
+        def chat_completion(self, messages: list[dict], **kwargs: object) -> ChatCompletion:
+            sent.append(kwargs)
+            return ChatCompletion('{"is_receipt": false}', "stop", 1, 1, cut_off=False)
+
+    extractor = get_extractor(settings, RecordingClient())  # type: ignore[arg-type]
+    with pytest.raises(NotAReceipt):
+        extractor.extract(b"img", "image/jpeg")
+
+    assert (extractor.model, extractor.prompt_version) == ("gemma3:4b", "v1")
+    assert (sent[0]["temperature"], sent[0]["max_tokens"]) == (0.2, 4096)
