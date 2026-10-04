@@ -23,7 +23,8 @@ tests/                     # at the repo root: unit/, api/, integration/ (-m int
 
 At the repo root: Makefile (install, check, run, openapi, docker-check),
 Dockerfile, .github/workflows/ci.yml, scripts/docker-health-check.sh,
-scripts/make_fixtures.py (generates the redacted recorded responses, decision 0017).
+scripts/make_fixtures.py (generates the redacted recorded responses, decision 0017) and
+scripts/fixture_scan.py (independent privacy scan, used by the generator and the tests).
 ```
 
 ## Dependency direction

@@ -13,12 +13,12 @@ install:
 	$(PY) -m pip install -e "./backend[dev]"
 
 lint:
-	$(VENV)/bin/ruff check --config $(CONFIG) backend tests
-	$(VENV)/bin/ruff format --check --config $(CONFIG) backend tests
+	$(VENV)/bin/ruff check --config $(CONFIG) backend tests scripts
+	$(VENV)/bin/ruff format --check --config $(CONFIG) backend tests scripts
 
 format:
-	$(VENV)/bin/ruff check --fix --config $(CONFIG) backend tests
-	$(VENV)/bin/ruff format --config $(CONFIG) backend tests
+	$(VENV)/bin/ruff check --fix --config $(CONFIG) backend tests scripts
+	$(VENV)/bin/ruff format --config $(CONFIG) backend tests scripts
 
 test:
 	$(PY) -m pytest -c $(CONFIG) --rootdir . -m "not integration" --cov=app --cov-report=term-missing tests

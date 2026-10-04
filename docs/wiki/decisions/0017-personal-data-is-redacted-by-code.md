@@ -18,14 +18,14 @@ The first version of that code was a broad regex table: addresses, URLs, phone n
   | Field | Handling |
   |---|---|
   | item descriptions | `redact_text`: IBAN, card number (Luhn), masked card digits, labelled ids |
-  | `merchant` | `clean_merchant`: first line, cut at a postcode, phone number, URL or `@`; then `redact_text` |
+  | `merchant` | `clean_merchant`: the first of up to three non-blank lines that keeps text after the cut at a postcode, phone number, URL or `@`; then `redact_text` |
   | raw model output | `redact_text` |
 
 - **Production:** the pipeline (F05) applies these before storing. Raw model output, prompts and image bytes are never logged.
 - **Fixtures:**
   - `scripts/make_fixtures.py` generates `tests/fixtures/recorded_responses/` deterministically. It reads only strict-schema spike outputs and makes every other case synthetic.
-  - It refuses to write if a rule still matches.
-  - An independent, broader pytest scan checks every committed fixture.
+  - It refuses to write if a rule still matches or the independent scan flags a text.
+  - The independent, broader scan (`scripts/fixture_scan.py`) runs in the generator and in pytest on every committed fixture.
 - **Evaluation (F11):** committed evaluation material goes through the same module.
 
 ## Consequences
@@ -34,6 +34,7 @@ The first version of that code was a broad regex table: addresses, URLs, phone n
 - **Known gaps:**
   - header text the model copies into `merchant` stays in the stored raw output, unless F05 also replaces it there
   - the part of an e-mail address before the `@` can survive in `merchant`
+  - a label glued into a rejected value isn't seen (`Kasse-Bon 1234`)
 - If a future schema field adds free text, this decision has to be revisited for that field.
 - The uploaded image is still stored unredacted. It stays local and is deleted with its receipt ([persistence](../backend/persistence.md)).
 - The stored raw output is no longer exactly what the model said. The placeholders show where text was removed.

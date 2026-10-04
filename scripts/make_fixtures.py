@@ -431,9 +431,7 @@ def render(spike_dir: Path) -> dict[str, str]:
 
 def render_synthetic() -> dict[str, str]:
     """File name -> file text for the cases that read no spike output."""
-    return {
-        f"{case.name}.json": file_text(build(case, None)) for case in CASES if not case.spike
-    }
+    return {f"{case.name}.json": file_text(build(case, None)) for case in CASES if not case.spike}
 
 
 def differences(out: Path, files: dict[str, str]) -> list[str]:

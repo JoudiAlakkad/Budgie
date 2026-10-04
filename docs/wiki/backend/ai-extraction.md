@@ -34,14 +34,16 @@ This is planned for F3 and F5. The model choice is explained in [0004](../decisi
   - output cut off at `max_tokens` is `malformed_output`
   - `is_receipt` alone is not enough: the model said `true` for a photo of a pinboard in every run, and the strict schema made it invent a full receipt. The split, decided at the start of F03: the extractor (F03) raises `NotAReceipt` only for `is_receipt=false`. The second signal is the plausibility rule on missing merchant, total and items, a pure domain rule built in F04 and applied by the pipeline in F05. There is no separate classification call; F11 can still compare one. Either signal makes the receipt `failed` with `not_a_receipt` ([0015](../decisions/0015-non-receipt-is-a-failure-with-retry-or-manual-entry.md))
 - **Schema types:** `date` and `currency` are plain strings and amounts are `float`. They are what the model transcribed (e.g. `currency: "€"`); F04 parses and normalises them. **The Pydantic models are the single source:**
-  - `RESPONSE_SCHEMA` is generated from them by `response_schema()` and flattened to the form the spike tested on Ollama: type arrays, `null` inside an `enum`, no `$ref`/`$defs`/`anyOf`/`title`, and `additionalProperties: false`.
+  - `RESPONSE_SCHEMA` is generated from them by `response_schema()` and flattened: type arrays, `null` inside an `enum`, no `$ref`/`$defs`/`anyOf`/`title`, and `additionalProperties: false`.
+  - The spike's strict schema used only type arrays and required nullable keys. The nullable enum, `additionalProperties: false` and `maxItems` are new in F03 and **unverified against Ollama** until the live integration test runs. `uniqueItems` is left out for the same reason.
+  - `unreadable_fields` has `maxItems: 8`, one per value key, so the model can't repeat values until the token limit. A longer list fails validation and gets the repair.
   - Every field has a short description, which goes into the schema the model sees.
   - A golden test spells out the whole schema.
 - **Example answer:** `EXAMPLE_OUTPUT` is a synthetic `ReceiptExtraction` ("Beispiel Markt", a `2 x 0,95` line, a deposit return, paid by card). `extractor.system_prompt` puts it into the `{example}` placeholder at the end of `system.txt`, which says to copy the shape only, never the values.
 - **Parsing:**
   1. if the output is cut off, raise `MalformedOutput` without a repair attempt
-  2. strip code fences, then `json.loads` (falling back to the slice from the first `{` to the last `}`), then validate with Pydantic
-  3. if the answer has `is_receipt: false`, raise `NotAReceipt`, even when the rest is invalid, without a repair attempt
+  2. strip code fences (in linear time, `strip_fence`), then `json.loads` (falling back to the slice from the first `{` to the last `}`), then validate with Pydantic
+  3. if either answer has `is_receipt: false`, raise `NotAReceipt`, even when the rest is invalid: for the first answer without a repair attempt, and for the repair answer instead of `MalformedOutput`
   4. on any other failure, send one repair turn: the first answer, then `repair.txt` with the validation errors. The image is sent again, so the model can fill in missing fields. The errors never quote the model's text.
   5. if that fails too, raise `MalformedOutput`, keeping the raw text of both attempts
   - JSON that can't be decoded at all (a huge integer, deep nesting) counts as invalid, so it gets the repair and then `malformed_output`
@@ -60,9 +62,9 @@ This is planned for F3 and F5. The model choice is explained in [0004](../decisi
 | Output cut off at `LLM_MAX_TOKENS` | no repair (it would be cut off again), `failed` with `error=malformed_output`, raw output kept |
 | Not a receipt | `is_receipt=false` or the plausibility rule: `failed` with `error=not_a_receipt` ([0015](../decisions/0015-non-receipt-is-a-failure-with-retry-or-manual-entry.md)) |
 | Input can't be processed | wrong type or too large: `422 unsupported_file` / `413 file_too_large` at upload; the model server can't decode it: `failed` with `error=unreadable_image` |
+| DB read/write error | `500 storage_error`, logged; `/health` shows `db: error` |
 
 Every failed receipt offers **Enter manually**, and all but `unreadable_image` also offer **Retry** ([error-format](../contracts/error-format.md#receipt-error-codes)).
-| DB read/write error | `500 storage_error`, logged; `/health` shows `db: error` |
 
 ## Tests
 - Recorded responses in `tests/fixtures/recorded_responses/`: valid, malformed then repaired, malformed twice, cut off at the token limit, missing fields, `is_receipt=false`, `is_receipt=true` on a non-receipt (from the spike), an injection attempt.
