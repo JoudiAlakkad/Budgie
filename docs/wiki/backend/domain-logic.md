@@ -55,8 +55,12 @@ The thresholds are constants in the module, listed here once they're fixed.
 
 ## `redaction.py` (F3)
 The safety net for personal data in the three places where the model writes free text: `merchant`, item descriptions and the stored raw output ([0017](../decisions/0017-personal-data-is-redacted-by-code.md)). The first line of defence is the schema: fixed keys, enums for `payment_method` and `unreadable_fields`, and no field for card or address data.
-- **Rules** (ordered, each in linear time; timing tests on 200k-character runs guard this, including labels joined by `/` `.` `=` `-`):
-  - `iban` → `[iban]`
+- **Rules** (ordered, each in linear time; timing tests on 200k-character runs guard this, including labels joined by `/` `.` `=` `-` and IBAN-shaped groups):
+  - `iban` → `[iban]`: an IBAN that passes the ISO 13616 **mod-97 checksum** (`iban_checksum_valid`, computed digit by digit).
+    - Shape: 2 uppercase letters and 2 check digits, then one compact run or groups of 4 after exactly one space, 15–34 characters in all. For the common countries the length must also match `IBAN_LENGTHS` (DE 22, AT 20, CH 21, NL 18, FR 27, GB 22, …).
+    - The regex is a bounded lookahead, and `_fit_iban` judges it in Python. It drops trailing groups that aren't part of the IBAN (`AT61 … 3201 BANK` → `[iban] BANK`). A rejected candidate doesn't hide an IBAN that starts inside it.
+    - Not matched: lowercase IBANs, and separators other than one ASCII space.
+  - `iban_masked` → `[iban]`: the country code and check digits, then at least 4 mask characters (`*`, `X`, `x`, `#`) and a shown digit at the end (`DE89 **** **** **** **30 00`, `DE89****3000`). It has no checksum to check.
   - `card`: a 13–19 digit run, Luhn-valid and not a valid EAN-13 → `[card]`
   - `card_masked`: `****1234`, `XXXX XXXX 1234`, … → `[card]`
   - `labelled_id`: terminal, trace, receipt, till, transaction, TSE, customer or card number and similar labels. The label stays and the value becomes `[id]`.
@@ -71,7 +75,7 @@ The safety net for personal data in the three places where the model writes free
   3. strip trailing punctuation
   4. return `None` if nothing is left, otherwise the `redact_text` result
 - **F05 applies it:** `clean_merchant` to `merchant`, and `redact_text` to the descriptions and the raw output.
-- **Must survive:** prices, dates, times, quantities, weights, EAN codes, item names (including `APFELRING 2` and `Holzweg 2`) and chain names.
+- **Must survive:** prices, dates, times, quantities, weights, EAN codes, item names (including `APFELRING 2`, `Holzweg 2`, and uppercase names that look like the start of an IBAN, such as `PC24 BLAUBEEREN`, `XL12 HANDTUCH` or `GR12 TOMATEN 500G`), IBAN-shaped strings with a wrong checksum, and chain names.
 - **Why only these rules:** the address, URL, phone, tax-id and cashier rules were written for the spike's base schema, where `unreadable_fields` was free text. Once the schema closed that field, they mostly hit item names (`Hering 2` → `[address]`), and one of them hung on a line of `*` (catastrophic backtracking). They were removed.
 - **Known limits:**
   - In a merchant like `Markt | info@markt.example`, the part before the `@` survives the cut, and `Shop @ Home` becomes `Shop`.
@@ -87,5 +91,5 @@ The safety net for personal data in the three places where the model writes free
 - **Synthetic cases** build without a spike folder (`render_synthetic`), and a test compares them byte for byte with the committed files.
 - **Writing:** every file is written into a temp folder, then moved in with `os.replace` (atomic per file), and stale `.json` files are removed.
 - **Exit codes:** 2, writing nothing, on a missing or ambiguous spike file, on personal data left after redaction, on a hit of the independent scan, or on a write error. 1 when `--check` finds a difference.
-- **Second check:** `scripts/fixture_scan.py` is an independent, broader scan that shares no code with `redaction.py`. It flags 5+ digit runs, `@`, masked digits, streets with or without a house number, `Am`/`An der`/`Im <Name> <n>`, URLs and bare domains, phone-like digit groups, and `Tel`/`Telefon`/`Fon`/`Fax`/`USt` with a value. The generator runs it and refuses to write on a hit, and the tests run it on every committed fixture. It also flags item names like `APFELRING 2`, so a future fixture with one needs an allowlist entry.
+- **Second check:** `scripts/fixture_scan.py` is an independent, broader scan that shares no code with `redaction.py`. It flags 5+ digit runs, `@`, masked digits, streets with or without a house number, `Am`/`An der`/`Im <Name> <n>`, URLs and bare domains, phone-like digit groups, and `Tel`/`Telefon`/`Fon`/`Fax`/`USt` with a value. The generator runs it and refuses to write on a hit, and the tests run it on every committed fixture. It also flags item names like `APFELRING 2`, so a future fixture with one needs an allowlist entry. It catches compact masked IBANs (`DE89****3000`) but not the spaced form; `iban_masked` redacts both before the scan runs.
 - `make lint` covers `scripts/`, which became shared code in F3.

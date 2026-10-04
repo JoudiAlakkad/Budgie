@@ -7,7 +7,7 @@ Receipts carry personal data that Budgie doesn't need: store addresses, masked c
 
 F03 first built its test fixtures by having a general-purpose agent anonymise the spike outputs by hand. That was rejected: in production there is no agent to anonymise receipts, and a hand edit can't be repeated or checked. If the app needs anonymisation, it has to be code that the app and the tooling share.
 
-The first version of that code was a broad regex table: addresses, URLs, phone numbers, tax ids, cashier names, cards, ids. The review found that one rule hung on a line of `*` (catastrophic backtracking), and that the address rules redacted item names (`Hering 2` → `[address]`). Most of those rules only guarded against a free-text field the schema no longer has.
+The first version of that code was a broad regex table: addresses, URLs, phone numbers, tax ids, cashier names, cards, ids. The review found that one rule hung on a line of `*` (catastrophic backtracking), and that the address rules redacted item names (`Hering 2` → `[address]`). Most of those rules only guarded against a free-text field the schema no longer has. A later `/code-review` found that the IBAN rule had no checksum, so uppercase item names like `PC24 BLAUBEEREN` became `[iban]`. Like the card rule with Luhn, it now requires the checksum.
 
 ## Decision
 - **First line of defence: the schema** ([ai-extraction](../backend/ai-extraction.md)).
@@ -17,7 +17,7 @@ The first version of that code was a broad regex table: addresses, URLs, phone n
 
   | Field | Handling |
   |---|---|
-  | item descriptions | `redact_text`: IBAN, card number (Luhn), masked card digits, labelled ids |
+  | item descriptions | `redact_text`: IBAN (mod-97 checksum), masked IBAN, card number (Luhn), masked card digits, labelled ids |
   | `merchant` | `clean_merchant`: the first of up to three non-blank lines that keeps text after the cut at a postcode, phone number, URL or `@`; then `redact_text` |
   | raw model output | `redact_text` |
 
