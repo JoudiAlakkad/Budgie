@@ -2,7 +2,7 @@
 and `clean_merchant`."""
 
 import json
-import time
+from collections.abc import Callable
 
 import pytest
 
@@ -16,6 +16,7 @@ from app.domain.redaction import (
     luhn_valid,
     redact_text,
 )
+from tests.unit.timing import assert_linear
 
 # (rule kind, input, expected output)
 POSITIVES = [
@@ -406,8 +407,8 @@ def test_iban_checksum(iban: str, valid: bool) -> None:
 
 
 def test_iban_checksum_is_linear_on_a_long_input() -> None:
-    # Digit by digit, no big integer: a million digits stay within a few budgets.
-    assert timed(iban_checksum_valid, "DE00" + "9" * 1_000_000) < 5 * BUDGET_S
+    # Digit by digit, no big integer, so the cost grows with the number of digits.
+    assert_linear(iban_checksum_valid, lambda size: "DE00" + "9" * size, (100_000, 400_000))
 
 
 def test_luhn_invalid_card_number_survives() -> None:
@@ -507,10 +508,17 @@ def test_clean_merchant_is_idempotent(text: str | None, expected: str | None) ->
 # ---------------------------------------------------------------- run time
 # Receipts print separator lines like `*****` and `-----`. Every rule must stay linear on
 # long runs of one character class: a backtracking rule once took 5.7 s on 40 `*`.
+#
+# These tests assert growth, not wall-clock time (`tests/unit/timing.py`): each input is
+# built at 12.5k and 50k characters, and the time may grow at most 8x for the 4x input.
+# Linear code grows about 4x, a quadratic rule 16x (and takes seconds at 50k).
 
-BUDGET_S = 0.5
-RUN = 10_000
-LONG = 28_000  # repetitions: about 200k characters, where a quadratic rule takes seconds
+
+def run(chunk: str, prefix: str = "", suffix: str = "") -> Callable[[int], str]:
+    """An input of at least `size` characters: `chunk` repeated between `prefix` and `suffix`."""
+    return lambda size: prefix + chunk * -(-size // len(chunk)) + suffix
+
+
 ID_LABELS = [
     "Terminal-ID",
     "Trace-Nr",
@@ -535,107 +543,101 @@ LABELS = (
     "Terminal-ID Trace-Nr. Beleg Bon Kasse Transaktion TSE-Signatur Kunden-Nr. Filiale AID "
     "Tel. Fax USt-IdNr. Es bediente Sie Bediener Musterstraße 44227 "
 )
-RUNS = {
-    "*": "*" * RUN,
-    "X": "X" * RUN,
-    "x": "x" * RUN,
-    "#": "#" * RUN,
-    "digits": "1" * RUN,
-    "1234 groups": "1234 " * (RUN // 5),
-    "12345a groups": "12345a" * (RUN // 6),
-    "1 2 3 4 5 groups": "1 2 3 4 5 a " * (RUN // 12),
-    "uppercase": "A" * RUN,
-    "lowercase": "a" * RUN,
-    "-": "-" * RUN,
-    ".": "." * RUN,
-    "a.": "a." * (RUN // 2),
-    "a-": "a-" * (RUN // 2),
-    "spaces": " " * RUN,
-    "punctuation": " ,;:-–|/" * (RUN // 8),
-    "label repeated": "Kasse " * (RUN // 6),
-    "every label repeated": LABELS * (RUN // len(LABELS)),
-    "www. x.de": "www." + "x.de " * (RUN // 5),
-    "**** groups": "**** " * (RUN // 5),
-    "label then spaces": "Tel" + " " * RUN + ":" + " " * RUN,
-    "a@": "a@" * (RUN // 2),
-    "word then @": "a" * RUN + "@",
-    "capitalised word": "A" + "a" * RUN + " ",
-    "0-12 groups": "0" + "-12" * (RUN // 3),
-    "postcodes": "12345 " * (RUN // 6),
-    "label, digit groups, a unit": "Kasse " + "1 " * RUN + "kg",
+RUNS: dict[str, Callable[[int], str]] = {
+    "*": run("*"),
+    "X": run("X"),
+    "x": run("x"),
+    "#": run("#"),
+    "digits": run("1"),
+    "1234 groups": run("1234 "),
+    "12345a groups": run("12345a"),
+    "1 2 3 4 5 groups": run("1 2 3 4 5 a "),
+    "uppercase": run("A"),
+    "lowercase": run("a"),
+    "-": run("-"),
+    ".": run("."),
+    "a.": run("a."),
+    "a-": run("a-"),
+    "spaces": run(" "),
+    "punctuation": run(" ,;:-–|/"),
+    "label repeated": run("Kasse "),
+    "every label repeated": run(LABELS),
+    "www. x.de": run("x.de ", prefix="www."),
+    "**** groups": run("**** "),
+    "label then spaces": lambda size: "Tel" + " " * (size // 2) + ":" + " " * (size // 2),
+    "a@": run("a@"),
+    "word then @": run("a", suffix="@"),
+    "capitalised word": run("a", prefix="A", suffix=" "),
+    "0-12 groups": run("-12", prefix="0"),
+    "postcodes": run("12345 "),
+    "label, digit groups, a unit": run("1 ", prefix="Kasse ", suffix="kg"),
     # IBAN-shaped runs: every word start is a candidate the checksum has to judge
-    "DE89 groups": "DE89 " * (RUN // 5),
-    "AB12CDEF": "AB12CDEF" * (RUN // 8),
-    "AB12 CDEF groups": "AB12 CDEF " * (RUN // 10),
-    "DE89 0000 groups": "DE89 0000 " * (RUN // 10),
-    "uppercase and digit groups": "AB12 " + "C3D4 " * (RUN // 5),
-    "masked IBAN groups": "DE89 " + "**** " * (RUN // 5) + "30",
-    "DE89XXXX": "DE89" + "X" * RUN + "3000",
-    "valid IBAN repeated": "DE89 3704 0044 0532 0130 00 " * (RUN // 28),
-    # the same at about 200k characters
-    **{
-        f"{chunk!r} x {LONG * 7 // len(chunk)}": chunk * (LONG * 7 // len(chunk))
-        for chunk in ("DE89 ", "AB12CDEF", "GB82 WEST ", "AB12 C3D4 ", "DE89****")
-    },
-    # Inputs that took 2.3 s at 28k repetitions when a lookahead scanned ahead of the
+    "DE89 groups": run("DE89 "),
+    "AB12CDEF": run("AB12CDEF"),
+    "AB12 CDEF groups": run("AB12 CDEF "),
+    "GB82 WEST groups": run("GB82 WEST "),
+    "AB12 C3D4 groups": run("AB12 C3D4 "),
+    "DE89****": run("DE89****"),
+    "DE89 0000 groups": run("DE89 0000 "),
+    "uppercase and digit groups": run("C3D4 ", prefix="AB12 "),
+    "masked IBAN groups": run("**** ", prefix="DE89 ", suffix="30"),
+    "DE89XXXX": run("X", prefix="DE89", suffix="3000"),
+    "valid IBAN repeated": run("DE89 3704 0044 0532 0130 00 "),
+    # Inputs that took 2.3 s at 200k characters when a lookahead scanned ahead of the
     # value run: the label repeated without spaces, so one value run holds every label.
     **{
-        f"{label!r} x {LONG}{end}": label * LONG + end
+        f"{label!r} repeated{end}": run(label, suffix=end)
         for label in ("Bon-Nr.", "Kasse.", "AID.", "Filiale=", "TID/", "TID-")
         for end in ("", "1 kg")
     },
     **{
-        f"labels joined by {joint!r}{end}": (joint.join(ID_LABELS) + joint)
-        * (LONG * 7 // len(joint.join(ID_LABELS)))
-        + end
+        f"labels joined by {joint!r}{end}": run(joint.join(ID_LABELS) + joint, suffix=end)
         for joint in "/.=-"
         for end in ("", "1 kg")
     },
 }
 SEPARATORS = "*" * 40 + "\n" + "-" * 40 + "\n" + "#" * 40 + "\n" + "X" * 40 + "\n"
-MIXED = (SEPARATORS + RECEIPT + "\n") * (20_000 // len(SEPARATORS + RECEIPT + "\n") + 1)
+# Separator lines and a full receipt, over and over.
+MIXED = run(SEPARATORS + RECEIPT + "\n")
 # One long merchant line: the store name, then a header that never hits a cut.
-MERCHANT_LINE = ("Markt " + "Filiale 1234 " + "*" * 20 + " 1234 " + " ,;:-|/ ") * (20_000 // 52)
+MERCHANT_LINE = run("Filiale 1234 " + "*" * 20 + " 1234 " + " ,;:-|/ ", prefix="Markt ")
 
 
-def timed(func, *args) -> float:
-    started = time.perf_counter()
-    func(*args)
-    return time.perf_counter() - started
-
-
-@pytest.mark.parametrize("text", RUNS.values(), ids=RUNS.keys())
-def test_redact_text_is_fast_on_long_runs(text: str) -> None:
-    assert timed(redact_text, text) < BUDGET_S
+@pytest.mark.parametrize("make_text", RUNS.values(), ids=RUNS.keys())
+def test_redact_text_is_linear_on_long_runs(make_text: Callable[[int], str]) -> None:
+    assert_linear(redact_text, make_text)
 
 
 @pytest.mark.parametrize("rule", RULES, ids=[f"{i}-{rule.kind}" for i, rule in enumerate(RULES)])
-def test_every_rule_is_fast_on_long_runs(rule) -> None:
-    slow = {
-        name: seconds
-        for name, text in RUNS.items()
-        if (seconds := timed(lambda t: list(rule.pattern.finditer(t)), text)) >= BUDGET_S
-    }
-    assert slow == {}
+def test_every_rule_is_linear_on_long_runs(rule) -> None:
+    failures = {}
+    for name, make_text in RUNS.items():
+        try:
+            assert_linear(lambda text: list(rule.pattern.finditer(text)), make_text)
+        except AssertionError as exc:
+            failures[name] = str(exc).splitlines()[0]
+    assert failures == {}
 
 
-@pytest.mark.parametrize("text", RUNS.values(), ids=RUNS.keys())
-def test_clean_merchant_is_fast_on_long_runs(text: str) -> None:
-    assert timed(clean_merchant, text) < BUDGET_S
+@pytest.mark.parametrize("make_text", RUNS.values(), ids=RUNS.keys())
+def test_clean_merchant_is_linear_on_long_runs(make_text: Callable[[int], str]) -> None:
+    assert_linear(clean_merchant, make_text)
 
 
-def test_clean_merchant_is_fast_on_a_20_kb_line() -> None:
-    assert len(MERCHANT_LINE) >= 20_000 and "\n" not in MERCHANT_LINE
-    assert timed(clean_merchant, MERCHANT_LINE) < BUDGET_S
-    cleaned = clean_merchant(MERCHANT_LINE)
+def test_clean_merchant_is_linear_on_a_long_line() -> None:
+    line = MERCHANT_LINE(20_000)
+    assert len(line) >= 20_000 and "\n" not in line
+    cleaned = clean_merchant(line)
     assert cleaned and cleaned.startswith("Markt Filiale [id]") and "1234" not in cleaned
-    assert timed(clean_merchant, MIXED) < BUDGET_S
+    assert_linear(clean_merchant, MERCHANT_LINE)
+    assert_linear(clean_merchant, MIXED)
 
 
-def test_realistic_mixed_text_is_fast_and_redacted() -> None:
-    assert len(MIXED) >= 20_000
-    assert timed(redact_text, MIXED) < BUDGET_S
-    once = redact_text(MIXED)
+def test_realistic_mixed_text_is_linear_and_redacted() -> None:
+    text = MIXED(20_000)
+    assert len(text) >= 20_000
+    assert_linear(redact_text, MIXED)
+    once = redact_text(text)
     assert "4242" not in once and "55501234" not in once
     assert "*" * 40 in once and "#" * 40 in once
     assert redact_text(once) == once

@@ -4,7 +4,6 @@ import ast
 import base64
 import json
 import logging
-import time
 from pathlib import Path
 
 import httpx
@@ -31,6 +30,7 @@ from app.errors import (
     UnreadableImage,
 )
 from tests.recorded import case_names, load_case, replay
+from tests.unit.timing import assert_linear
 
 IMAGE = b"\xff\xd8\xff\xe0fake-jpeg-bytes\x00\x01"
 IMAGE_B64 = base64.b64encode(IMAGE).decode("ascii")
@@ -177,24 +177,26 @@ def test_strip_fence(raw: str, expected: str) -> None:
     assert strip_fence(raw) == expected
 
 
-FENCE_BUDGET_S = 0.5
 WHITESPACE_RUNS = {
-    "spaces inside": "{" + " " * 200_000 + "}",
-    "spaces before a fence": "{}" + " " * 200_000 + "```",
-    "newlines inside a fence": "```json\n{" + "\n" * 200_000 + "}\n```",
-    "spaces then text": " " * 200_000 + "x",
-    "backticks and spaces": "` " * 100_000,
+    "spaces inside": lambda size: "{" + " " * size + "}",
+    "spaces before a fence": lambda size: "{}" + " " * size + "```",
+    "newlines inside a fence": lambda size: "```json\n{" + "\n" * size + "}\n```",
+    "spaces then text": lambda size: " " * size + "x",
+    "backticks and spaces": lambda size: "` " * (size // 2),
 }
 
 
-@pytest.mark.parametrize("raw", WHITESPACE_RUNS.values(), ids=WHITESPACE_RUNS.keys())
-def test_strip_fence_is_fast_on_long_whitespace(raw: str) -> None:
-    # 20k spaces took 0.5 s with the old `re.sub`; 200k take milliseconds now.
-    started = time.perf_counter()
+def strip_and_parse(raw: str) -> None:
     strip_fence(raw)
     with pytest.raises(InvalidOutput):
         parse_output(raw)
-    assert time.perf_counter() - started < FENCE_BUDGET_S
+
+
+@pytest.mark.parametrize("make_raw", WHITESPACE_RUNS.values(), ids=WHITESPACE_RUNS.keys())
+def test_strip_fence_is_linear_on_long_whitespace(make_raw) -> None:
+    # 20k spaces took 0.5 s with the old `re.sub` (quadratic); now the time grows with
+    # the input (`tests/unit/timing.py`).
+    assert_linear(strip_and_parse, make_raw)
 
 
 def completion(content: str) -> dict:

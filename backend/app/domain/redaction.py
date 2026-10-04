@@ -136,6 +136,7 @@ def _fit_iban(text: str, start: int, end: int) -> int | None:
     """
     head = text[start : start + 4]
     want = IBAN_LENGTHS.get(head[:2])
+    longest = want or _IBAN_MAX
     remainder = 0
     length = 4
     position = start + 4
@@ -144,8 +145,10 @@ def _fit_iban(text: str, start: int, end: int) -> int | None:
         position += len(group) + 1
         if not group:  # the space after the head of a spaced IBAN
             continue
-        remainder = _mod97(group, remainder)
         length += len(group)
+        if length > longest:  # the length only grows, so no later group can fit
+            break
+        remainder = _mod97(group, remainder)
         group_end = position - 1
         if (
             _IBAN_MIN <= length <= _IBAN_MAX
