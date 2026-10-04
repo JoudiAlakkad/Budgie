@@ -1,13 +1,13 @@
 {
   "description": "The model server can't decode the image.",
-  "source": "synthetic, to be replaced by a live capture",
+  "source": "captured from Ollama 0.35.1 (gemma3:4b) on 2026-10-04 with a broken JPEG",
   "max_tokens": 2048,
   "responses": [
     {
-      "status_code": 500,
+      "status_code": 400,
       "body": {
         "error": {
-          "message": "image: unknown format",
+          "message": "{\"error\":{\"code\":400,\"message\":\"Failed to load image or audio file\",\"type\":\"invalid_request_error\"}}",
           "type": "api_error",
           "param": null,
           "code": null

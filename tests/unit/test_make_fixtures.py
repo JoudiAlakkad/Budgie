@@ -127,7 +127,7 @@ def test_writes_every_case_in_shape(script: ModuleType, spike_dir: Path, tmp_pat
         ("cut_off_token_count", ["length"], [200]),
         ("malformed_twice", ["stop", "stop"], [200, 200]),
         ("http_model_not_found", [], [404]),
-        ("http_unreadable_image", [], [500]),
+        ("http_unreadable_image", [], [400]),
     ],
 )
 def test_finish_reason_and_status(

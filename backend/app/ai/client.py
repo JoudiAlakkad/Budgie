@@ -19,7 +19,8 @@ PING_TIMEOUT_S = 2.0
 CONNECT_TIMEOUT_S = 10.0
 
 # Statuses and message fragments with which servers report an image they can't decode
-# (Ollama answers 500 "image: unknown format"; others use 400, 415 or 422).
+# (Ollama 0.35 answers 400 "Failed to load image or audio file", captured 2026-10-04;
+# the other fragments cover other servers and versions).
 UNREADABLE_IMAGE_STATUSES = frozenset({400, 415, 422, 500})
 UNREADABLE_IMAGE_MESSAGES = (
     "image: unknown format",

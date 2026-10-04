@@ -12,9 +12,9 @@ category field: categorisation is deterministic (decision 0013).
 The generated schema is flattened: no `$defs` or `$ref`, no `anyOf` (a nullable value
 is `type: [X, "null"]`), no `title`. The spike's strict schema on Ollama used only
 type arrays and required nullable keys. The nullable enum (`payment_method`),
-`additionalProperties: false` on every object and `maxItems` are new in F03 and
-unverified against Ollama until the live integration test runs. `uniqueItems` is left
-out for the same reason; `maxItems` on `unreadable_fields` bounds repeats instead.
+`additionalProperties: false` on every object and `maxItems` are new in F03; the live
+integration test passed with them against Ollama 0.35.1 on 2026-10-04. `uniqueItems`
+stays out (never tried); `maxItems` on `unreadable_fields` bounds repeats instead.
 """
 
 from copy import deepcopy

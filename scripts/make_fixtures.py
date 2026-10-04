@@ -252,8 +252,15 @@ CASES = [
     Case(
         "http_unreadable_image",
         "The model server can't decode the image.",
-        (HttpError(500, "image: unknown format"),),
-        source="synthetic, to be replaced by a live capture",
+        # Ollama 0.35.1 nests the llama.cpp error as a JSON string in `message`.
+        (
+            HttpError(
+                400,
+                '{"error":{"code":400,"message":"Failed to load image or audio file",'
+                '"type":"invalid_request_error"}}',
+            ),
+        ),
+        source="captured from Ollama 0.35.1 (gemma3:4b) on 2026-10-04 with a broken JPEG",
     ),
 ]
 
