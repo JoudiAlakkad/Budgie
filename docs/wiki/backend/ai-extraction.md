@@ -24,7 +24,7 @@ This is planned for F3 and F5. The model choice is explained in [0004](../decisi
   - `unreadable_fields` is an enum of schema keys, because free text looped until the token limit
   - the prompt names the payment lines that aren't items and explains the tax-class column
   - output cut off at `max_tokens` is `malformed_output`
-  - `is_receipt` alone is not enough: the model said `true` for a photo of a pinboard in every run, and the strict schema made it invent a full receipt. F03/F04 add a second signal (a separate classification call, or a plausibility rule on missing merchant, total and items); which one is still open. Either signal makes the receipt `failed` with `not_a_receipt` ([0015](../decisions/0015-non-receipt-is-a-failure-with-retry-or-manual-entry.md))
+  - `is_receipt` alone is not enough: the model said `true` for a photo of a pinboard in every run, and the strict schema made it invent a full receipt. The split, decided at the start of F03: the extractor (F03) raises `NotAReceipt` only for `is_receipt=false`. The second signal is the plausibility rule on missing merchant, total and items, a pure domain rule built in F04 and applied by the pipeline in F05. There is no separate classification call; F11 can still compare one. Either signal makes the receipt `failed` with `not_a_receipt` ([0015](../decisions/0015-non-receipt-is-a-failure-with-retry-or-manual-entry.md))
 - **Parsing:**
   1. strip code fences, then `json.loads`, then validate with Pydantic
   2. on failure, send one repair prompt with the validation error

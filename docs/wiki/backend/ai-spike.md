@@ -57,7 +57,7 @@ The model returned `is_receipt: true` in every run, although the prompt says to 
   - `LLM_TIMEOUT_S=120` is tight for long receipts on CPU; 180 is safer
   - these are changed in F03 together with the code defaults
 - **F04 validation matters most:** the sum-versus-total and plausible-date checks would have flagged both wrong receipts. The model doesn't report what it couldn't read, so `unreadable_fields` can't be trusted to mark the risky fields.
-- **Non-receipt detection** needs more than the model's `is_receipt`. Untested options for F03/F04:
+- **Non-receipt detection** needs more than the model's `is_receipt`. Untested options for F03/F04 (decided in F03: the plausibility rule, in F04; see [ai-extraction](ai-extraction.md)):
   - a separate yes/no classification call before extraction
   - a rule that treats a result with no merchant, no total and at most one item as `not_a_receipt`
 - **Image preprocessing** (crop to the receipt, or split long receipts) is a candidate improvement for F03 or F11.
