@@ -9,9 +9,12 @@ left out merchant, date and total), `unreadable_fields` is an enum of schema key
 (free text looped until the token limit), and `line_items` is capped. There is no
 category field: categorisation is deterministic (decision 0013).
 
-The generated schema is flattened to the form the spike tested on Ollama: no `$defs`
-or `$ref`, no `anyOf` (a nullable value is `type: [X, "null"]`), no `title`, and
-`additionalProperties: false` on every object.
+The generated schema is flattened: no `$defs` or `$ref`, no `anyOf` (a nullable value
+is `type: [X, "null"]`), no `title`. The spike's strict schema on Ollama used only
+type arrays and required nullable keys. The nullable enum (`payment_method`),
+`additionalProperties: false` on every object and `maxItems` are new in F03 and
+unverified against Ollama until the live integration test runs. `uniqueItems` is left
+out for the same reason; `maxItems` on `unreadable_fields` bounds repeats instead.
 """
 
 from copy import deepcopy
@@ -21,6 +24,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 MAX_LINE_ITEMS = 100
+MAX_UNREADABLE_FIELDS = 8  # one per value key; stops a model repeating enum values
 
 PaymentMethod = Literal["cash", "card", "voucher", "other"]
 UnreadableField = Literal[
@@ -61,7 +65,8 @@ class ReceiptExtraction(_Output):
         )
     )
     unreadable_fields: list[UnreadableField] = Field(
-        description="the keys whose value could not be read and is null"
+        max_length=MAX_UNREADABLE_FIELDS,
+        description="the keys whose value could not be read and is null",
     )
 
 
@@ -75,7 +80,7 @@ def _resolve(node: Any, defs: dict[str, Any]) -> Any:
         target = _resolve(deepcopy(defs[node["$ref"].rsplit("/", 1)[-1]]), defs)
         # Keywords next to the `$ref` (e.g. a description) win over the target's.
         rest = {key: value for key, value in node.items() if key != "$ref"}
-        return {**target, **_resolve(rest, defs)}
+        return _ordered({**target, **_resolve(rest, defs)})
     node = {key: value for key, value in node.items() if key not in ("title", "$defs")}
     if "anyOf" in node:
         node = _collapse_nullable(node, defs)
@@ -88,9 +93,13 @@ def _resolve(node: Any, defs: dict[str, Any]) -> Any:
     }
     if result.get("type") == "object":
         result["additionalProperties"] = False
-    # A fixed keyword order keeps the schema readable; property order is never touched.
+    return _ordered(result)
+
+
+def _ordered(node: dict[str, Any]) -> dict[str, Any]:
+    """A fixed keyword order keeps the schema readable; property order is never touched."""
     rank = {key: i for i, key in enumerate(_KEYWORD_ORDER)}
-    return dict(sorted(result.items(), key=lambda kv: rank.get(kv[0], len(rank))))
+    return dict(sorted(node.items(), key=lambda kv: rank.get(kv[0], len(rank))))
 
 
 _KEYWORD_ORDER = (
@@ -106,14 +115,22 @@ _KEYWORD_ORDER = (
 
 
 def _collapse_nullable(node: dict[str, Any], defs: dict[str, Any]) -> dict[str, Any]:
-    """`anyOf: [X, {type: null}]` -> X with `null` added to its type (and enum)."""
+    """`anyOf: [X, {type: null}]` -> X with `null` added to its type (and enum).
+
+    A single-value `Literal["a"] | None` (`const: "a"`) becomes `enum: ["a", null]`.
+    Raises `ValueError` for wider unions and for an X without a `type`.
+    """
     options = node.pop("anyOf")
     others = [option for option in options if option != {"type": "null"}]
     if len(others) != 1 or len(options) != 2:
         raise ValueError(f"only `X | None` unions are supported, got {options}")
     inner = _resolve(others[0], defs)
-    kind = inner["type"]
+    kind = inner.get("type")
+    if kind is None:
+        raise ValueError(f"`X | None` needs an X with a `type`, got {others[0]}")
     inner["type"] = [*kind, "null"] if isinstance(kind, list) else [kind, "null"]
+    if "const" in inner:
+        inner["enum"] = [inner.pop("const")]
     if "enum" in inner:
         inner["enum"] = [*inner["enum"], None]
     return {**inner, **node}

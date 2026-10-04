@@ -4,14 +4,19 @@
         --out tests/fixtures/recorded_responses [--check]
 
 Spike-based cases take a spike output's `raw_output` and `usage`: only the strict runs
-(`valid_receipt`, `valid_receipt_fenced`, `non_receipt_claimed_receipt`). Synthetic cases
-are written inline below; `cut_off_length` and `missing_fields` are modelled on the spike's
-base-schema failures. Every content goes through `app.domain.redaction.redact_text`, and
-the script writes nothing if `find_personal_data` still finds anything, or if a spike
-pattern matches no file or several. The output is deterministic: `--check` writes
-nothing and exits 1 if the files on disk differ from what would be generated. Writing
-goes through a temp folder next to `--out`; stale `.json` files are removed, other files
-are kept, and an IO error leaves `--out` unchanged (exit 2).
+(`valid_receipt`, `valid_receipt_fenced`, `non_receipt_claimed_receipt`). Their
+`merchant` goes through `app.domain.redaction.clean_merchant`, as the pipeline (F05)
+stores it. Synthetic cases are written inline below and need no spike folder
+(`render_synthetic`); `cut_off_length` and `missing_fields` are modelled on the spike's
+base-schema failures. Every content goes through `app.domain.redaction.redact_text`.
+
+The script writes nothing (exit 2) if `find_personal_data` still finds anything, if the
+independent scan (scripts/fixture_scan.py) flags a text, or if a spike pattern matches
+no file or several. The output is deterministic: `--check` writes nothing and exits 1
+if the files on disk differ from what would be generated. Every file is written into a
+temp folder next to `--out` first and then moved in with `os.replace`, which is atomic
+per file (not for the folder as a whole); stale `.json` files are removed, other files
+are kept, and an IO error while writing the temp folder leaves `--out` unchanged.
 """
 
 import argparse
@@ -24,7 +29,12 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from app.domain.redaction import find_personal_data, redact_text
+# scripts/ is on sys.path when this runs as a script; tests register it by path
+# (tests/unit/fixture_shape.py).
+import fixture_scan
+
+from app.ai.extractor import strip_fence
+from app.domain.redaction import clean_merchant, find_personal_data, redact_text
 
 MODEL = "gemma3:4b"
 CREATED = 1790000000
@@ -248,10 +258,6 @@ CASES = [
 ]
 
 
-def strip_fence(raw: str) -> str:
-    return re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
-
-
 def load_spike(folder: Path, variant: str, image: str) -> dict:
     # scripts/ai_spike.py names base runs without a variant: <stamp>_<model>_<image>_r1.json.
     infix = "" if variant == "base" else f"{variant}_"
@@ -306,6 +312,40 @@ def add_payment_method(text: str, name: str) -> str:
     return result
 
 
+MERCHANT_NOTE = "; merchant cleaned by app.domain.redaction.clean_merchant"
+# A top-level-looking `"merchant": "<JSON string>"`; the string is possessive, so the
+# scan is linear.
+_MERCHANT = re.compile(r'"merchant"[ \t\r\n]*:[ \t\r\n]*(?P<value>"(?:[^"\\\n]|\\.)*+")')
+
+
+def clean_merchant_in(text: str, name: str) -> tuple[str, bool]:
+    """Apply `clean_merchant` to the answer's top-level `merchant`, as F05 stores it.
+
+    Returns the text, changed only in that one string (the rest stays as the model wrote
+    it), and whether anything changed. A merchant that is null, missing or already clean
+    leaves the text as it is, so the output stays deterministic.
+    """
+    try:
+        data = json.loads(text)
+    except ValueError as exc:
+        raise FixtureError(f"{name}: the spike answer isn't JSON") from exc
+    merchant = data.get("merchant") if isinstance(data, dict) else None
+    if not isinstance(merchant, str):
+        return text, False
+    cleaned = clean_merchant(merchant)
+    if cleaned == merchant:
+        return text, False
+    matches = [m for m in _MERCHANT.finditer(text) if json.loads(m["value"]) == merchant]
+    if len(matches) != 1:
+        raise FixtureError(f"{name}: expected one merchant string to clean")
+    value = matches[0].span("value")
+    literal = "null" if cleaned is None else json.dumps(cleaned, ensure_ascii=False)
+    result = text[: value[0]] + literal + text[value[1] :]
+    if json.loads(result).get("merchant") != cleaned:
+        raise FixtureError(f"{name}: merchant is not a top-level key")
+    return result, True
+
+
 def envelope(case: Case, n: int, content: str, usage: dict) -> dict:
     """An OpenAI chat-completion body; cut off when the usage reaches max_tokens."""
     length = usage["completion_tokens"] >= case.max_tokens
@@ -325,11 +365,19 @@ def envelope(case: Case, n: int, content: str, usage: dict) -> dict:
     }
 
 
-def build(case: Case, folder: Path) -> dict:
-    """Return the fixture for one case, redacted and checked."""
-    spike = load_spike(folder, *case.spike) if case.spike else None
+def build(case: Case, folder: Path | None) -> dict:
+    """Return the fixture for one case, redacted and checked.
+
+    `folder` holds the spike outputs; a synthetic case doesn't read it and may get None.
+    """
+    spike = None
+    if case.spike:
+        if folder is None:
+            raise FixtureError(f"{case.name}: needs the spike folder")
+        spike = load_spike(folder, *case.spike)
     responses: list[dict] = []
     previous = ""
+    merchant_cleaned = False
     for n, reply in enumerate(case.responses, start=1):
         status = 200
         if isinstance(reply, HttpError):
@@ -338,7 +386,8 @@ def build(case: Case, folder: Path) -> dict:
         else:
             if isinstance(reply, Spike):
                 usage = {key: spike["usage"][key] for key in SYNTHETIC_USAGE}
-                text = redact_text(spike["raw_output"])
+                text, cleaned = clean_merchant_in(redact_text(spike["raw_output"]), case.name)
+                merchant_cleaned |= cleaned
                 if reply.add_payment_method:
                     text = add_payment_method(text, case.name)
                 text = f"```json\n{text}\n```" if reply.fenced else text
@@ -355,22 +404,35 @@ def build(case: Case, folder: Path) -> dict:
     if case.spike:
         variant, image = case.spike
         source = f"spike 2026-10-03 {variant} {image} r1, redacted by app.domain.redaction"
+        if merchant_cleaned:
+            source += MERCHANT_NOTE
         if any(isinstance(r, Spike) and r.add_payment_method for r in case.responses):
             source += PAYMENT_METHOD_NOTE
-    return {
+    fixture = {
         "description": case.description,
         "source": source,
         "max_tokens": case.max_tokens,
         "responses": responses,
     }
+    if flagged := fixture_scan.suspicious_texts(fixture):
+        # Only the pattern names: the text itself may be personal data.
+        raise FixtureError(f"{case.name}: the independent scan flags {flagged}")
+    return fixture
+
+
+def file_text(fixture: dict) -> str:
+    return json.dumps(fixture, indent=2, ensure_ascii=False) + "\n"
 
 
 def render(spike_dir: Path) -> dict[str, str]:
     """Return file name -> file text for every case, or raise FixtureError."""
-    fixtures = {f"{case.name}.json": build(case, spike_dir) for case in CASES}
+    return {f"{case.name}.json": file_text(build(case, spike_dir)) for case in CASES}
+
+
+def render_synthetic() -> dict[str, str]:
+    """File name -> file text for the cases that read no spike output."""
     return {
-        name: json.dumps(data, indent=2, ensure_ascii=False) + "\n"
-        for name, data in fixtures.items()
+        f"{case.name}.json": file_text(build(case, None)) for case in CASES if not case.spike
     }
 
 
@@ -417,8 +479,9 @@ def main(argv: list[str] | None = None) -> int:
 def write(out: Path, files: dict[str, str]) -> list[str]:
     """Write `files` into `out` and return the stale `.json` names it removed.
 
-    Every file is written into a temp folder next to `out` first, so an IO error leaves
-    `out` as it was. Then each file is moved in with `os.replace` (atomic per file), and
+    Every file is written into a temp folder next to `out` first, so an IO error while
+    writing leaves `out` as it was. Then each file is moved in with `os.replace`, which
+    is atomic per file (an error between two moves leaves some files updated), and
     `.json` files no case produces (e.g. from a renamed case) are removed. Other files in
     `out`, such as a README, are left alone.
     """

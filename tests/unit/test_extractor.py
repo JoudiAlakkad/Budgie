@@ -4,6 +4,7 @@ import ast
 import base64
 import json
 import logging
+import time
 from pathlib import Path
 
 import httpx
@@ -16,6 +17,7 @@ from app.ai.extractor import (
     Extractor,
     InvalidOutput,
     parse_output,
+    strip_fence,
     system_prompt,
 )
 from app.ai.prompts import load_prompts
@@ -156,6 +158,43 @@ def test_undecodable_json_gets_one_repair_then_malformed() -> None:
     assert len(seen) == 2
     assert "too many digits" in body(seen[1])["messages"][-1]["content"]
     assert raised.value.reason == "Invalid after one repair: Invalid JSON: nested too deeply"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ('```json\n{"a": 1}\n```', '{"a": 1}'),
+        ('```\n{"a": 1}```', '{"a": 1}'),
+        ('  ```JSON {"a": 1}  ```  ', '{"a": 1}'),
+        ('{"a": 1}', '{"a": 1}'),
+        ('{"a": "```"}', '{"a": "```"}'),
+        ("```json\n```", ""),
+        ("```", ""),
+        ("", ""),
+    ],
+)
+def test_strip_fence(raw: str, expected: str) -> None:
+    assert strip_fence(raw) == expected
+
+
+FENCE_BUDGET_S = 0.5
+WHITESPACE_RUNS = {
+    "spaces inside": "{" + " " * 200_000 + "}",
+    "spaces before a fence": "{}" + " " * 200_000 + "```",
+    "newlines inside a fence": "```json\n{" + "\n" * 200_000 + "}\n```",
+    "spaces then text": " " * 200_000 + "x",
+    "backticks and spaces": "` " * 100_000,
+}
+
+
+@pytest.mark.parametrize("raw", WHITESPACE_RUNS.values(), ids=WHITESPACE_RUNS.keys())
+def test_strip_fence_is_fast_on_long_whitespace(raw: str) -> None:
+    # 20k spaces took 0.5 s with the old `re.sub`; 200k take milliseconds now.
+    started = time.perf_counter()
+    strip_fence(raw)
+    with pytest.raises(InvalidOutput):
+        parse_output(raw)
+    assert time.perf_counter() - started < FENCE_BUDGET_S
 
 
 def completion(content: str) -> dict:
@@ -337,6 +376,31 @@ def answering(*contents: str) -> tuple[httpx.MockTransport, list[httpx.Request]]
         return httpx.Response(200, json=completion(contents[len(seen) - 1]))
 
     return httpx.MockTransport(handler), seen
+
+
+@pytest.mark.parametrize(
+    "repair_answer",
+    [
+        json.dumps({"is_receipt": False, "line_items": None}),
+        'Sorry, this is no receipt: {"is_receipt": false, "merchant": 12}',
+        '```json\n{"is_receipt": false}\n```',
+    ],
+    ids=["fails the schema", "prose around", "fenced, keys missing"],
+)
+def test_is_receipt_false_in_the_repair_answer_is_not_a_receipt(repair_answer: str) -> None:
+    transport, seen = answering("not json", repair_answer)
+
+    with pytest.raises(NotAReceipt) as raised:
+        make_extractor(transport).extract(IMAGE, "image/jpeg")
+    assert len(seen) == 2
+    assert raised.value.raw_output == repair_answer
+
+
+def test_invalid_repair_answer_without_is_receipt_false_stays_malformed() -> None:
+    transport, _ = answering("not json", json.dumps({"is_receipt": True, "line_items": None}))
+
+    with pytest.raises(MalformedOutput):
+        make_extractor(transport).extract(IMAGE, "image/jpeg")
 
 
 def test_request_carries_image_prompts_and_settings() -> None:

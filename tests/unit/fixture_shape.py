@@ -1,10 +1,39 @@
-"""Shape of a recorded-response fixture written by scripts/make_fixtures.py."""
+"""Shape of a recorded-response fixture written by scripts/make_fixtures.py.
 
-import re
+The independent personal-data scan lives in scripts/fixture_scan.py, so the generator
+runs the same scan before it writes. It is loaded here by path (scripts/ isn't a
+package) and registered as `fixture_scan`, the name scripts/make_fixtures.py imports.
+"""
+
+import importlib.util
+import sys
+from pathlib import Path
+from types import ModuleType
 
 from app.domain.redaction import find_personal_data
 
+SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 USAGE_KEYS = {"prompt_tokens", "completion_tokens", "total_tokens"}
+
+
+def load_script(name: str) -> ModuleType:
+    """Import `scripts/<name>.py` once, under its own module name."""
+    if name in sys.modules:
+        return sys.modules[name]
+    spec = importlib.util.spec_from_file_location(name, SCRIPTS / f"{name}.py")
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+fixture_scan = load_script("fixture_scan")
+KNOWN_PLACEHOLDERS: tuple[str, ...] = fixture_scan.KNOWN_PLACEHOLDERS
+SUSPICIOUS: dict[str, str] = fixture_scan.SUSPICIOUS
+suspicious = fixture_scan.suspicious
+suspicious_texts = fixture_scan.suspicious_texts
+texts = fixture_scan.texts
 
 
 def assert_fixture_shape(name: str, data: dict) -> None:
@@ -43,64 +72,6 @@ def assert_fixture_shape(name: str, data: dict) -> None:
         assert choice["finish_reason"] == ("length" if cut_off else "stop")
 
 
-def texts(data: dict) -> list[str]:
-    """Every message content and error message in a fixture."""
-    found = []
-    for response in data["responses"]:
-        body = response["body"]
-        if "error" in body:
-            found.append(body["error"]["message"])
-        else:
-            found += [choice["message"]["content"] for choice in body["choices"]]
-    return found
-
-
 def personal_data(data: dict) -> list[str]:
     """The kinds of personal data left in a fixture's texts."""
     return sorted({f.kind for text in texts(data) for f in find_personal_data(text)})
-
-
-# ---------------------------------------------------------------- independent scan
-# `personal_data` uses the redaction rules themselves, so it can only prove that
-# redacting again changes nothing. This scan shares no code with app.domain.redaction:
-# it is deliberately broader, and everything it may see is listed in the allowlist. It
-# also covers what the app rules leave to the schema and `clean_merchant` (addresses,
-# URLs, phone numbers), so a fixture can't carry them past the generator.
-
-# Removed before scanning. Each entry is something the fixtures legitimately hold.
-KNOWN_PLACEHOLDERS = ("[card]", "[iban]", "[id]")
-ALLOWLIST = [
-    # placeholders written by the redaction (test_recorded_fixtures checks the list)
-    *(re.escape(placeholder) for placeholder in KNOWN_PLACEHOLDERS),
-    # dates and times: 2026-09-17, 17.09.2026, 14:32(:05)
-    r"\b\d{4}-\d{2}-\d{2}\b",
-    r"\b\d{1,2}\.\d{1,2}\.\d{2,4}\b",
-    r"\b\d{1,2}:\d{2}(?::\d{2})?\b",
-    # prices and amounts as JSON numbers or receipt text: 7.39, -0.25, 1.234,56
-    r"-?\b\d{1,3}(?:\.\d{3})*,\d{2}\b",
-    r"-?\b\d+\.\d{1,2}\b",
-]
-_ALLOWED = re.compile("|".join(f"(?:{pattern})" for pattern in ALLOWLIST))
-
-SUSPICIOUS = {
-    # ids, card or phone numbers. Token counts live in `usage`, which isn't scanned.
-    "5+ digits": r"\d{5,}",
-    "at sign": r"@",
-    "masked digits": r"[*Xx#]{3,}[ -]?\d",
-    "street": r"(?i:str\.|straße|strasse)",
-    # A label alone is fine (the prompts name the payment lines, and older redactions
-    # kept `Tel. [phone]`); a label followed by a digit within a short stretch is not.
-    "contact or tax label with a value": r"(?i:\b(?:Tel|Fax|USt)\b[^\n\"\d\[]{0,20}\d)",
-}
-_SUSPICIOUS = {name: re.compile(pattern) for name, pattern in SUSPICIOUS.items()}
-
-
-def suspicious(text: str) -> list[str]:
-    """Names of the suspicious patterns left in `text` once the allowlist is removed."""
-    rest = _ALLOWED.sub(" ", text)
-    return sorted(name for name, pattern in _SUSPICIOUS.items() if pattern.search(rest))
-
-
-def suspicious_texts(data: dict) -> list[str]:
-    """The suspicious pattern names found in any text of a fixture."""
-    return sorted({name for text in texts(data) for name in suspicious(text)})

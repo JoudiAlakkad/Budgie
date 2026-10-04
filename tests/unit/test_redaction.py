@@ -50,6 +50,22 @@ POSITIVES = [
     ("labelled_id", "Filiale 1234", "Filiale [id]"),
     ("labelled_id", "Fil.-Nr. 0042", "Fil.-Nr. [id]"),
     ("labelled_id", "Terminal-ID: 5317 4492", "Terminal-ID: [id]"),
+    # a tab or no-break space between label and value
+    ("labelled_id", "Kasse\t12", "Kasse\t[id]"),
+    ("labelled_id", "Terminal-ID:\t55501234", "Terminal-ID:\t[id]"),
+    ("labelled_id", "Kasse\u00a012", "Kasse\u00a0[id]"),
+    # a hyphen right after a label, followed by a digit
+    ("labelled_id", "TID-123", "TID-[id]"),
+    ("labelled_id", "Kasse-3 Bon-Nr. 12", "Kasse-[id] Bon-Nr. [id]"),
+    # a labelled id followed by a card number: the id is cut back to the part before the
+    # card, so a second pass finds nothing new (test_idempotent)
+    ("labelled_id", "Kunden-Nr. 123 4111111111111111", "Kunden-Nr. [id] [card]"),
+    ("labelled_id", "Bon 12 4111 1111 1111 1111", "Bon [id] [card]"),
+    ("labelled_id", "Kasse 3 4111111111111111 x", "Kasse [id] [card] x"),
+    ("labelled_id", "AID A000 4111111111111111", "AID [id] [card]"),
+    # the last digit group is a price or a quantity, not part of the id
+    ("labelled_id", "Kasse 3 4,99", "Kasse [id] 4,99"),
+    ("labelled_id", "Kasse 3 5 kg", "Kasse [id] 5 kg"),
 ]
 
 NEGATIVES = [
@@ -130,6 +146,22 @@ NEGATIVES = [
     "Filiale 2,5 kg",
     "Filiale 2 kg",
     "Seriennr. 2026-09-17",
+    # units without a space, thousands, and a unit after a space
+    "Bon 500g",
+    "Kasse 2kg",
+    "Kasse 3x",
+    "Bon 3.500",
+    "Kasse 5 kg",
+    "Kasse 14:32:05",
+    "Kasse -0,50",
+    "Bon 01/09/2026",
+    # a hyphen after a label, then a word: not a separator
+    "Beleg-Kopie 2",
+    "TID-ABC",
+    "Kasse-A1",
+    # a label inside a word
+    "Kassenbon 1234",
+    "BONBON 3",
 ]
 
 # Contact data the schema keeps out of every field but `merchant`, and `clean_merchant`
@@ -275,7 +307,7 @@ def test_json_stays_valid() -> None:
         assert redacted["merchant"] == "Beispiel Märkte\nFiliale [id]"
         assert redacted["line_items"][0]["description"] == "Karte [card]"
         assert redacted["line_items"][1]["description"] == 'Gutschein "Bon [id]"'
-        assert redacted["line_items"][2]["description"] == "Terminal-ID:\t55501234"
+        assert redacted["line_items"][2]["description"] == "Terminal-ID:\t[id]"
         assert redacted["raw"] == RECEIPT_REDACTED
         assert redacted["date"] == "2026-09-17"
         assert redacted["total"] == 7.12
@@ -318,6 +350,22 @@ def test_earlier_rule_wins_on_overlap() -> None:
     assert find_personal_data("Kartennummer: 4111 1111 1111 1111") == [Finding("card", 14, 33)]
 
 
+def test_a_labelled_id_is_cut_back_to_an_earlier_finding() -> None:
+    assert find_personal_data("Bon 12 4111 1111 1111 1111") == [
+        Finding("labelled_id", 4, 6),
+        Finding("card", 7, 26),
+    ]
+    # nothing is left before the card, so only the card is found
+    assert find_personal_data("Bon 4111111111111111") == [Finding("card", 4, 20)]
+
+
+def test_rules_without_fit_lose_on_any_overlap() -> None:
+    # a card number inside an IBAN: the IBAN came first
+    assert find_personal_data("DE00 4111 1111 1111 1111") == [Finding("iban", 0, 24)]
+    # a mask that runs into a card number is dropped, not cut back
+    assert find_personal_data("**** 4111 1111 1111 1111") == [Finding("card", 5, 24)]
+
+
 # ---------------------------------------------------------------- clean_merchant
 
 MERCHANTS = [
@@ -353,6 +401,12 @@ MERCHANTS = [
     ("REWE Filiale 1234", "REWE Filiale [id]"),
     ("   ", None),
     ("www.markt.example", None),
+    # a first line with nothing left: the next non-blank line, up to three lines
+    ("Tel. 0231 123456\nREWE", "REWE"),
+    ("44227 Dortmund\n\nwww.markt.example\nNetto", "Netto"),
+    ("Tel. 0231 123456\n44227\nwww.markt.example\nREWE", None),
+    # the cut is at `@`, so a name after it is lost (accepted limit)
+    ("Shop @ Home", "Shop"),
 ]
 
 
@@ -372,6 +426,27 @@ def test_clean_merchant_is_idempotent(text: str | None, expected: str | None) ->
 
 BUDGET_S = 0.5
 RUN = 10_000
+LONG = 28_000  # repetitions: about 200k characters, where a quadratic rule takes seconds
+ID_LABELS = [
+    "Terminal-ID",
+    "Trace-Nr",
+    "Beleg-Nr",
+    "Bon-Nr",
+    "Kasse",
+    "TA-Nr",
+    "Transaktion",
+    "TSE-Signatur",
+    "Seriennr",
+    "Kunden-Nr",
+    "Kartennummer",
+    "AID",
+    "Genehmigungs-Nr",
+    "Autorisierung",
+    "VU-Nr",
+    "Filiale",
+    "Fil.-Nr",
+    "TID",
+]
 LABELS = (
     "Terminal-ID Trace-Nr. Beleg Bon Kasse Transaktion TSE-Signatur Kunden-Nr. Filiale AID "
     "Tel. Fax USt-IdNr. Es bediente Sie Bediener Musterstraße 44227 "
@@ -403,6 +478,21 @@ RUNS = {
     "capitalised word": "A" + "a" * RUN + " ",
     "0-12 groups": "0" + "-12" * (RUN // 3),
     "postcodes": "12345 " * (RUN // 6),
+    "label, digit groups, a unit": "Kasse " + "1 " * RUN + "kg",
+    # Inputs that took 2.3 s at 28k repetitions when a lookahead scanned ahead of the
+    # value run: the label repeated without spaces, so one value run holds every label.
+    **{
+        f"{label!r} x {LONG}{end}": label * LONG + end
+        for label in ("Bon-Nr.", "Kasse.", "AID.", "Filiale=", "TID/", "TID-")
+        for end in ("", "1 kg")
+    },
+    **{
+        f"labels joined by {joint!r}{end}": (joint.join(ID_LABELS) + joint)
+        * (LONG * 7 // len(joint.join(ID_LABELS)))
+        + end
+        for joint in "/.=-"
+        for end in ("", "1 kg")
+    },
 }
 SEPARATORS = "*" * 40 + "\n" + "-" * 40 + "\n" + "#" * 40 + "\n" + "X" * 40 + "\n"
 MIXED = (SEPARATORS + RECEIPT + "\n") * (20_000 // len(SEPARATORS + RECEIPT + "\n") + 1)

@@ -1,17 +1,20 @@
 """scripts/make_fixtures.py on synthetic, spike-shaped files (never the real spike data)."""
 
-import importlib.util
 import json
-import sys
 from pathlib import Path
 from types import ModuleType
 
 import pytest
 
-from tests.unit.fixture_shape import assert_fixture_shape, personal_data, suspicious_texts
+from tests.unit.fixture_shape import (
+    assert_fixture_shape,
+    load_script,
+    personal_data,
+    suspicious_texts,
+)
 
-SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "make_fixtures.py"
 STAMP = "20261003T090000Z"
+COMMITTED = Path(__file__).resolve().parents[1] / "fixtures" / "recorded_responses"
 
 CASES = {
     "valid_receipt",
@@ -32,14 +35,7 @@ CASES = {
 
 
 def _load_script() -> ModuleType:
-    if "make_fixtures" in sys.modules:
-        return sys.modules["make_fixtures"]
-    spec = importlib.util.spec_from_file_location("make_fixtures", SCRIPT)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return load_script("make_fixtures")
 
 
 @pytest.fixture(scope="module")
@@ -219,23 +215,95 @@ def test_only_strict_spike_runs_are_read(script: ModuleType) -> None:
     }
 
 
-def test_independent_scan_catches_an_address_the_rules_let_through(
-    script: ModuleType, spike_dir: Path, tmp_path: Path
-) -> None:
-    # The app rules no longer cover addresses (the schema and clean_merchant do), so the
-    # generator writes this file. The independent scan, run on the output by
-    # test_writes_every_case_in_shape and test_recorded_fixtures, is what stops it.
+def replace_spike_answer(spike_dir: Path, answer: dict) -> None:
     path = next(spike_dir.glob("*_strict_IMG_1557_r1.json"))
     spike = json.loads(path.read_text(encoding="utf-8"))
-    leaky = {**STRICT_RECEIPT, "merchant": "Beispiel Markt\nMusterstraße 12a\n44227 Dortmund"}
-    spike["raw_output"] = json.dumps(leaky, indent=2, ensure_ascii=False)
+    spike["raw_output"] = json.dumps(answer, indent=2, ensure_ascii=False)
     path.write_text(json.dumps(spike, ensure_ascii=False), encoding="utf-8")
+
+
+def test_independent_scan_catches_an_address_the_rules_let_through(
+    script: ModuleType, spike_dir: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The app rules don't cover addresses (the schema and clean_merchant do), and
+    # clean_merchant only sees `merchant`. The generator's own run of the independent
+    # scan stops this item description: nothing is written.
+    address = {"description": "Musterstraße 12a, 44227 Dortmund", "qty": 1, "unit_price": 0.0}
+    leaky = {**STRICT_RECEIPT, "line_items": [{**address, "amount": 0.0}]}
+    replace_spike_answer(spike_dir, leaky)
+    out = tmp_path / "out"
+
+    assert run(script, spike_dir, out) == 2
+    assert not out.exists()
+    error = capsys.readouterr().err
+    assert "independent scan flags ['5+ digits', 'street', 'street and number']" in error
+    assert "Muster" not in error and "44227" not in error
+
+
+@pytest.mark.parametrize(
+    ("merchant", "cleaned"),
+    [
+        ("Beispiel Markt\nMusterstraße 12a\n44227 Dortmund", "Beispiel Markt"),
+        ("Tel. 0231 123456\nBeispiel Markt", "Beispiel Markt"),
+        ("Beispiel Markt, www.beispiel-markt.de", "Beispiel Markt"),
+        ("Tel. 0231 123456", None),
+    ],
+)
+def test_spike_merchant_is_cleaned_as_f05_stores_it(
+    script: ModuleType, spike_dir: Path, tmp_path: Path, merchant: str, cleaned: str | None
+) -> None:
+    replace_spike_answer(spike_dir, {**STRICT_RECEIPT, "merchant": merchant})
     out = tmp_path / "out"
 
     assert run(script, spike_dir, out) == 0
     data = load(out, "valid_receipt")
-    assert personal_data(data) == []
-    assert suspicious_texts(data) == ["5+ digits", "street"]
+    [content] = contents(data)
+    assert json.loads(content)["merchant"] == cleaned
+    assert data["source"] == (
+        "spike 2026-10-03 strict IMG_1557 r1, redacted by app.domain.redaction"
+        + script.MERCHANT_NOTE
+        + script.PAYMENT_METHOD_NOTE
+    )
+    assert suspicious_texts(data) == []
+    # only the merchant string changed; the rest is the (redacted) model text as it was
+    original = json.dumps({**STRICT_RECEIPT, "merchant": merchant}, indent=2, ensure_ascii=False)
+    literal = json.dumps(cleaned, ensure_ascii=False)
+    edited = script.redact_text(original).replace(json.dumps(merchant, ensure_ascii=False), literal)
+    assert content == script.add_payment_method(edited, "c")
+
+
+def test_a_clean_merchant_adds_no_note(script: ModuleType, spike_dir: Path, tmp_path: Path) -> None:
+    out = tmp_path / "out"
+    run(script, spike_dir, out)
+    assert script.MERCHANT_NOTE not in load(out, "valid_receipt")["source"]
+    assert script.MERCHANT_NOTE not in load(out, "non_receipt_claimed_receipt")["source"]
+
+
+def test_merchant_cleaning_refuses_ambiguous_text() -> None:
+    module = _load_script()
+    nested = '{"merchant": "A 44227", "x": {"merchant": "A 44227"}}'
+    with pytest.raises(module.FixtureError):
+        module.clean_merchant_in(nested, "c")
+    with pytest.raises(module.FixtureError):
+        module.clean_merchant_in("not json", "c")
+    assert module.clean_merchant_in('{"merchant": null}', "c") == ('{"merchant": null}', False)
+
+
+def test_committed_synthetic_fixtures_match_the_generator(script: ModuleType) -> None:
+    # Synthetic cases need no spike folder, so they are checked here byte for byte.
+    # Spike-based cases are checked by `make_fixtures.py --check` against the spike data.
+    rendered = script.render_synthetic()
+    spike_cases = {f"{case.name}.json" for case in script.CASES if case.spike}
+
+    assert set(rendered) | spike_cases == {path.name for path in COMMITTED.glob("*.json")}
+    for name, text in rendered.items():
+        assert (COMMITTED / name).read_bytes() == text.encode("utf-8"), name
+
+
+def test_a_spike_case_needs_the_spike_folder(script: ModuleType) -> None:
+    case = next(case for case in script.CASES if case.spike)
+    with pytest.raises(script.FixtureError, match="needs the spike folder"):
+        script.build(case, None)
 
 
 @pytest.mark.parametrize(

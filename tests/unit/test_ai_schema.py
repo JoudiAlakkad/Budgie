@@ -12,6 +12,7 @@ from app.ai.schema import (
     EXAMPLE_JSON,
     EXAMPLE_OUTPUT,
     MAX_LINE_ITEMS,
+    MAX_UNREADABLE_FIELDS,
     RESPONSE_FORMAT,
     RESPONSE_SCHEMA,
     LineItem,
@@ -93,6 +94,7 @@ EXPECTED_SCHEMA = {
                     "payment_method",
                 ],
             },
+            "maxItems": 8,
         },
     },
     "required": [
@@ -164,6 +166,34 @@ def test_flattening_rejects_wider_unions() -> None:
         response_schema(Wide)
 
 
+def test_flattening_rejects_a_nullable_without_a_type() -> None:
+    class Untyped(BaseModel):
+        value: Any | None
+
+    with pytest.raises(ValueError, match="needs an X with a `type`"):
+        response_schema(Untyped)
+
+
+def test_flattening_turns_a_nullable_single_literal_into_an_enum_with_null() -> None:
+    class Single(BaseModel):
+        only: Literal["a"] | None
+
+    assert response_schema(Single)["properties"]["only"] == {
+        "type": ["string", "null"],
+        "enum": ["a", None],
+    }
+
+
+def test_flattening_orders_a_ref_with_siblings() -> None:
+    class Parent(BaseModel):
+        child: LineItem = Field(description="the child")
+
+    child = response_schema(Parent)["properties"]["child"]
+
+    assert child["description"] == "the child"
+    assert list(child) == ["type", "description", "properties", "required", "additionalProperties"]
+
+
 # ---------------------------------------------------------------- example answer
 
 
@@ -232,6 +262,9 @@ def test_unreadable_fields_enum_and_line_item_cap() -> None:
     assert set(get_args(UnreadableField)) == set(props) - {"is_receipt", "unreadable_fields"}
     assert props["payment_method"]["enum"] == [*get_args(PaymentMethod), None]
     assert props["line_items"]["maxItems"] == MAX_LINE_ITEMS == 100
+    assert props["unreadable_fields"]["maxItems"] == MAX_UNREADABLE_FIELDS == 8
+    # no `uniqueItems`: untested with Ollama; `maxItems` bounds repeats instead
+    assert "uniqueItems" not in json.dumps(RESPONSE_SCHEMA)
 
 
 def _keys(value: Any) -> set[str]:
@@ -292,6 +325,7 @@ REJECTED = {
     "missing item qty": with_change(line_items=[{"description": "X", "amount": 1.0}]),
     "101 items": with_change(line_items=[item()] * 101),
     "unknown unreadable field": with_change(unreadable_fields=["Summe"]),
+    "9 unreadable fields": with_change(unreadable_fields=["total"] * 9),
     "NaN total": with_change(total=math.nan),
     "infinite amount": with_change(line_items=[item(amount=math.inf)]),
     "string amount": with_change(line_items=[item(amount="1,99")]),

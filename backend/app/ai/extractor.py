@@ -1,7 +1,8 @@
 """Turn a receipt image into a validated `ReceiptExtraction` (docs/wiki/backend/ai-extraction.md).
 
 One call, then at most one repair call. Output cut off at `max_tokens` is
-`MalformedOutput` without a repair; `is_receipt=false` is `NotAReceipt`. The
+`MalformedOutput` without a repair; `is_receipt=false` is `NotAReceipt`, in either
+answer and even when the rest of that answer is invalid. The
 extractor does not redact: `raw_output` is the model's own text, and the pipeline
 redacts it before storing (decision 0017). Nothing from the prompts, the image or
 the model's answer is logged. The system prompt's `{example}` is filled here with
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 MAX_ERROR_LINES = 10
 EXAMPLE_PLACEHOLDER = "{example}"
-_FENCE = re.compile(r"^```[A-Za-z]*\s*|\s*```$")
+_OPENING_FENCE = re.compile(r"```[A-Za-z]*\s*")
 
 
 class ChatClient(Protocol):
@@ -64,8 +65,23 @@ class InvalidOutput(Exception):
         super().__init__(reason)
 
 
+def strip_fence(raw: str) -> str:
+    """The answer without surrounding whitespace and a Markdown code fence.
+
+    Linear time: the opening fence is matched once at the start, and the closing one is
+    a suffix test. (A `re.sub` with `\\s*```$` retried at every whitespace character
+    and was quadratic on long runs of spaces.)
+    """
+    text = raw.strip()
+    if opening := _OPENING_FENCE.match(text):
+        text = text[opening.end() :]
+    if text.endswith("```"):
+        text = text[:-3].rstrip()
+    return text
+
+
 def _load_json(raw: str) -> object:
-    text = _FENCE.sub("", raw.strip())
+    text = strip_fence(raw)
     if not text:
         raise InvalidOutput("The answer is empty.")
     try:
@@ -235,6 +251,8 @@ class Extractor:
         try:
             extraction = parse_output(second_raw)
         except InvalidOutput as invalid:
+            if _says_not_a_receipt(second_raw):
+                raise NotAReceipt("is_receipt=false", raw_output=second_raw) from None
             raise MalformedOutput(
                 f"Invalid after one repair: {invalid.reason}",
                 raw_output=second_raw,
