@@ -16,7 +16,7 @@
             "finish_reason": "stop",
             "message": {
               "role": "assistant",
-              "content": "{\n  \"is_receipt\": false,\n  \"merchant\": null,\n  \"date\": null,\n  \"currency\": null,\n  \"subtotal\": null,\n  \"tax\": null,\n  \"total\": null,\n  \"line_items\": [],\n  \"unreadable_fields\": []\n}"
+              "content": "{\n  \"is_receipt\": false,\n  \"merchant\": null,\n  \"date\": null,\n  \"currency\": null,\n  \"subtotal\": null,\n  \"tax\": null,\n  \"total\": null,\n  \"payment_method\": null,\n  \"line_items\": [],\n  \"unreadable_fields\": []\n}"
             }
           }
         ],

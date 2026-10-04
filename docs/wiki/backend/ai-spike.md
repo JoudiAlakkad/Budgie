@@ -55,7 +55,7 @@ The model returned `is_receipt: true` in every run, although the prompt says to 
 - **Configuration:**
   - the 11-item receipt used 695 output tokens, so `LLM_MAX_TOKENS` should be 2048
   - `LLM_TIMEOUT_S=120` is tight for long receipts on CPU; 180 is safer
-  - these are changed in F03 together with the code defaults
+  - done in F03: the defaults are now 2048 and 180 ([configuration](configuration.md))
 - **F04 validation matters most:** the sum-versus-total and plausible-date checks would have flagged both wrong receipts. The model doesn't report what it couldn't read, so `unreadable_fields` can't be trusted to mark the risky fields.
 - **Non-receipt detection** needs more than the model's `is_receipt`. Untested options for F03/F04 (decided in F03: the plausibility rule, in F04; see [ai-extraction](ai-extraction.md)):
   - a separate yes/no classification call before extraction

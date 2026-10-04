@@ -40,7 +40,7 @@
             "finish_reason": "stop",
             "message": {
               "role": "assistant",
-              "content": "{\n  \"is_receipt\": true,\n  \"merchant\": null,\n  \"date\": null,\n  \"currency\": null,\n  \"subtotal\": null,\n  \"tax\": null,\n  \"total\": null,\n  \"line_items\": [\n    {\n      \"description\": \"Diesel-Schwefelarm addit.\",\n      \"qty\": null,\n      \"unit_price\": 231.9,\n      \"amount\": 52.7\n    }\n  ],\n  \"unreadable_fields\": [\n    \"merchant\",\n    \"date\",\n    \"total\"\n  ]\n}"
+              "content": "{\n  \"is_receipt\": true,\n  \"merchant\": null,\n  \"date\": null,\n  \"currency\": null,\n  \"subtotal\": null,\n  \"tax\": null,\n  \"total\": null,\n  \"payment_method\": null,\n  \"line_items\": [\n    {\n      \"description\": \"Diesel-Schwefelarm addit.\",\n      \"qty\": null,\n      \"unit_price\": 231.9,\n      \"amount\": 52.7\n    }\n  ],\n  \"unreadable_fields\": [\n    \"merchant\",\n    \"date\",\n    \"total\"\n  ]\n}"
             }
           }
         ],

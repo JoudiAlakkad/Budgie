@@ -40,7 +40,7 @@
             "finish_reason": "stop",
             "message": {
               "role": "assistant",
-              "content": "{\n  \"is_receipt\": true,\n  \"merchant\": \"Beispiel Markt\",\n  \"date\": \"2026-09-17\",\n  \"currency\": \"EUR\",\n  \"subtotal\": null,\n  \"tax\": null,\n  \"total\": 6.67,\n  \"line_items\": [\n    {\n      \"description\": \"BIO EIER 10 STK.\",\n      \"qty\": 1,\n      \"unit_price\": 2.99,\n      \"amount\": 2.99\n    },\n    {\n      \"description\": \"VOLLMILCH 3,5%\",\n      \"qty\": 1,\n      \"unit_price\": 1.19,\n      \"amount\": 1.19\n    },\n    {\n      \"description\": \"BROT\",\n      \"qty\": 1,\n      \"unit_price\": 2.49,\n      \"amount\": 2.49\n    }\n  ],\n  \"unreadable_fields\": []\n}"
+              "content": "{\n  \"is_receipt\": true,\n  \"merchant\": \"Beispiel Markt\",\n  \"date\": \"2026-09-17\",\n  \"currency\": \"EUR\",\n  \"subtotal\": null,\n  \"tax\": null,\n  \"total\": 6.67,\n  \"payment_method\": \"card\",\n  \"line_items\": [\n    {\n      \"description\": \"BIO EIER 10 STK.\",\n      \"qty\": 1,\n      \"unit_price\": 2.99,\n      \"amount\": 2.99\n    },\n    {\n      \"description\": \"VOLLMILCH 3,5%\",\n      \"qty\": 1,\n      \"unit_price\": 1.19,\n      \"amount\": 1.19\n    },\n    {\n      \"description\": \"BROT\",\n      \"qty\": 1,\n      \"unit_price\": 2.49,\n      \"amount\": 2.49\n    }\n  ],\n  \"unreadable_fields\": []\n}"
             }
           }
         ],
