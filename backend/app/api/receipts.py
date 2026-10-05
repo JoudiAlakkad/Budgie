@@ -6,7 +6,6 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Response
 
 from app.api.errors import error_responses
 from app.api.schemas import Receipt, ReceiptStatus, ReceiptUpload
-from app.errors import NotImplementedYet
 from app.services.dependencies import get_receipt_pipeline, get_receipt_service
 from app.services.receipt_pipeline import ReceiptPipeline
 from app.services.receipts import ReceiptService
@@ -80,8 +79,15 @@ def get_receipt_image(id: int, service: ReceiptService = Depends(get_receipt_ser
     summary="Retry extraction of a failed or extracted receipt",
     responses=error_responses(404, 409),
 )
-def extract_receipt(id: int) -> Receipt:
-    raise NotImplementedYet("F05")
+def extract_receipt(
+    id: int,
+    background_tasks: BackgroundTasks,
+    service: ReceiptService = Depends(get_receipt_service),
+    pipeline: ReceiptPipeline = Depends(get_receipt_pipeline),
+) -> Receipt:
+    view = service.retry(id)
+    background_tasks.add_task(pipeline.run, view.id)
+    return Receipt.model_validate(view, from_attributes=True)
 
 
 @router.delete(

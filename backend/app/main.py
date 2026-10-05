@@ -14,6 +14,8 @@ from app import __version__
 from app.api import budgets, expenses, health, insights, item_categories, receipts
 from app.api.errors import error_responses, install_error_handlers
 from app.config import Settings, get_settings
+from app.services.dependencies import database_for
+from app.services.receipts import reset_interrupted
 from app.services.storage import close_storage, prepare_storage
 
 logger = logging.getLogger(__name__)
@@ -56,6 +58,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Never raises: failures are logged and kept on the app state, where
         # /api/health reads them to report `db: error` (persistence.md).
         app.state.storage_status = prepare_storage(settings)
+        # Tasks that were queued or running died with the last process (decision 0007).
+        if app.state.storage_status.ok:
+            reset_interrupted(database_for(settings.database_url))
         logger.info("Budgie started (model %s)", settings.llm_model)
         yield
         close_storage()

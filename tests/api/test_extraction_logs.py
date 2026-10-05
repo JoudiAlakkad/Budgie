@@ -18,6 +18,9 @@ from tests.recorded import case_names, distinctive_values, load_case
 ALLOWED_TEMPLATES = {
     "Receipt %d uploaded (%s)",
     "Receipt %d deleted",
+    "Receipt %d queued for extraction again",
+    "Startup reset of interrupted receipts failed (%s)",
+    "Startup reset %d interrupted receipts to failed",
     "Receipt %s: image file not removed (%s)",
     "Receipt %d: extraction task stopped (%s)",
     "Receipt %d: not extracted, it is gone or no longer uploaded",

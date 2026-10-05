@@ -75,7 +75,6 @@ class ReceiptRepository:
             update(ReceiptRow)
             .where(ReceiptRow.id == receipt_id, ReceiptRow.status.in_(sources))
             .values(status=to, **fields)
-            .execution_options(synchronize_session=False)
         )
         result = self._session.execute(statement)
         return result.rowcount == 1  # type: ignore[attr-defined]
@@ -86,7 +85,6 @@ class ReceiptRepository:
             update(ReceiptRow)
             .where(ReceiptRow.status.in_(INTERRUPTED_FROM))
             .values(status="failed", error="interrupted")
-            .execution_options(synchronize_session=False)
         )
         return self._session.execute(statement).rowcount  # type: ignore[attr-defined]
 

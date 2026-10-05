@@ -68,6 +68,7 @@ class DecimalText(TypeDecorator[Decimal]):
 
 class ReceiptRow(Base):
     __tablename__ = "receipts"
+    __table_args__ = {"sqlite_autoincrement": True}  # never reuse a deleted id
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     # The file name only (`<uuid4>.<ext>`), relative to UPLOAD_DIR.
@@ -88,6 +89,7 @@ class ReceiptRow(Base):
 
 class ExpenseRow(Base):
     __tablename__ = "expenses"
+    __table_args__ = {"sqlite_autoincrement": True}  # never reuse a deleted id
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     receipt_id: Mapped[int | None] = mapped_column(
@@ -117,6 +119,7 @@ class ExpenseRow(Base):
 
 class LineItemRow(Base):
     __tablename__ = "line_items"
+    __table_args__ = {"sqlite_autoincrement": True}  # never reuse a deleted id
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     expense_id: Mapped[int] = mapped_column(

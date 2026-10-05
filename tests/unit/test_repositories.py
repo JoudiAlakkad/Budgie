@@ -192,6 +192,18 @@ def test_transition_is_guarded_by_the_current_status(db: Database) -> None:
     )
 
 
+def test_get_after_transition_in_the_same_session_is_fresh(db: Database) -> None:
+    receipt_id = new_receipt(db)
+    with db.transaction() as session:
+        repo = ReceiptRepository(session)
+        before = repo.get(receipt_id)
+        assert repo.transition(receipt_id, "uploaded", "failed", error="llm_error")
+        after = repo.get(receipt_id)
+
+    assert before is not None and before.status == "uploaded"
+    assert after is not None and (after.status, after.error) == ("failed", "llm_error")
+
+
 def test_transition_rejects_unknown_fields(db: Database) -> None:
     receipt_id = new_receipt(db)
     with pytest.raises(ValueError), db.transaction() as session:
@@ -332,3 +344,18 @@ def test_one_expense_per_receipt(db: Database) -> None:
         ExpenseRepository(session).insert(expense(receipt_id))
     with pytest.raises(StorageError), db.transaction() as session:
         ExpenseRepository(session).insert(expense(receipt_id))
+
+
+def test_ids_of_deleted_rows_are_never_reused(db: Database) -> None:
+    receipt_id = new_receipt(db)
+    with db.transaction() as session:
+        expense_id = ExpenseRepository(session).insert(expense(receipt_id)).id
+    with db.transaction() as session:
+        ReceiptRepository(session).delete(receipt_id)
+
+    again = new_receipt(db)
+    with db.transaction() as session:
+        again_expense = ExpenseRepository(session).insert(expense(again)).id
+
+    assert again > receipt_id
+    assert again_expense > expense_id

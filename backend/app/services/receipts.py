@@ -14,6 +14,7 @@ from app.db.session import Database
 from app.errors import (
     ExtractionInterrupted,
     FileTooLarge,
+    InvalidState,
     LLMError,
     LLMTimeout,
     LLMUnavailable,
@@ -28,6 +29,9 @@ from app.services.views import ImageView, ReceiptView, receipt_view
 
 logger = logging.getLogger(__name__)
 
+# Retry is allowed from every failed receipt, including unreadable_image, and from
+# extracted (contracts/receipt-lifecycle.md).
+RETRY_FROM = ("failed", "extracted")
 MEDIA_TYPES = {"jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
@@ -120,6 +124,37 @@ class ReceiptService:
             raise NotFound(f"Receipt {receipt_id} does not exist.")
         return ImageView(self._images.read(receipt.image_path), MEDIA_TYPES[receipt.image_type])
 
+    def retry(self, receipt_id: int) -> ReceiptView:
+        """`failed` or `extracted` -> `uploaded`, in one transaction; the caller queues the task.
+
+        The unconfirmed expense is deleted, and `error`, `model_name`, `prompt_version`,
+        `latency_ms` and `raw_model_output` are cleared. Raises `InvalidState` otherwise.
+        """
+        with self._db.transaction() as session:
+            receipts = ReceiptRepository(session)
+            current = receipts.get(receipt_id)
+            if current is None:
+                raise NotFound(f"Receipt {receipt_id} does not exist.")
+            if not receipts.transition(
+                receipt_id,
+                RETRY_FROM,
+                "uploaded",
+                error=None,
+                model_name=None,
+                prompt_version=None,
+                latency_ms=None,
+                raw_model_output=None,
+            ):
+                raise InvalidState(
+                    f"Receipt {receipt_id} is {current.status}; only a failed or extracted "
+                    "receipt can be extracted again."
+                )
+            ExpenseRepository(session).delete_unconfirmed_for_receipt(receipt_id)
+            receipt = receipts.get(receipt_id)
+        assert receipt is not None
+        logger.info("Receipt %d queued for extraction again", receipt_id)
+        return receipt_view(receipt, None, None)
+
     def delete(self, receipt_id: int) -> None:
         """Delete in any status: the rows first, then the file.
 
@@ -142,3 +177,20 @@ class ReceiptService:
                 receipt_id,
                 type(exc.__cause__ or exc).__name__,
             )
+
+
+def reset_interrupted(db: Database) -> int:
+    """At startup: `uploaded` and `extracting` receipts become `failed` with `interrupted`.
+
+    Their background tasks died with the previous process (decision 0007). Never raises:
+    a failure is logged by type name and the app starts anyway.
+    """
+    try:
+        with db.transaction() as session:
+            count = ReceiptRepository(session).reset_interrupted()
+    except Exception as exc:
+        logger.error("Startup reset of interrupted receipts failed (%s)", type(exc).__name__)
+        return 0
+    if count:
+        logger.warning("Startup reset %d interrupted receipts to failed", count)
+    return count
