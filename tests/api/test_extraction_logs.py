@@ -18,6 +18,7 @@ from tests.recorded import case_names, distinctive_values, load_case
 ALLOWED_TEMPLATES = {
     "Receipt %d uploaded (%s)",
     "Receipt %d deleted",
+    "Expense %d created by hand, %d items, receipt %s",
     "Receipt %d queued for extraction again",
     "Startup reset of interrupted receipts failed (%s)",
     "Startup reset %d interrupted receipts to failed",

@@ -18,6 +18,7 @@ from app.config import Settings, get_settings
 from app.db.images import ImageStore
 from app.db.session import Database
 from app.services.categorization import ItemCategorizer, PlaceholderCategorizer
+from app.services.expenses import ExpenseService
 from app.services.receipt_pipeline import ExtractorFactory, ReceiptPipeline
 from app.services.receipts import ReceiptService
 
@@ -109,3 +110,11 @@ def get_receipt_pipeline(
     today: dt.date = Depends(get_today),
 ) -> ReceiptPipeline:
     return ReceiptPipeline(db, images, extractor_factory, categorizer, today)
+
+
+def get_expense_service(
+    db: Database = Depends(get_database),
+    categorizer: ItemCategorizer = Depends(get_item_categorizer),
+    today: dt.date = Depends(get_today),
+) -> ExpenseService:
+    return ExpenseService(db, categorizer, today)

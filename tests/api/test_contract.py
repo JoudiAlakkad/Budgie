@@ -250,13 +250,13 @@ BUILT: list[tuple[str, str, dict[str, Any]]] = [
     ("GET", "/api/receipts/1/image", {}),
     ("POST", "/api/receipts/1/extract", {}),
     ("DELETE", "/api/receipts/1", {}),
+    ("GET", "/api/expenses?from=2026-10-01&to=2026-10-31&category=drinks", {}),
+    ("POST", "/api/expenses", {"json": EXPENSE}),
+    ("GET", "/api/expenses/1", {}),
 ]
 
 STUBS: list[tuple[str, str, dict[str, Any], str]] = [
-    ("GET", "/api/expenses?from=2026-10-01&to=2026-10-31&category=drinks", {}, "F05"),
-    ("POST", "/api/expenses", {"json": EXPENSE}, "F05"),
     ("GET", "/api/expenses/export.csv?from=2026-10-01", {}, "F10"),
-    ("GET", "/api/expenses/1", {}, "F05"),
     ("PATCH", "/api/expenses/1", {"json": {"merchant": "Aldi"}}, "F06"),
     ("POST", "/api/expenses/1/confirm", {}, "F06"),
     ("DELETE", "/api/expenses/1", {}, "F06"),
