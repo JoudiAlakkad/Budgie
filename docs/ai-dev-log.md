@@ -153,3 +153,4 @@ Modified: the agent's code was accepted after two fix rounds. Its correction of 
 - Wrong fixture claims in the main session's brief → the agent ran them against the data → wiki and issue fixed (`c145ad6`)
 - Float-built amounts falsely flagged at the 0.02 boundary → `reviewer`, reproduced → rounding to cents (`5a7f80b`)
 - `1e30` crashed the sum check → `/code-review` → wide decimal context (`a6dcf06`)
+- Branch created tracking `origin/main`, so `git push` put F04 onto `main` without a PR → GitHub's "no commits" → kept; branches now use `--no-track` ([workflow](wiki/plan/workflow.md#git-conventions))

@@ -47,8 +47,9 @@ See [0010](../decisions/0010-ci-gates-before-merge.md): ruff, pytest, OpenAPI dr
 - Commit messages are short and imperative, and name the feature, e.g. `F05: persist extraction failures`.
 - Agent-authored commits carry a `Co-Authored-By` line for Claude.
 - The agent commits locally, and only the student pushes, from the host ([0011](../decisions/0011-sandbox-hardening.md)).
+- **Create a feature branch without tracking:** `git switch -c feat/F<NN>-<slug> --no-track origin/main`. The first push is `git push -u origin feat/F<NN>-<slug>`. In F4 the branch was created with `git checkout -b … origin/main`, which made `origin/main` its upstream, and a plain `git push` from the host put the F4 commits straight onto `main` with no PR (`dcbce9c..d7dc706`, 2026-10-05). The commits were already reviewed and green, so `main` was kept as it was rather than rewritten.
 - The remote host is GitHub (`JoudiAlakkad/Budgie`). It holds the issues, milestones, PRs and Actions.
-- **When the remote is created**, protect `main`: require PRs, require all CI checks to pass, and block force-pushes and deletion ([0011](../decisions/0011-sandbox-hardening.md)).
+- **When the remote is created**, protect `main`: require PRs, require all CI checks to pass, block force-pushes and deletion, and don't allow admins to bypass the rules ([0011](../decisions/0011-sandbox-hardening.md)). The F4 push to `main` went through, so check that protection is on and applies to admins.
 
 ## Dev log
 Run `/dev-log <title>` after a noteworthy feature. See [0012](../decisions/0012-dev-log-skill.md) and `docs/ai-dev-log.md`. The target is 5–8 episodes, including at least one where the agent's work failed or was only partly used.
