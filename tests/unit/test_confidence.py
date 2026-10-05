@@ -67,6 +67,26 @@ REVIEW_FLAGS = [
         [("total", "unreadable"), ("merchant", "unreadable"), ("line_items", "unreadable")],
     ),
     (
+        "a missing field listed as unreadable gets only the missing flag",
+        {
+            "merchant": None,
+            "date": " ",
+            "total": None,
+            "unreadable_fields": ("merchant", "date", "total", "tax"),
+        },
+        [
+            ("merchant", "missing_merchant"),
+            ("date", "missing_date"),
+            ("total", "missing_total"),
+            ("tax", "unreadable"),
+        ],
+    ),
+    (
+        "a present field listed as unreadable is flagged",
+        {"unreadable_fields": ("merchant", "date", "total")},
+        [("merchant", "unreadable"), ("date", "unreadable"), ("total", "unreadable")],
+    ),
+    (
         "a repeated unreadable key flags once",
         {"unreadable_fields": ("tax", "tax")},
         [("tax", "unreadable")],
@@ -79,6 +99,16 @@ REVIEW_FLAGS = [
     (
         "uncategorised by name",
         {"items": (item(category="uncategorized"), item(category="drinks"))},
+        [("line_items[0]", "uncategorized_item")],
+    ),
+    (
+        "uncategorised by name, any case and spacing",
+        {"items": (item(category=" Uncategorized "), item(category="UNCATEGORIZED"))},
+        [("line_items[0]", "uncategorized_item"), ("line_items[1]", "uncategorized_item")],
+    ),
+    (
+        "uncategorised blank",
+        {"items": (item(category="  "),)},
         [("line_items[0]", "uncategorized_item")],
     ),
     (
@@ -104,7 +134,6 @@ REVIEW_FLAGS = [
             ("merchant", "missing_merchant"),
             ("date", "missing_date"),
             ("total", "missing_total"),
-            ("total", "unreadable"),
             ("line_items[0]", "uncategorized_item"),
         ],
     ),
@@ -181,10 +210,18 @@ def test_review_status_matches_the_api_literal() -> None:
     assert get_args(confidence.ReviewStatus) == get_args(schemas.ReviewStatus)
 
 
-def test_review_status_is_never_a_number() -> None:
-    for status in get_args(confidence.ReviewStatus):
-        assert isinstance(status, str)
-        assert not re.fullmatch(r"[\d.,%]+", status)
+def test_expense_has_no_score_and_a_string_review_status() -> None:
+    """Decision 0008: no score, confidence or probability field; the status is a string."""
+    scored = [
+        name
+        for name in schemas.Expense.model_fields
+        if re.search(r"score|confidence|probability", name, flags=re.IGNORECASE)
+    ]
+    assert scored == []
+
+    review_status_schema = schemas.Expense.model_json_schema()["properties"]["review_status"]
+    assert review_status_schema["type"] == "string"
+    assert review_status_schema["enum"] == list(get_args(confidence.ReviewStatus))
 
 
 # --- is_plausible_receipt -----------------------------------------------------------
@@ -230,12 +267,6 @@ def test_assess_puts_validation_flags_first() -> None:
         "currency_unknown",
         "missing_merchant",
     ]
-
-
-def test_assess_is_deterministic() -> None:
-    receipt = facts(merchant=None, date="x", unreadable_fields=("tax", "date"))
-
-    assert assess(receipt, TODAY) == assess(receipt, TODAY)
 
 
 def test_an_edit_clears_the_fixed_flags() -> None:
@@ -336,9 +367,6 @@ def test_missing_fields_fixture() -> None:
         ("merchant", "missing_merchant"),
         ("date", "missing_date"),
         ("total", "missing_total"),
-        ("merchant", "unreadable"),
-        ("date", "unreadable"),
-        ("total", "unreadable"),
         ("line_items[0]", "uncategorized_item"),
         ("line_items[1]", "uncategorized_item"),
     ]
@@ -418,3 +446,27 @@ def test_every_produced_code_is_in_the_wiki_table() -> None:
 
     assert produced == set(get_args(FlagCode))
     assert produced <= wiki_flag_codes()
+
+
+# --- money must be finite -----------------------------------------------------------
+
+NON_FINITE = ["NaN", "sNaN", "Infinity", "-Infinity"]
+
+
+@pytest.mark.parametrize("value", NON_FINITE)
+def test_item_amount_must_be_finite(value: str) -> None:
+    with pytest.raises(ValueError, match="amount must be a finite number"):
+        ItemFacts("MILCH", Decimal(value), None)
+
+
+@pytest.mark.parametrize("value", NON_FINITE)
+@pytest.mark.parametrize("field", ["subtotal", "tax", "total"])
+def test_receipt_money_must_be_finite(field: str, value: str) -> None:
+    with pytest.raises(ValueError, match=f"{field} must be a finite number"):
+        facts(**{field: Decimal(value)})
+
+
+def test_finite_and_missing_money_is_accepted() -> None:
+    receipt = facts(subtotal=None, tax=Decimal("-0.49"), total=Decimal("0"))
+
+    assert receipt.total == Decimal("0")

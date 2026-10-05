@@ -22,16 +22,27 @@ def _field_name(key: str) -> str:
 
 
 def review_flags(facts: ReceiptFacts) -> list[Flag]:
-    """Missing-field, `unreadable` and `uncategorized_item` flags, in that order."""
+    """Missing-field, `unreadable` and `uncategorized_item` flags, in that order.
+
+    An `unreadable` key that is also missing (merchant, date, total) gets only the
+    missing_* flag.
+    """
     flags: list[Flag] = []
+    missing: set[str] = set()
     if is_blank(facts.merchant):
+        missing.add("merchant")
         flags.append(Flag("merchant", "missing_merchant", "The merchant is missing."))
     if is_blank(facts.date):
+        missing.add("date")
         flags.append(Flag("date", "missing_date", "The date is missing."))
     if facts.total is None:
+        missing.add("total")
         flags.append(Flag("total", "missing_total", "The total is missing."))
-    # One flag per key; the schema lets the model repeat a key.
+    # One flag per key (the schema lets the model repeat a key), and none for a key that
+    # already has its missing_* flag, so each field gets one message.
     for key in dict.fromkeys(facts.unreadable_fields):
+        if key in missing:
+            continue
         message = f"The {_field_name(key)} could not be read from the receipt; please check it."
         flags.append(Flag(key, "unreadable", message))
     for index, item in enumerate(facts.items):

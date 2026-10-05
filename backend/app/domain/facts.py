@@ -34,9 +34,15 @@ class ItemFacts:
     amount: Decimal
     category: str | None = None
 
+    def __post_init__(self) -> None:
+        _require_finite("amount", self.amount)
+
     @property
     def is_categorized(self) -> bool:
-        return bool(self.category and self.category.strip()) and self.category != UNCATEGORIZED
+        if self.category is None:
+            return False
+        name = self.category.strip().lower()
+        return bool(name) and name != UNCATEGORIZED
 
 
 @dataclass(frozen=True)
@@ -52,6 +58,12 @@ class ReceiptFacts:
     items: tuple[ItemFacts, ...] = ()
     unreadable_fields: tuple[str, ...] = ()
 
+    def __post_init__(self) -> None:
+        for name in ("subtotal", "tax", "total"):
+            value = getattr(self, name)
+            if value is not None:
+                _require_finite(name, value)
+
 
 @dataclass(frozen=True)
 class Flag:
@@ -60,6 +72,12 @@ class Flag:
     field: str | None
     code: FlagCode
     message: str
+
+
+def _require_finite(name: str, value: Decimal) -> None:
+    """Money is a finite Decimal: NaN or Infinity would break every comparison."""
+    if not value.is_finite():
+        raise ValueError(f"{name} must be a finite number, got {value}")
 
 
 def is_blank(text: str | None) -> bool:

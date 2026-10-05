@@ -41,6 +41,11 @@ def items(*amounts: str) -> tuple[ItemFacts, ...]:
     return tuple(ItemFacts(f"ITEM {i}", Decimal(a), "other") for i, a in enumerate(amounts))
 
 
+def float_item(amount: float) -> ItemFacts:
+    """An item whose amount came from a float, e.g. Decimal(2.98) == 2.97999..."""
+    return ItemFacts("FLOAT", Decimal(amount), "other")
+
+
 def codes(flags: list[Flag]) -> list[str]:
     return [flag.code for flag in flags]
 
@@ -69,6 +74,9 @@ NUMBERS = [
     ("1.2345", "1.2345"),
     ("1234.56", "1234.56"),
     ("-0.50", "-0.50"),
+    ("0,50", "0.50"),
+    ("0.5", "0.5"),
+    ("0,123", "0.123"),
 ]
 
 
@@ -98,6 +106,12 @@ NOT_NUMBERS = [
     "1e3",
     "NaN",
     "١٢٣",  # non-ASCII digits
+    # no leading zero in the first group of a grouped number
+    "0.123,45",
+    "000.000",
+    "01.234",
+    "-0.123,45",
+    "0.123",
 ]
 
 
@@ -221,9 +235,31 @@ SUMS = [
         None,
     ),
     (
-        "rounded to 2 decimals in the message",
+        "rounded half up to cents in the message",
         {"items": items("1.005"), "total": Decimal("2")},
-        ("total", "Items sum to 1.00 but total is 2.00."),
+        ("total", "Items sum to 1.01 but total is 2.00."),
+    ),
+    # amounts built from floats are compared in cents, not as 2.97999...
+    ("float-built item passes", {"items": (float_item(2.98),), "total": Decimal("3.00")}, None),
+    (
+        "float-built items sum passes",
+        {"items": (float_item(1.0), float_item(1.98)), "total": Decimal("3.00")},
+        None,
+    ),
+    (
+        "float-built target passes",
+        {"items": items("2.98"), "total": Decimal(3.0)},
+        None,
+    ),
+    (
+        "float-built item 0.03 off fails",
+        {"items": (float_item(2.97),), "total": Decimal("3.00")},
+        ("total", "Items sum to 2.97 but total is 3.00."),
+    ),
+    (
+        "subtotal 0.03 off",
+        {"items": items("3.00"), "subtotal": Decimal("3.03"), "total": Decimal("3.00")},
+        ("subtotal", "Items sum to 3.00 but subtotal is 3.03."),
     ),
 ]
 

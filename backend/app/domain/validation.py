@@ -7,11 +7,12 @@ receipts print VAT as included (decision 0008, amendment F04).
 
 import re
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from app.domain.facts import Flag, ReceiptFacts, is_blank
 
 SUM_TOLERANCE = Decimal("0.02")
+CENT = Decimal("0.01")
 MAX_AGE_YEARS = 2
 
 # parse_number, in this order (ASCII digits only, optional leading "-", no spaces):
@@ -22,9 +23,11 @@ MAX_AGE_YEARS = 2
 #    is therefore always thousands, never a decimal.
 # 3. No comma, one "." not followed by exactly 3 digits: decimal, `1.99`, `12.5`.
 # 4. Digits only: `1234`.
+# The first group of a grouped number has no leading zero, so `0.123,45`, `000.000` and
+# `0.123` are rejected, while `0,50` and `0.5` parse.
 # Anything else raises ValueError: empty, letters, `1.234.5`, `1234.567`, `1,2,3`, `.5`.
-_COMMA_DECIMAL = re.compile(r"-?(?:\d{1,3}(?:\.\d{3})+|\d+),\d+", re.ASCII)
-_DOT_THOUSANDS = re.compile(r"-?\d{1,3}(?:\.\d{3})+", re.ASCII)
+_COMMA_DECIMAL = re.compile(r"-?(?:[1-9]\d{0,2}(?:\.\d{3})+|\d+),\d+", re.ASCII)
+_DOT_THOUSANDS = re.compile(r"-?[1-9]\d{0,2}(?:\.\d{3})+", re.ASCII)
 _DOT_DECIMAL = re.compile(r"-?\d+\.(?!\d{3}$)\d+", re.ASCII)
 _INTEGER = re.compile(r"-?\d+", re.ASCII)
 
@@ -79,6 +82,10 @@ def years_before(day: date, years: int) -> date:
         return day.replace(year=day.year - years, day=28)
 
 
+def _cents(value: Decimal) -> Decimal:
+    return value.quantize(CENT, rounding=ROUND_HALF_UP)
+
+
 def _money(value: Decimal) -> str:
     return f"{value:.2f}"
 
@@ -93,7 +100,10 @@ def check_sum(facts: ReceiptFacts) -> list[Flag]:
         field, target = "total", facts.total
     else:
         return []
-    items_sum = sum((item.amount for item in facts.items), Decimal(0))
+    # Rounded to cents first: an amount built from a float (Decimal(2.98) is
+    # 2.979999...) must not tip the comparison past the tolerance.
+    items_sum = _cents(sum((item.amount for item in facts.items), Decimal(0)))
+    target = _cents(target)
     if abs(items_sum - target) <= SUM_TOLERANCE:
         return []
     message = f"Items sum to {_money(items_sum)} but {field} is {_money(target)}."
@@ -102,7 +112,7 @@ def check_sum(facts: ReceiptFacts) -> list[Flag]:
 
 def check_date(text: str | None, today: date) -> list[Flag]:
     """`date_unparseable`, `date_in_future` or `date_too_old`; a missing date is not checked."""
-    if text is None or is_blank(text):
+    if is_blank(text):
         return []
     parsed = parse_date(text)
     if parsed is None:
@@ -119,7 +129,7 @@ def check_date(text: str | None, today: date) -> list[Flag]:
 
 def check_currency(text: str | None) -> list[Flag]:
     """`currency_unknown` if a currency is present but not recognised."""
-    if text is None or is_blank(text) or normalize_currency(text) is not None:
+    if is_blank(text) or normalize_currency(text) is not None:
         return []
     message = f'The currency "{text.strip()}" is not recognised.'
     return [Flag("currency", "currency_unknown", message)]
