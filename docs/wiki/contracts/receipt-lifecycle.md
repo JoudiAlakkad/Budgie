@@ -39,4 +39,5 @@ Any other action returns `409 invalid_state`.
 - **`review_status` is a rule result, not a probability** ([0008](../decisions/0008-rule-based-review-status-not-probability.md)):
   - `rejected` means there is no total and no line item, so nothing usable was extracted. The user can still enter the fields by hand.
   - `needs_review` means at least one flag is set, including a missing merchant or date ([domain-logic](../backend/domain-logic.md#confidencepy-f4)).
+  - The status and flags are recomputed after every create or edit of the expense. The user can edit every field whatever the status.
 - **Timing:** `POST /receipts` and `POST /receipts/{id}/extract` return `202` right away, and the UI polls `GET /receipts/{id}` ([0007](../decisions/0007-async-extraction-with-polling.md)).

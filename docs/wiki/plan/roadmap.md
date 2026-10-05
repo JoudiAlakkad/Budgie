@@ -52,6 +52,7 @@ Each feature is one issue, one branch (`feat/F<NN>-<slug>`) and one PR. The proc
   - The user can run the whole of scenario 1 in the UI.
   - Confirm is refused while any item is uncategorised.
   - AI-generated values are labelled.
+  - A `null` field is shown as "unknown, please fill in", and flags and the review status are recomputed after every edit.
 - **F7:**
   - Normaliser tests cover real receipt strings, for example `BIO BANANE 1 KG → banane`.
   - A user's choice is saved and used on the next receipt.
@@ -62,8 +63,10 @@ Each feature is one issue, one branch (`feat/F<NN>-<slug>`) and one PR. The proc
   - The CSV columns match [csv-export](../contracts/csv-export.md).
 - **F11:**
   - There are at least 10 cases (target about 20), with aggregated metrics, at least 2 comparisons, and a failure discussion in `docs/evaluation.md`.
+  - `docs/evaluation.md` has an uncertainty section with the precision and recall of `needs_review` ([uncertainty](../backend/uncertainty.md)).
 - **F12:**
   - The README covers every item of criterion 18 in the brief.
+  - The README explains uncertainty handling (criterion 13) and links to [uncertainty](../backend/uncertainty.md).
 
 ## Milestones (about 120 h)
 | # | Milestone | Hours | Features |

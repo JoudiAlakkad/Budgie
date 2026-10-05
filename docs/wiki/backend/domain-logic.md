@@ -2,21 +2,48 @@
 
 This is the pure, deterministic code in `backend/app/domain/`. It makes up the "substantial application logic" (criterion 2). No module here imports `db`, `ai` or `api`.
 
+## Input types (F4)
+The domain imports neither `ai.schema` nor `api.schemas`, so its rules take frozen dataclasses. F05 builds them from the model output, and F06 builds them from an edited expense.
+- `ItemFacts(description, amount: Decimal, category: str | None)`: `None` means not categorised yet; `"uncategorized"` counts the same.
+- `ReceiptFacts(merchant, date: str | None, currency, subtotal, tax, total: Decimal | None, items, unreadable_fields)`.
+- `Flag(field, code, message)`: the same shape as the `Flag` DTO.
+
 ## `validation.py` (F4)
-- Parses numbers: German `1,99`, `1.234,56` and `-0,50`. Currencies `€`/`EUR` become `EUR`.
-- Arithmetic checks, with a tolerance of 0.02 per check:
-  - the line items sum to the subtotal (or to the total if there is no subtotal)
-  - subtotal plus tax equals the total
-- Date checks: the date parses, isn't in the future, and is no more than 2 years old.
-- Each failed check returns a `Flag {field, code, message}`.
+- `parse_number`: German `1,99`, `1.234,56` and `-0,50`, and plain `1.99`. Nothing calls it yet (the schema gives amounts as JSON numbers); it is kept for text input.
+- `normalize_currency`: `€`, `EUR` and `eur` become `EUR`; another 3-letter code is uppercased; anything else is unknown. The spike returned `€`.
+- `parse_date`: `YYYY-MM-DD` and `DD.MM.YYYY` (the spike returned `22.09.2026`).
+- **Arithmetic check**, tolerance 0.02: the line items sum to the subtotal, or to the total if there is no subtotal.
+- **No tax check.** German receipts print VAT as included: in the spike's TEDi run, subtotal 3.10, tax 0.49 and total 3.10 were all correct, and `subtotal + tax = total` would have flagged it. Tax is stored but not checked.
+- **Date checks:** the date parses, isn't in the future, and is no more than 2 years old (by calendar date). `today` is a parameter, so the tests are deterministic.
 
 ## `confidence.py` (F4)
-Sets the review status from the flags ([0008](../decisions/0008-rule-based-review-status-not-probability.md)):
-- `rejected`: required fields missing that the rules can't fill (no total and no line items)
-
-The **plausibility rule** that decides whether the output is a receipt at all runs before this, and a non-receipt never gets a review status: the receipt becomes `failed` with `not_a_receipt` ([0015](../decisions/0015-non-receipt-is-a-failure-with-retry-or-manual-entry.md)). Its exact thresholds are set in F04 and tested against the spike outputs.
-- `needs_review`: any flag, an `unreadable_fields` entry, a missing merchant or date, or any `uncategorized` item
+Sets the review status from the flags ([0008](../decisions/0008-rule-based-review-status-not-probability.md)). How this answers criterion 13 is explained in [uncertainty](uncertainty.md).
+- `rejected`: no total and no line items, so nothing usable was extracted
+- `needs_review`: any flag
 - `accepted`: otherwise
+
+`assess(facts, today)` returns the status and every flag. F05 calls it after extraction; F06 calls it again after every create or edit, so a fixed field clears its flag. F06 drops a key from `unreadable_fields` once the user edits that field.
+
+### Plausibility rule
+`is_plausible_receipt(facts)` is `False` when there is **no merchant, no total and at most one item**. The pipeline checks it before the review status; a non-receipt never gets one, and the receipt becomes `failed` with `not_a_receipt` ([0015](../decisions/0015-non-receipt-is-a-failure-with-retry-or-manual-entry.md)).
+- Spike evidence: it catches the base-schema pinboard runs (one item, no merchant, no total).
+- **Known limit:** the strict-schema pinboard run invented a merchant, a date and a total, so it passes this rule. It is still flagged `sum_mismatch` (22.98 against 25.00) and `date_too_old` (2023-10-26), so it lands in `needs_review`.
+
+### Flag codes
+| Code | Field | Set when |
+|---|---|---|
+| `sum_mismatch` | `subtotal`, or `total` without a subtotal | the items' sum is off by more than 0.02 |
+| `date_unparseable` | `date` | a date is present but matches neither format |
+| `date_in_future` | `date` | the date is after `today` |
+| `date_too_old` | `date` | the date is more than 2 years before `today` |
+| `currency_unknown` | `currency` | a currency is present but not recognised |
+| `missing_merchant` | `merchant` | no merchant |
+| `missing_date` | `date` | no date |
+| `missing_total` | `total` | no total |
+| `unreadable` | the key | the model listed the key in `unreadable_fields` |
+| `uncategorized_item` | `line_items[i]` | the item has no category yet |
+
+F7 adds `possible_duplicate`.
 
 ## `categorize.py` (F7)
 Implements [0013](../decisions/0013-deterministic-item-categorisation-by-lookup.md).

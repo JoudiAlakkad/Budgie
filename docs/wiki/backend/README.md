@@ -6,6 +6,7 @@ A Python 3.12 FastAPI app in `backend/app/` (the dev container runs 3.14; CI and
 - [AI extraction](ai-extraction.md): model client, prompts, output schema, failure handling
 - [AI spike](ai-spike.md): measured latency and extraction quality of `gemma3:4b` on real receipts (milestone 2)
 - [Domain logic](domain-logic.md): validation, review status, categorisation, duplicates, budgets, leaks
+- [Uncertainty](uncertainty.md): how criterion 13 is answered: rules and statuses, no probability
 - [Persistence](persistence.md): SQLite schema, uploads, error mapping
 - [Configuration](configuration.md): environment variables
 

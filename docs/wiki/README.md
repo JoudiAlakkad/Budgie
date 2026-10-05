@@ -15,6 +15,7 @@ back; the parent records them.
 ## Architecture
 
 - [Architecture](architecture.md) — layers, data flow, data encapsulation
+- [Uncertainty](backend/uncertainty.md) — how model uncertainty is handled (criterion 13)
 
 ## Decisions
 
