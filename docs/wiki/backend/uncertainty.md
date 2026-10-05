@@ -12,7 +12,7 @@ How Budgie treats uncertainty in the model's output (criterion 13 of the brief).
 | Explicit "unknown" or escalation | yes | Unknown: a field the model can't read is `null`, and it may list it in `unreadable_fields`; the UI shows a `null` field as "unknown, please fill in". Escalation: every flag goes to the user with its reason next to the field; a non-receipt becomes `failed` with Retry or Enter manually ([0015](../decisions/0015-non-receipt-is-a-failure-with-retry-or-manual-entry.md)); nothing counts until the user confirms, and confirming is refused while an item is uncategorised. |
 
 ## No probability
-- The API has no score field. `review_status` is a string Literal, and a test checks it is never a number.
+- The API has no score field. A test checks that the `Expense` DTO has no score, confidence or probability field and that `review_status` is a JSON-schema string enum equal to the domain's `ReviewStatus`.
 - The brief allows a confidence value only if it is "appropriately justified or calibrated". Budgie doesn't show one. Instead F11 justifies the status: it reports the precision and recall of `needs_review` against the hand-labelled `expected_status`, i.e. how many wrong extractions get flagged and how many correct ones are flagged for nothing.
 
 ## What the user sees
@@ -23,7 +23,8 @@ How Budgie treats uncertainty in the model's output (criterion 13 of the brief).
 ## Known gaps
 - An extraction that is internally consistent but wrong passes every rule, e.g. a misread price with a total that matches. Only the user's review catches it.
 - `unreadable_fields` is weak: in the spike the model listed fields it had read correctly, and didn't list ones it had invented. A false `unreadable` flag only costs a review.
-- The plausibility rule misses a non-receipt for which the model invents a full receipt. The sum and date checks usually flag it instead.
+- The plausibility rule misses a non-receipt for which the model invents a full receipt. In the recorded pinboard run even the sum check passes (items 22.98, invented subtotal 23.00); only the 2023 date and the `unreadable` flags send it to review.
+- Payment lines listed as items (ZU ZAHLEN, BAR, ZURÜCK) make many real receipts `needs_review` through `sum_mismatch`, as in the recorded ALDI run. Correct, but noisy until the pipeline or the prompt removes them.
 
 ## Possible improvements
 - Agreement between two prompt versions or two models, with a flag on each field where they disagree (costs a second call).

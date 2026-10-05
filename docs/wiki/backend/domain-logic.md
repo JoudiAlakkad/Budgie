@@ -4,17 +4,26 @@ This is the pure, deterministic code in `backend/app/domain/`. It makes up the "
 
 ## Input types (F4)
 The domain imports neither `ai.schema` nor `api.schemas`, so its rules take frozen dataclasses. F05 builds them from the model output, and F06 builds them from an edited expense.
-- `ItemFacts(description, amount: Decimal, category: str | None)`: `None` means not categorised yet; `"uncategorized"` counts the same.
+- In `app/domain/facts.py`. `FlagCode` there is a Literal of the F4 codes, and a test checks it against the Flag codes table below.
+- `ItemFacts(description, amount: Decimal, category: str | None)`: `None`, blank, or `"uncategorized"` in any case means not categorised yet.
 - `ReceiptFacts(merchant, date: str | None, currency, subtotal, tax, total: Decimal | None, items, unreadable_fields)`.
 - `Flag(field, code, message)`: the same shape as the `Flag` DTO.
+- Money must be finite: NaN and Infinity raise `ValueError`. Build Decimals from `str(float)`. The sum check rounds to cents anyway, so a float-born `Decimal(2.98)` = 2.9799… can't cause a false flag.
+- A blank or whitespace-only string counts as missing.
 
 ## `validation.py` (F4)
-- `parse_number`: German `1,99`, `1.234,56` and `-0,50`, and plain `1.99`. Nothing calls it yet (the schema gives amounts as JSON numbers); it is kept for text input.
+- `parse_number`: German `1,99`, `1.234,56` and `-0,50`, and plain `1.99`. Nothing calls it yet (the schema gives amounts as JSON numbers); it is kept for text input. ASCII digits, an optional leading `-`, no inner spaces. In order:
+  1. a comma is the decimal point, and any `.` before it separates groups of exactly 3 digits (`1.234,56`; `1.23,45` is rejected)
+  2. without a comma, dots that split 1–3 leading digits from 3-digit groups are thousands (`1.234` → 1234, `1.234.567`)
+  3. otherwise a single `.` is the decimal point (`1.99`, `1.2345`)
+  4. digits only (`1234`)
+  - The first group of a grouped number has no leading zero, so `0.123,45`, `000.000` and `0.123` are rejected; `0,50` and `0.5` parse.
+  - Everything else raises `ValueError` (`1.234.5`, `1234.567`, `.5`, `5.`, `+1`, `1 234,56`).
 - `normalize_currency`: `€`, `EUR` and `eur` become `EUR`; another 3-letter code is uppercased; anything else is unknown. The spike returned `€`.
 - `parse_date`: `YYYY-MM-DD` and `DD.MM.YYYY` (the spike returned `22.09.2026`).
-- **Arithmetic check**, tolerance 0.02: the line items sum to the subtotal, or to the total if there is no subtotal.
+- **Arithmetic check**, tolerance 0.02: the line items sum to the subtotal, or to the total if there is no subtotal. Both sides are rounded to cents (half up) in a 400-digit decimal context (`SUM_PRECISION`; a float's integer part has at most 309 digits) before the comparison, so a float-born or huge amount (`1e30`) is flagged, never a crash. The message shows the rounded values. Upper limits on amounts belong to the API's `Money` (`max_digits=12`), which F05 and F06 must handle.
 - **No tax check.** German receipts print VAT as included: in the spike's TEDi run, subtotal 3.10, tax 0.49 and total 3.10 were all correct, and `subtotal + tax = total` would have flagged it. Tax is stored but not checked.
-- **Date checks:** the date parses, isn't in the future, and is no more than 2 years old (by calendar date). `today` is a parameter, so the tests are deterministic.
+- **Date checks:** the date parses, isn't in the future, and is no more than 2 years old (by calendar date). `today` is a parameter, so the tests are deterministic. The cutoff is `years_before(today, 2)`, which falls back from 29 Feb to 28 Feb; a date exactly on the cutoff passes.
 
 ## `confidence.py` (F4)
 Sets the review status from the flags ([0008](../decisions/0008-rule-based-review-status-not-probability.md)). How this answers criterion 13 is explained in [uncertainty](uncertainty.md).
@@ -27,7 +36,8 @@ Sets the review status from the flags ([0008](../decisions/0008-rule-based-revie
 ### Plausibility rule
 `is_plausible_receipt(facts)` is `False` when there is **no merchant, no total and at most one item**. The pipeline checks it before the review status; a non-receipt never gets one, and the receipt becomes `failed` with `not_a_receipt` ([0015](../decisions/0015-non-receipt-is-a-failure-with-retry-or-manual-entry.md)).
 - Spike evidence: it catches the base-schema pinboard runs (one item, no merchant, no total).
-- **Known limit:** the strict-schema pinboard run invented a merchant, a date and a total, so it passes this rule. It is still flagged `sum_mismatch` (22.98 against 25.00) and `date_too_old` (2023-10-26), so it lands in `needs_review`.
+- **Known limit:** the strict-schema pinboard run invented a merchant, a date, a subtotal and a total, so it passes this rule. It also passes the sum check: its items (22.98) are within 0.02 of its invented subtotal (23.00). It lands in `needs_review` only through `date_too_old` (2023-10-26) and the `unreadable` flags on `total` and `tax`.
+- **Recorded fixtures:** `missing_fields` has 2 items, so it is plausible. `valid_receipt` (the spike's ALDI run) is flagged `sum_mismatch`, because the model listed the payment lines ZU ZAHLEN, BAR and ZURÜCK as items: the rule catches a real extraction error.
 
 ### Flag codes
 | Code | Field | Set when |
@@ -40,10 +50,10 @@ Sets the review status from the flags ([0008](../decisions/0008-rule-based-revie
 | `missing_merchant` | `merchant` | no merchant |
 | `missing_date` | `date` | no date |
 | `missing_total` | `total` | no total |
-| `unreadable` | the key | the model listed the key in `unreadable_fields` |
+| `unreadable` | the key | the model listed the key in `unreadable_fields`; once per key, and not for a key that already has a `missing_*` flag |
 | `uncategorized_item` | `line_items[i]` | the item has no category yet |
 
-F7 adds `possible_duplicate`.
+`assess` returns them in this order: `sum_mismatch`, the date flag, `currency_unknown`, the `missing_*` flags, `unreadable` in the model's order, `uncategorized_item` by index. F7 adds `possible_duplicate`.
 
 ## `categorize.py` (F7)
 Implements [0013](../decisions/0013-deterministic-item-categorisation-by-lookup.md).
