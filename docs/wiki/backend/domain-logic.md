@@ -21,7 +21,8 @@ The domain imports neither `ai.schema` nor `api.schemas`, so its rules take froz
   - Everything else raises `ValueError` (`1.234.5`, `1234.567`, `.5`, `5.`, `+1`, `1 234,56`).
 - `normalize_currency`: `€`, `EUR` and `eur` become `EUR`; another 3-letter code is uppercased; anything else is unknown. The spike returned `€`.
 - `parse_date`: `YYYY-MM-DD` and `DD.MM.YYYY` (the spike returned `22.09.2026`).
-- **Arithmetic check**, tolerance 0.02: the line items sum to the subtotal and to the total, each checked on its own when present, so a receipt can get two `sum_mismatch` flags (subtotal first). Because German VAT is included, the items should match the total too. A US-style receipt (net subtotal + tax = total) is flagged on the total; the user decided this is acceptable, since Budgie targets German receipts and a false flag only costs a review. Both sides are rounded to cents (half up) in a 400-digit decimal context (`SUM_PRECISION`; a float's integer part has at most 309 digits) before the comparison, so a float-born or huge amount (`1e30`) is flagged, never a crash. The message shows the rounded values. Upper limits on amounts belong to the API's `Money` (`max_digits=12`), which F05 and F06 must handle.
+- **Arithmetic check**, tolerance 0.02: the line items sum to the subtotal and to the total, each checked on its own when present, so a receipt can get two `sum_mismatch` flags (subtotal first). Because German VAT is included, the items should match the total too. A US-style receipt (net subtotal + tax = total) is flagged on the total; the user decided this is acceptable, since Budgie targets German receipts and a false flag only costs a review. Both sides are rounded to cents (half up) in a 400-digit decimal context (`SUM_PRECISION`; a float's integer part has at most 309 digits) before the comparison, so a float-born or huge amount (`1e30`) is flagged, never a crash. The message shows the rounded values. Upper limits on amounts belong to the API's `Money` (`max_digits=12`): the F05 pipeline treats a model amount with `abs ≥ 10**10` as `malformed_output`, and F06 must reject one in a request.
+- **What F05 stores:** an unparseable date as `null` (the `date_unparseable` flag stays; F06's reassessment then shows `missing_date`), and an unknown or missing currency as `EUR` (the `currency_unknown` flag stays).
 - **No tax check.** German receipts print VAT as included: in the spike's TEDi run, subtotal 3.10, tax 0.49 and total 3.10 were all correct, and `subtotal + tax = total` would have flagged it. Tax is stored but not checked.
 - **Date checks:** the date parses, isn't in the future, and is no more than 2 years old (by calendar date). `today` is a parameter, so the tests are deterministic. The cutoff is `years_before(today, 2)`, which falls back from 29 Feb to 28 Feb; a date exactly on the cutoff passes.
 
@@ -51,7 +52,7 @@ Sets the review status from the flags ([0008](../decisions/0008-rule-based-revie
 | `missing_date` | `date` | no date |
 | `missing_total` | `total` | no total |
 | `unreadable` | the key | the model listed the key in `unreadable_fields`; once per key, and not for a key that already has a `missing_*` flag |
-| `uncategorized_item` | `line_items[i]` | the item has no category yet |
+| `uncategorized_item` | `line_items[i]` | the item has no category yet; until F07 every extracted item gets it |
 
 `assess` returns them in this order: `sum_mismatch` (subtotal, then total), the date flag, `currency_unknown`, the `missing_*` flags, `unreadable` in the model's order, `uncategorized_item` by index. F7 adds `possible_duplicate`.
 
@@ -122,13 +123,13 @@ The safety net for personal data in the three places where the model writes free
   2. cut it before a 5-digit postcode, a run of 6 or more digits, `http`, `www.`, `@`, or a `Tel`/`Telefon`/`Fon`/`Fax` label
   3. strip trailing punctuation
   4. return `None` if nothing is left, otherwise the `redact_text` result
-- **F05 applies it:** `clean_merchant` to `merchant`, and `redact_text` to the descriptions and the raw output.
+- **F05 applies it:** `clean_merchant` to `merchant`, and `redact_text` to the descriptions and the raw output. In raw output that parses as JSON, `merchant` is replaced by the cleaned value first.
 - **Must survive:** prices, dates, times, quantities, weights, EAN codes, item names (including `APFELRING 2`, `Holzweg 2`, and uppercase names that look like the start of an IBAN, such as `PC24 BLAUBEEREN`, `XL12 HANDTUCH` or `GR12 TOMATEN 500G`), IBAN-shaped strings with a wrong checksum, and chain names.
 - **Why only these rules:** the address, URL, phone, tax-id and cashier rules were written for the spike's base schema, where `unreadable_fields` was free text. Once the schema closed that field, they mostly hit item names (`Hering 2` → `[address]`), and one of them hung on a line of `*` (catastrophic backtracking). They were removed.
 - **Known limits:**
   - In a merchant like `Markt | info@markt.example`, the part before the `@` survives the cut, and `Shop @ Home` becomes `Shop`.
   - A label glued into a rejected value isn't seen: in `Kasse-Bon 1234`, the `1234` survives.
-  - Header text the model copies into `merchant` is cleaned in the `merchant` column but stays in the stored raw output, unless F05 replaces it there too.
+  - Header text the model copies into `merchant` stays in the stored raw output only when that output doesn't parse as JSON (`malformed_output`); otherwise F05 replaces it.
 
 ### Fixture generator (`scripts/make_fixtures.py`)
 - `python scripts/make_fixtures.py --spike data/spike --out tests/fixtures/recorded_responses [--check]`.
