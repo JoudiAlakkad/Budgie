@@ -13,7 +13,9 @@ from app.ai.client import LLMClient
 from app.ai.extractor import Extractor
 from app.ai.prompts import load_prompts
 from app.config import Settings, get_settings
+from app.db.images import ImageStore
 from app.db.session import Database
+from app.services.receipts import ReceiptService
 
 _databases: dict[str, Database] = {}
 _databases_lock = Lock()
@@ -43,6 +45,18 @@ def get_database(settings: Settings = Depends(get_settings)) -> Database:
 def get_db_ping(db: Database = Depends(get_database)) -> Callable[[], None]:
     """A callable that runs SELECT 1 and raises StorageError on failure."""
     return db.ping
+
+
+def get_image_store(settings: Settings = Depends(get_settings)) -> ImageStore:
+    return ImageStore(settings.upload_dir)
+
+
+def get_receipt_service(
+    settings: Settings = Depends(get_settings),
+    db: Database = Depends(get_database),
+    images: ImageStore = Depends(get_image_store),
+) -> ReceiptService:
+    return ReceiptService(db, images, settings.max_upload_mb)
 
 
 def get_llm_client(settings: Settings = Depends(get_settings)) -> LLMClient:

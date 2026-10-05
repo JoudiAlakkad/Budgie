@@ -242,15 +242,19 @@ EXPENSE = {
     "line_items": [{"description": "BIO BANANE 1 KG", "amount": 1.99}],
 }
 
+# Endpoints whose feature is built: they no longer answer 501.
+BUILT: list[tuple[str, str, dict[str, Any]]] = [
+    ("POST", "/api/receipts", {"files": {"file": ("r.jpg", b"\xff\xd8\xff", "image/jpeg")}}),
+    ("GET", "/api/receipts?status=failed", {}),
+    ("GET", "/api/receipts/1", {}),
+    ("GET", "/api/receipts/1/image", {}),
+    ("DELETE", "/api/receipts/1", {}),
+]
+
 STUBS: list[tuple[str, str, dict[str, Any], str]] = [
-    ("POST", "/api/receipts", {"files": {"file": ("r.jpg", b"\xff\xd8\xff", "image/jpeg")}}, "F05"),
-    ("GET", "/api/receipts?status=failed", {}, "F05"),
-    ("GET", "/api/receipts/1", {}, "F05"),
-    ("GET", "/api/receipts/1/image", {}, "F05"),
     ("POST", "/api/receipts/1/extract", {}, "F05"),
-    ("DELETE", "/api/receipts/1", {}, "F05"),
     ("GET", "/api/expenses?from=2026-10-01&to=2026-10-31&category=drinks", {}, "F05"),
-    ("POST", "/api/expenses", {"json": EXPENSE}, "F06"),
+    ("POST", "/api/expenses", {"json": EXPENSE}, "F05"),
     ("GET", "/api/expenses/export.csv?from=2026-10-01", {}, "F10"),
     ("GET", "/api/expenses/1", {}, "F05"),
     ("PATCH", "/api/expenses/1", {"json": {"merchant": "Aldi"}}, "F06"),
@@ -274,7 +278,9 @@ STUBS: list[tuple[str, str, dict[str, Any], str]] = [
 
 
 def test_stub_list_covers_every_documented_endpoint() -> None:
-    covered = {(method, path.split("?")[0]) for method, path, _, _ in STUBS}
+    stubs = [(method, path) for method, path, _, _ in STUBS]
+    built = [(method, path) for method, path, _ in BUILT]
+    covered = {(method, path.split("?")[0]) for method, path in stubs + built}
     concrete = {
         (method, re.sub(r"\{[^}]+\}", lambda m: "banane" if "name" in m[0] else "1", path))
         for method, path in documented_operations()
@@ -282,6 +288,7 @@ def test_stub_list_covers_every_documented_endpoint() -> None:
     }
 
     assert covered == concrete
+    assert len(covered) == len(stubs) + len(built), "an endpoint is listed twice"
 
 
 @pytest.mark.parametrize(
@@ -296,3 +303,12 @@ def test_stub_answers_501_naming_its_feature(
     body = response.json()
     assert body == {"error": "not_implemented", "detail": body["detail"], "fields": None}
     assert feature in body["detail"]
+
+
+@pytest.mark.parametrize(("method", "url", "kwargs"), BUILT, ids=[f"{m} {u}" for m, u, _ in BUILT])
+def test_built_endpoint_no_longer_answers_501(
+    client: TestClient, method: str, url: str, kwargs: dict[str, Any]
+) -> None:
+    response = client.request(method, url, **kwargs)
+
+    assert response.status_code != 501

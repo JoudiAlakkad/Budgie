@@ -38,7 +38,7 @@ def list_expenses(
     responses=error_responses(404, 409),
 )
 def create_expense(body: ExpenseCreate) -> Expense:
-    raise NotImplementedYet("F06")
+    raise NotImplementedYet("F05")
 
 
 # Declared before /{id:int}; the int converter also keeps `export.csv` from matching an id route.
