@@ -21,7 +21,7 @@ The domain imports neither `ai.schema` nor `api.schemas`, so its rules take froz
   - Everything else raises `ValueError` (`1.234.5`, `1234.567`, `.5`, `5.`, `+1`, `1 234,56`).
 - `normalize_currency`: `€`, `EUR` and `eur` become `EUR`; another 3-letter code is uppercased; anything else is unknown. The spike returned `€`.
 - `parse_date`: `YYYY-MM-DD` and `DD.MM.YYYY` (the spike returned `22.09.2026`).
-- **Arithmetic check**, tolerance 0.02: the line items sum to the subtotal, or to the total if there is no subtotal. Both sides are rounded to cents (half up) in a 400-digit decimal context (`SUM_PRECISION`; a float's integer part has at most 309 digits) before the comparison, so a float-born or huge amount (`1e30`) is flagged, never a crash. The message shows the rounded values. Upper limits on amounts belong to the API's `Money` (`max_digits=12`), which F05 and F06 must handle.
+- **Arithmetic check**, tolerance 0.02: the line items sum to the subtotal and to the total, each checked on its own when present, so a receipt can get two `sum_mismatch` flags (subtotal first). Because German VAT is included, the items should match the total too. A US-style receipt (net subtotal + tax = total) is flagged on the total; the user decided this is acceptable, since Budgie targets German receipts and a false flag only costs a review. Both sides are rounded to cents (half up) in a 400-digit decimal context (`SUM_PRECISION`; a float's integer part has at most 309 digits) before the comparison, so a float-born or huge amount (`1e30`) is flagged, never a crash. The message shows the rounded values. Upper limits on amounts belong to the API's `Money` (`max_digits=12`), which F05 and F06 must handle.
 - **No tax check.** German receipts print VAT as included: in the spike's TEDi run, subtotal 3.10, tax 0.49 and total 3.10 were all correct, and `subtotal + tax = total` would have flagged it. Tax is stored but not checked.
 - **Date checks:** the date parses, isn't in the future, and is no more than 2 years old (by calendar date). `today` is a parameter, so the tests are deterministic. The cutoff is `years_before(today, 2)`, which falls back from 29 Feb to 28 Feb; a date exactly on the cutoff passes.
 
@@ -36,13 +36,13 @@ Sets the review status from the flags ([0008](../decisions/0008-rule-based-revie
 ### Plausibility rule
 `is_plausible_receipt(facts)` is `False` when there is **no merchant, no total and at most one item**. The pipeline checks it before the review status; a non-receipt never gets one, and the receipt becomes `failed` with `not_a_receipt` ([0015](../decisions/0015-non-receipt-is-a-failure-with-retry-or-manual-entry.md)).
 - Spike evidence: it catches the base-schema pinboard runs (one item, no merchant, no total).
-- **Known limit:** the strict-schema pinboard run invented a merchant, a date, a subtotal and a total, so it passes this rule. It also passes the sum check: its items (22.98) are within 0.02 of its invented subtotal (23.00). It lands in `needs_review` only through `date_too_old` (2023-10-26) and the `unreadable` flags on `total` and `tax`.
-- **Recorded fixtures:** `missing_fields` has 2 items, so it is plausible. `valid_receipt` (the spike's ALDI run) is flagged `sum_mismatch`, because the model listed the payment lines ZU ZAHLEN, BAR and ZURÜCK as items: the rule catches a real extraction error.
+- **Known limit:** the strict-schema pinboard run invented a merchant, a date, a subtotal and a total, so it passes this rule. Its items (22.98) match the invented subtotal (23.00) but not the total (25.00), so it is flagged `sum_mismatch` on `total`, plus `date_too_old` (2023-10-26) and `unreadable` on `total` and `tax`, and lands in `needs_review`.
+- **Recorded fixtures:** `missing_fields` has 2 items, so it is plausible. `valid_receipt` (the spike's ALDI run) is flagged `sum_mismatch` on `subtotal` and `total`, because the model listed the payment lines ZU ZAHLEN, BAR and ZURÜCK as items: the rule catches a real extraction error.
 
 ### Flag codes
 | Code | Field | Set when |
 |---|---|---|
-| `sum_mismatch` | `subtotal`, or `total` without a subtotal | the items' sum is off by more than 0.02 |
+| `sum_mismatch` | `subtotal` and/or `total` | the items' sum is off that value by more than 0.02 |
 | `date_unparseable` | `date` | a date is present but matches neither format |
 | `date_in_future` | `date` | the date is after `today` |
 | `date_too_old` | `date` | the date is more than 2 years before `today` |
@@ -53,7 +53,7 @@ Sets the review status from the flags ([0008](../decisions/0008-rule-based-revie
 | `unreadable` | the key | the model listed the key in `unreadable_fields`; once per key, and not for a key that already has a `missing_*` flag |
 | `uncategorized_item` | `line_items[i]` | the item has no category yet |
 
-`assess` returns them in this order: `sum_mismatch`, the date flag, `currency_unknown`, the `missing_*` flags, `unreadable` in the model's order, `uncategorized_item` by index. F7 adds `possible_duplicate`.
+`assess` returns them in this order: `sum_mismatch` (subtotal, then total), the date flag, `currency_unknown`, the `missing_*` flags, `unreadable` in the model's order, `uncategorized_item` by index. F7 adds `possible_duplicate`.
 
 ## `categorize.py` (F7)
 Implements [0013](../decisions/0013-deterministic-item-categorisation-by-lookup.md).

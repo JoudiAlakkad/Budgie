@@ -7,7 +7,7 @@ Criterion 13 asks the project to explain how uncertainty is treated, and says a 
 
 ## Decision
 - Each receipt gets a status of `accepted`, `needs_review` or `rejected`, decided by deterministic rules:
-  - arithmetic check (items ≈ subtotal, or ≈ total without a subtotal)
+  - arithmetic check (items ≈ subtotal and items ≈ total, each when present)
   - date plausibility
   - required fields present
   - fields the model reported as unreadable
@@ -23,5 +23,6 @@ Criterion 13 asks the project to explain how uncertainty is treated, and says a 
 
 ## Amendment (F04, 2026-10-05)
 - **No tax check.** German receipts print VAT as included, so `subtotal + tax ≈ total` flags correct receipts (spike TEDi run: subtotal 3.10, tax 0.49, total 3.10). Tax is stored but not checked.
+- **Items are checked against the total as well as the subtotal.** With VAT included, they should match both. A US-style receipt (net subtotal + tax = total) gets a flag on the total; Budgie targets German receipts, and the alternative (accepting items + tax ≈ total) would have let the spike's invented pinboard receipt pass (22.98 + 2.00 ≈ 25.00).
 - **Run-to-run agreement is dropped** as a signal. At temperature 0 every spike run was identical, so agreement measures nothing. The original plan listed it; a signal that can disagree (two prompts or two models) moves to F11 as a comparison.
 - The full answer to criterion 13 is in [uncertainty](../backend/uncertainty.md).

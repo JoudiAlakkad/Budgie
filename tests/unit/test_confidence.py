@@ -336,7 +336,8 @@ def test_valid_receipt_fixture() -> None:
 
     The model put the payment lines (ZU ZAHLEN 15.17, BAR 20.00, ZURÜCK 4.83) into
     `line_items`, and even the 8 real items sum to 14.89, not 14.16. So the recording
-    is flagged `sum_mismatch` on `subtotal`, which is the rule working as intended.
+    is flagged `sum_mismatch` on `subtotal` and on `total` (15.15), which is the rule
+    working as intended.
     """
     receipt = fixture_facts("valid_receipt")
 
@@ -345,8 +346,9 @@ def test_valid_receipt_fixture() -> None:
     assert is_plausible_receipt(receipt)
     assert status == "needs_review"
     validation = [flag for flag in flags if flag.code in VALIDATION_CODES]
-    assert pairs(validation) == [("subtotal", "sum_mismatch")]
+    assert pairs(validation) == [("subtotal", "sum_mismatch"), ("total", "sum_mismatch")]
     assert validation[0].message == "Items sum to 54.89 but subtotal is 14.16."
+    assert validation[1].message == "Items sum to 54.89 but total is 15.15."
     unreadable = [flag.field for flag in flags if flag.code == "unreadable"]
     assert unreadable == ["merchant", "date", "total", "currency"]
 
@@ -382,9 +384,9 @@ def test_missing_fields_fixture_with_one_item_is_implausible() -> None:
 def test_non_receipt_claimed_receipt_fixture() -> None:
     """The pinboard with an invented shop: plausible, but flagged and in review.
 
-    The items sum to 22.98 against an invented subtotal of 23.00, within the 0.02
-    tolerance, so there is no `sum_mismatch` (the check uses the subtotal, not the
-    total of 25.00). It is caught by `date_too_old` and the `unreadable` flags.
+    The items sum to 22.98: within 0.02 of the invented subtotal (23.00), but not of
+    the invented total (25.00), so `sum_mismatch` is set on `total`. `date_too_old`
+    and the `unreadable` flags catch it as well.
     """
     receipt = fixture_facts("non_receipt_claimed_receipt")
 
@@ -393,17 +395,9 @@ def test_non_receipt_claimed_receipt_fixture() -> None:
     assert is_plausible_receipt(receipt)
     assert status == "needs_review"
     validation = [flag for flag in flags if flag.code in VALIDATION_CODES]
-    assert pairs(validation) == [("date", "date_too_old")]
+    assert pairs(validation) == [("total", "sum_mismatch"), ("date", "date_too_old")]
+    assert validation[0].message == "Items sum to 22.98 but total is 25.00."
     assert ("total", "unreadable") in pairs(flags)
-
-
-def test_non_receipt_total_would_be_off() -> None:
-    """Without the invented subtotal the check falls back to the total: 22.98 vs 25.00."""
-    receipt = replace(fixture_facts("non_receipt_claimed_receipt"), subtotal=None)
-
-    [flag] = [flag for flag in assess(receipt, TODAY)[1] if flag.code == "sum_mismatch"]
-    assert flag.field == "total"
-    assert flag.message == "Items sum to 22.98 but total is 25.00."
 
 
 # --- flag codes match the wiki ------------------------------------------------------

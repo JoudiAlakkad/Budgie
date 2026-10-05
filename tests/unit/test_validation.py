@@ -193,7 +193,7 @@ def test_years_before(day: date, expected: date) -> None:
 
 # --- sum_mismatch -------------------------------------------------------------------
 
-# (case, overrides, expected flags as (field, message) or None)
+# (case, overrides, expected flags: None, one (field, message), or a list of them)
 SUMS = [
     ("matches total", {"items": items("1.00", "2.00"), "total": Decimal("3.00")}, None),
     ("0.02 under total passes", {"items": items("2.98"), "total": Decimal("3.00")}, None),
@@ -214,14 +214,37 @@ SUMS = [
         ("total", "Items sum to 12.40 but total is 14.40."),
     ),
     (
-        "subtotal wins over total",
+        "subtotal off, total matches",
         {"items": items("3.00"), "subtotal": Decimal("2.50"), "total": Decimal("3.00")},
         ("subtotal", "Items sum to 3.00 but subtotal is 2.50."),
     ),
     (
-        "subtotal matches, total is not checked",
+        "subtotal matches, total off",
         {"items": items("3.00"), "subtotal": Decimal("3.00"), "total": Decimal("99.00")},
+        ("total", "Items sum to 3.00 but total is 99.00."),
+    ),
+    (
+        "both off: two flags, subtotal first",
+        {"items": items("3.00"), "subtotal": Decimal("2.50"), "total": Decimal("4.00")},
+        [
+            ("subtotal", "Items sum to 3.00 but subtotal is 2.50."),
+            ("total", "Items sum to 3.00 but total is 4.00."),
+        ],
+    ),
+    (
+        "both match within 0.02",
+        {"items": items("3.00"), "subtotal": Decimal("3.02"), "total": Decimal("2.98")},
         None,
+    ),
+    (
+        "net subtotal plus tax (US style) is flagged on the total",
+        {
+            "items": items("23.00"),
+            "subtotal": Decimal("23.00"),
+            "tax": Decimal("2.00"),
+            "total": Decimal("25.00"),
+        },
+        ("total", "Items sum to 23.00 but total is 25.00."),
     ),
     (
         "subtotal 0.02 off passes",
@@ -281,7 +304,7 @@ SUMS = [
     ),
     (
         "huge subtotal vs huge items, 1 apart in the last digit",
-        {"items": (float_item(1e300),), "subtotal": Decimal(int(1e300) + 1)},
+        {"items": (float_item(1e300),), "subtotal": Decimal(int(1e300) + 1), "total": None},
         ("subtotal", f"Items sum to {int(1e300)}.00 but subtotal is {int(1e300) + 1}.00."),
     ),
     (
@@ -295,14 +318,16 @@ SUMS = [
 @pytest.mark.parametrize(
     ("overrides", "expected"), [case[1:] for case in SUMS], ids=[case[0] for case in SUMS]
 )
-def test_sum_mismatch(overrides: dict, expected: tuple[str, str] | None) -> None:
+def test_sum_mismatch(
+    overrides: dict, expected: tuple[str, str] | list[tuple[str, str]] | None
+) -> None:
     flags = validate(facts(**overrides), TODAY)
 
     if expected is None:
-        assert flags == []
-    else:
-        field, message = expected
-        assert flags == [Flag(field, "sum_mismatch", message)]
+        expected = []
+    elif isinstance(expected, tuple):
+        expected = [expected]
+    assert flags == [Flag(field, "sum_mismatch", message) for field, message in expected]
 
 
 def test_no_tax_check() -> None:

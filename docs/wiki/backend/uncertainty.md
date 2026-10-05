@@ -7,7 +7,7 @@ How Budgie treats uncertainty in the model's output (criterion 13 of the brief).
 |---|---|---|
 | Model-provided scores, where technically meaningful | no | `gemma3:4b` gives no score per field. The [spike](ai-spike.md) showed it is confidently wrong: it called a pinboard photo a receipt in every run, and the strict schema made it invent a shop, a date and a total. A self-reported score would have been high there too. |
 | Agreement across repeated runs | no | At temperature 0 every spike run was identical, so agreement measures nothing. A signal that can disagree (two prompts or two models) is a comparison in F11, not a pipeline step ([0008](../decisions/0008-rule-based-review-status-not-probability.md)). |
-| Validation against rules or source data | yes | The rules in [domain-logic](domain-logic.md#validationpy-f4): the item sum against subtotal or total, the date, required fields, the plausibility rule. Checking against the source, the photo, is the user's job: the review page shows the image next to the form. |
+| Validation against rules or source data | yes | The rules in [domain-logic](domain-logic.md#validationpy-f4): the item sum against the subtotal and the total, the date, required fields, the plausibility rule. Checking against the source, the photo, is the user's job: the review page shows the image next to the form. |
 | Thresholds for accepting, flagging or rejecting | yes | Tolerance 0.02 per sum; a date no later than today and no more than 2 years old; the plausibility rule (no merchant, no total, at most one item → `not_a_receipt`). The result is `accepted`, `needs_review` or `rejected`. |
 | Explicit "unknown" or escalation | yes | Unknown: a field the model can't read is `null`, and it may list it in `unreadable_fields`; the UI shows a `null` field as "unknown, please fill in". Escalation: every flag goes to the user with its reason next to the field; a non-receipt becomes `failed` with Retry or Enter manually ([0015](../decisions/0015-non-receipt-is-a-failure-with-retry-or-manual-entry.md)); nothing counts until the user confirms, and confirming is refused while an item is uncategorised. |
 
@@ -23,7 +23,7 @@ How Budgie treats uncertainty in the model's output (criterion 13 of the brief).
 ## Known gaps
 - An extraction that is internally consistent but wrong passes every rule, e.g. a misread price with a total that matches. Only the user's review catches it.
 - `unreadable_fields` is weak: in the spike the model listed fields it had read correctly, and didn't list ones it had invented. A false `unreadable` flag only costs a review.
-- The plausibility rule misses a non-receipt for which the model invents a full receipt. In the recorded pinboard run even the sum check passes (items 22.98, invented subtotal 23.00); only the 2023 date and the `unreadable` flags send it to review.
+- The plausibility rule misses a non-receipt for which the model invents a full receipt. In the recorded pinboard run the sum check against the total (22.98 vs 25.00), the 2023 date and the `unreadable` flags send it to review; a more consistent invention would pass.
 - Payment lines listed as items (ZU ZAHLEN, BAR, ZURÜCK) make many real receipts `needs_review` through `sum_mismatch`, as in the recorded ALDI run. Correct, but noisy until the pipeline or the prompt removes them.
 
 ## Possible improvements

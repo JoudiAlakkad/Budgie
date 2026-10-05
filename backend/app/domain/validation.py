@@ -95,25 +95,31 @@ def _money(value: Decimal) -> str:
 
 
 def check_sum(facts: ReceiptFacts) -> list[Flag]:
-    """`sum_mismatch` if the items are off the subtotal (or the total) by more than 0.02."""
+    """`sum_mismatch` on the subtotal and on the total, each checked on its own.
+
+    Each is flagged if the items are off it by more than 0.02. German receipts print
+    VAT as included, so the items should match the total too; a net subtotal plus tax
+    (a US-style receipt) is flagged on the total, which only costs a review.
+    """
     if not facts.items:
         return []
-    if facts.subtotal is not None:
-        field, target = "subtotal", facts.subtotal
-    elif facts.total is not None:
-        field, target = "total", facts.total
-    else:
-        return []
+    targets = [
+        (field, value)
+        for field, value in (("subtotal", facts.subtotal), ("total", facts.total))
+        if value is not None
+    ]
+    flags = []
     # Rounded to cents first: an amount built from a float (Decimal(2.98) is
     # 2.979999...) must not tip the comparison past the tolerance. Everything runs in
     # the wide context, so a huge finite amount is flagged instead of raising.
     with localcontext(prec=SUM_PRECISION):
         items_sum = _cents(sum((item.amount for item in facts.items), Decimal(0)))
-        target = _cents(target)
-        if abs(items_sum - target) <= SUM_TOLERANCE:
-            return []
-        message = f"Items sum to {_money(items_sum)} but {field} is {_money(target)}."
-    return [Flag(field, "sum_mismatch", message)]
+        for field, value in targets:
+            target = _cents(value)
+            if abs(items_sum - target) > SUM_TOLERANCE:
+                message = f"Items sum to {_money(items_sum)} but {field} is {_money(target)}."
+                flags.append(Flag(field, "sum_mismatch", message))
+    return flags
 
 
 def check_date(text: str | None, today: date) -> list[Flag]:
