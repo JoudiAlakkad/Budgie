@@ -7,12 +7,16 @@ receipts print VAT as included (decision 0008, amendment F04).
 
 import re
 from datetime import date
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, localcontext
 
 from app.domain.facts import Flag, ReceiptFacts, is_blank
 
 SUM_TOLERANCE = Decimal("0.02")
 CENT = Decimal("0.01")
+# Sums are rounded in a context wide enough for any float-built amount: a float's
+# integer part has at most 309 digits, and 100 items add at most 3 more. The default
+# 28 digits would make `quantize` raise InvalidOperation on e.g. Decimal(1e30).
+SUM_PRECISION = 400
 MAX_AGE_YEARS = 2
 
 # parse_number, in this order (ASCII digits only, optional leading "-", no spaces):
@@ -101,12 +105,14 @@ def check_sum(facts: ReceiptFacts) -> list[Flag]:
     else:
         return []
     # Rounded to cents first: an amount built from a float (Decimal(2.98) is
-    # 2.979999...) must not tip the comparison past the tolerance.
-    items_sum = _cents(sum((item.amount for item in facts.items), Decimal(0)))
-    target = _cents(target)
-    if abs(items_sum - target) <= SUM_TOLERANCE:
-        return []
-    message = f"Items sum to {_money(items_sum)} but {field} is {_money(target)}."
+    # 2.979999...) must not tip the comparison past the tolerance. Everything runs in
+    # the wide context, so a huge finite amount is flagged instead of raising.
+    with localcontext(prec=SUM_PRECISION):
+        items_sum = _cents(sum((item.amount for item in facts.items), Decimal(0)))
+        target = _cents(target)
+        if abs(items_sum - target) <= SUM_TOLERANCE:
+            return []
+        message = f"Items sum to {_money(items_sum)} but {field} is {_money(target)}."
     return [Flag(field, "sum_mismatch", message)]
 
 

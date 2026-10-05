@@ -16,6 +16,7 @@ from app.domain.validation import (
 )
 
 TODAY = date(2026, 10, 5)
+MAX_FLOAT = 1.7976931348623157e308
 
 
 def facts(**overrides: object) -> ReceiptFacts:
@@ -260,6 +261,33 @@ SUMS = [
         "subtotal 0.03 off",
         {"items": items("3.00"), "subtotal": Decimal("3.03"), "total": Decimal("3.00")},
         ("subtotal", "Items sum to 3.00 but subtotal is 3.03."),
+    ),
+    # huge finite amounts (a JSON float reaches 1.8e308) are flagged, never raise;
+    # expected values come from exact ints, not from Decimal arithmetic at 28 digits
+    (
+        "huge total vs a normal item",
+        {"items": items("1.00"), "total": Decimal(1e30)},
+        ("total", f"Items sum to 1.00 but total is {int(1e30)}.00."),
+    ),
+    (
+        "huge item vs a normal total",
+        {"items": (float_item(1e300),), "total": Decimal("1.00")},
+        ("total", f"Items sum to {int(1e300)}.00 but total is 1.00."),
+    ),
+    (
+        "huge items in several lines",
+        {"items": (float_item(1e300), float_item(1e300)), "total": Decimal("1.00")},
+        ("total", f"Items sum to {2 * int(1e300)}.00 but total is 1.00."),
+    ),
+    (
+        "huge subtotal vs huge items, 1 apart in the last digit",
+        {"items": (float_item(1e300),), "subtotal": Decimal(int(1e300) + 1)},
+        ("subtotal", f"Items sum to {int(1e300)}.00 but subtotal is {int(1e300) + 1}.00."),
+    ),
+    (
+        "largest float on both sides matches",
+        {"items": (float_item(MAX_FLOAT),), "total": Decimal(MAX_FLOAT)},
+        None,
     ),
 ]
 
