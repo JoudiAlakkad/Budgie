@@ -6,7 +6,7 @@ from pydantic import SecretStr
 from app.ai.client import ChatCompletion
 from app.config import Settings
 from app.errors import NotAReceipt
-from app.services.dependencies import get_extractor, get_llm_client
+from app.services.dependencies import get_extractor_factory, get_llm_client
 
 DEFAULTS = {
     "llm_base_url": "http://localhost:11434/v1",
@@ -106,7 +106,7 @@ def test_extractor_uses_the_llm_settings(monkeypatch: pytest.MonkeyPatch) -> Non
             sent.append(kwargs)
             return ChatCompletion('{"is_receipt": false}', "stop", 1, 1, cut_off=False)
 
-    extractor = get_extractor(settings, RecordingClient())  # type: ignore[arg-type]
+    extractor = get_extractor_factory(settings, RecordingClient())()  # type: ignore[arg-type]
     with pytest.raises(NotAReceipt):
         extractor.extract(b"img", "image/jpeg")
 

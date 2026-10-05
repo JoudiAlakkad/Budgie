@@ -2,12 +2,13 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Response
 
 from app.api.errors import error_responses
 from app.api.schemas import Receipt, ReceiptStatus, ReceiptUpload
 from app.errors import NotImplementedYet
-from app.services.dependencies import get_receipt_service
+from app.services.dependencies import get_receipt_pipeline, get_receipt_service
+from app.services.receipt_pipeline import ReceiptPipeline
 from app.services.receipts import ReceiptService
 
 router = APIRouter(prefix="/receipts", tags=["receipts"])
@@ -22,10 +23,14 @@ router = APIRouter(prefix="/receipts", tags=["receipts"])
 )
 def upload_receipt(
     form: Annotated[ReceiptUpload, File()],
+    background_tasks: BackgroundTasks,
     service: ReceiptService = Depends(get_receipt_service),
+    pipeline: ReceiptPipeline = Depends(get_receipt_pipeline),
 ) -> Receipt:
     # A form model gives the multipart schema a stable name in the spec (`ReceiptUpload`).
     view = service.upload(form.file.file)
+    # Runs after the 202 is sent (decision 0007).
+    background_tasks.add_task(pipeline.run, view.id)
     return Receipt.model_validate(view, from_attributes=True)
 
 

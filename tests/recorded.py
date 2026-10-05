@@ -5,15 +5,19 @@ A case is `{description, source, max_tokens, responses: [{status_code, body}]}`
 in order, one per HTTP call, and fails the test on any extra call.
 """
 
+import base64
 import json
 from pathlib import Path
 
 import httpx
 import pytest
 
+from app.ai.prompts import load_prompts
+from app.ai.schema import EXAMPLE_JSON
 from tests.unit.fixture_shape import assert_fixture_shape
 
 RECORDED = Path(__file__).resolve().parent / "fixtures" / "recorded_responses"
+MIN_DISTINCTIVE = 6  # shorter values ("BROT", "ALDI") could appear by chance
 
 
 def case_names() -> list[str]:
@@ -40,3 +44,35 @@ def replay(case: dict) -> tuple[httpx.MockTransport, list[httpx.Request]]:
         return httpx.Response(response["status_code"], json=response["body"])
 
     return httpx.MockTransport(handler), seen
+
+
+def distinctive_values(case: dict, image: bytes) -> set[str]:
+    """Values from a case that must never reach a log: answers, merchants, items, errors.
+
+    Also the image (base64, as sent), the prompts and the example answer.
+    """
+    prompts = load_prompts("v1")
+    values = {
+        base64.b64encode(image).decode("ascii"),
+        prompts.system.splitlines()[0],
+        prompts.user.strip(),
+        prompts.repair,
+        EXAMPLE_JSON,
+        '"Beispiel Markt"',
+    }
+    for response in case["responses"]:
+        if response["status_code"] != 200:
+            values.add(response["body"]["error"]["message"])
+            continue
+        content = response["body"]["choices"][0]["message"]["content"]
+        values.add(content.strip())
+        try:
+            data = json.loads(content.strip().removeprefix("```json").removesuffix("```"))
+        except ValueError:
+            continue
+        if isinstance(data, dict):
+            values.add(str(data.get("merchant") or ""))
+            for entry in data.get("line_items") or []:
+                if isinstance(entry, dict):
+                    values.add(str(entry.get("description") or ""))
+    return {value for value in values if len(value) >= MIN_DISTINCTIVE}

@@ -14,8 +14,20 @@ from app.db.repositories.receipts import ReceiptRepository
 from app.db.session import Database
 from app.errors import StorageError
 from app.main import create_app
-from app.services.dependencies import database_for, dispose_databases, get_database, get_image_store
-from tests.api.helpers import JPEG, PNG, WEBP, upload
+from app.services.dependencies import (
+    database_for,
+    dispose_databases,
+    get_database,
+    get_image_store,
+    get_receipt_pipeline,
+)
+from tests.api.helpers import JPEG, PNG, WEBP, NoopPipeline, upload
+
+
+@pytest.fixture(autouse=True)
+def _no_extraction(client: TestClient) -> None:
+    """These tests cover the receipt routes; the extraction has its own tests."""
+    client.app.dependency_overrides[get_receipt_pipeline] = NoopPipeline  # type: ignore[attr-defined]
 
 
 def uploads(settings: Settings) -> list[str]:
@@ -69,7 +81,9 @@ def test_upload_above_max_upload_mb_is_413(tmp_path: Path) -> None:
         frontend_dir="",
         max_upload_mb=1,
     )
-    with TestClient(create_app(settings)) as client:
+    app = create_app(settings)
+    app.dependency_overrides[get_receipt_pipeline] = NoopPipeline
+    with TestClient(app) as client:
         too_big = upload(client, JPEG + b"\x00" * (1024 * 1024))
         just_fits = upload(client, JPEG + b"\x00" * (1024 * 1024 - len(JPEG)))
     dispose_databases()

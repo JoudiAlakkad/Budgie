@@ -56,8 +56,13 @@ def prepare_storage(settings: Settings) -> StorageStatus:
     for name, step in steps:
         try:
             step()
-        except StorageError:
-            logger.exception("Storage step %r failed at startup; continuing without it", name)
+        except StorageError as exc:
+            # Type names only: a traceback could quote a path or the database URL.
+            logger.error(
+                "Storage step %s failed at startup (%s); continuing without it",
+                name,
+                type(exc.__cause__ or exc).__name__,
+            )
             failures.append(name)
     return StorageStatus(prepared=True, failures=tuple(failures))
 

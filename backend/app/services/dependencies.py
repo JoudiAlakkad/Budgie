@@ -1,9 +1,11 @@
-"""FastAPI dependency providers for infrastructure.
+"""FastAPI dependency providers for infrastructure and services.
 
 Routers depend on these (through services), never on `db` or `ai` directly.
-Tests swap them out with `app.dependency_overrides`.
+Tests swap them out with `app.dependency_overrides`. A provider must not declare request
+parameters, or the OpenAPI spec would change (modules.md).
 """
 
+import datetime as dt
 from collections.abc import Callable
 from threading import Lock
 
@@ -15,6 +17,8 @@ from app.ai.prompts import load_prompts
 from app.config import Settings, get_settings
 from app.db.images import ImageStore
 from app.db.session import Database
+from app.services.categorization import ItemCategorizer, PlaceholderCategorizer
+from app.services.receipt_pipeline import ExtractorFactory, ReceiptPipeline
 from app.services.receipts import ReceiptService
 
 _databases: dict[str, Database] = {}
@@ -69,14 +73,39 @@ def get_llm_client(settings: Settings = Depends(get_settings)) -> LLMClient:
     )
 
 
-def get_extractor(
-    settings: Settings = Depends(get_settings),
-    client: LLMClient = Depends(get_llm_client),
-) -> Extractor:
-    """The receipt extractor for `PROMPT_VERSION`; the pipeline (F05) will use it."""
+def build_extractor(settings: Settings, client: LLMClient) -> Extractor:
+    """The receipt extractor for `PROMPT_VERSION`; raises `UnknownPromptVersion`."""
     return Extractor(
         client,
         load_prompts(settings.prompt_version),
         temperature=settings.llm_temperature,
         max_tokens=settings.llm_max_tokens,
     )
+
+
+def get_extractor_factory(
+    settings: Settings = Depends(get_settings),
+    client: LLMClient = Depends(get_llm_client),
+) -> ExtractorFactory:
+    """Builds the extractor inside the task, so a bad PROMPT_VERSION fails the receipt."""
+    return lambda: build_extractor(settings, client)
+
+
+def get_today() -> dt.date:
+    """Today's date for the date rules; tests override it."""
+    return dt.date.today()
+
+
+def get_item_categorizer() -> ItemCategorizer:
+    """The F05 placeholder; F07 replaces only this provider (decision 0013)."""
+    return PlaceholderCategorizer()
+
+
+def get_receipt_pipeline(
+    db: Database = Depends(get_database),
+    images: ImageStore = Depends(get_image_store),
+    extractor_factory: ExtractorFactory = Depends(get_extractor_factory),
+    categorizer: ItemCategorizer = Depends(get_item_categorizer),
+    today: dt.date = Depends(get_today),
+) -> ReceiptPipeline:
+    return ReceiptPipeline(db, images, extractor_factory, categorizer, today)
