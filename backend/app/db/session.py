@@ -1,5 +1,7 @@
 """Engine and session factory for DATABASE_URL."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from threading import Lock
 
@@ -72,6 +74,20 @@ class Database:
             Base.metadata.create_all(engine)
         except (SQLAlchemyError, OSError) as exc:
             raise StorageError("The database could not be initialised.") from exc
+
+    @contextmanager
+    def transaction(self) -> Iterator[Session]:
+        """A session in one transaction: committed on exit, rolled back on an error.
+
+        `SQLAlchemyError` and `OSError` become `StorageError`; any other exception (e.g. a
+        `NotFound` raised by the caller inside the block) rolls back and passes unchanged.
+        """
+        factory = self.session_factory
+        try:
+            with factory.begin() as session:
+                yield session
+        except (SQLAlchemyError, OSError) as exc:
+            raise StorageError() from exc
 
     def ping(self) -> None:
         """Run SELECT 1; raise StorageError if the database is unusable."""
