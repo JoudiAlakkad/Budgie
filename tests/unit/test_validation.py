@@ -1,6 +1,7 @@
 """Validation rules (docs/wiki/backend/domain-logic.md#validationpy-f4): the parsers, the
 item-sum check, the date checks and the currency check. One table per rule."""
 
+import time
 from datetime import date
 from decimal import Decimal
 
@@ -152,23 +153,74 @@ def test_normalize_currency(text: str, expected: str | None) -> None:
 
 # --- parse_date ---------------------------------------------------------------------
 
+# Decision 0019: the model copies the date as printed; parse_date reads the usual forms.
 DATES = [
+    # ISO
     ("2026-09-22", date(2026, 9, 22)),
-    ("22.09.2026", date(2026, 9, 22)),
     (" 2026-09-22 ", date(2026, 9, 22)),
-    ("29.02.2024", date(2024, 2, 29)),
     ("2024-02-29", date(2024, 2, 29)),
+    ("2026-09-22 10:00", date(2026, 9, 22)),
+    ("2026-09-22 10:00:59", date(2026, 9, 22)),
+    # day first, 4-digit year
+    ("22.09.2026", date(2026, 9, 22)),
+    ("29.02.2024", date(2024, 2, 29)),
+    ("22/09/2026", date(2026, 9, 22)),
+    ("22-09-2026", date(2026, 9, 22)),
+    # 1- or 2-digit day and month
+    ("22.9.2026", date(2026, 9, 22)),
+    ("1.3.2026", date(2026, 3, 1)),
+    ("01.3.26", date(2026, 3, 1)),
+    ("1/3/26", date(2026, 3, 1)),
+    # 2-digit year -> 2000+YY
+    ("22.09.26", date(2026, 9, 22)),
+    ("14.03.26", date(2026, 3, 14)),
+    ("14/03/26", date(2026, 3, 14)),
+    ("14-03-26", date(2026, 3, 14)),
+    ("01.01.00", date(2000, 1, 1)),
+    ("31.12.99", date(2099, 12, 31)),
+    ("29.02.24", date(2024, 2, 29)),
+    # a trailing time, after whitespace
+    ("14.03.26 18:42", date(2026, 3, 14)),
+    ("14.03.2026 18:42:07", date(2026, 3, 14)),
+    ("14.03.2026\t00:00", date(2026, 3, 14)),
+    ("14.03.2026  23:59:59", date(2026, 3, 14)),
+    # not a calendar date
     ("2025-02-29", None),  # not a leap year
+    ("29.02.25", None),
     ("31.04.2026", None),
     ("2026-13-01", None),
     ("00.01.2026", None),
+    ("0.1.26", None),
+    ("1.13.26", None),
+    ("09-22-2026", None),  # month first
+    # always day first, never YY-MM-DD
+    ("26-09-22", date(2022, 9, 26)),
+    # not a known form
     ("2026/09/22", None),
-    ("22/09/2026", None),
-    ("22.9.2026", None),
+    ("2026.09.22", None),
     ("2026-9-22", None),
-    ("22.09.26", None),
-    ("09-22-2026", None),
+    ("14.03/26", None),  # mixed separators
+    ("14/03.2026", None),
+    ("14.03.026", None),  # 3-digit year
+    ("14.03.20266", None),
+    ("140.3.26", None),
+    ("14 03 2026", None),
+    ("14.03.", None),
+    ("14.03", None),
     ("2026-09-22T10:00", None),
+    ("14.03.26T18:42", None),
+    ("14.03.2618:42", None),  # no whitespace before the time
+    ("14.03.26 18", None),
+    ("14.03.26 8:42", None),
+    ("14.03.26 18:42 Uhr", None),
+    ("14.03.26 24:00", None),
+    ("14.03.26 18:60", None),
+    ("14.03.26 18:42:60", None),
+    ("14.03.26 18:42:07:01", None),
+    ("Datum: 14.03.26", None),
+    ("14.03.26 Bon-Nr: 4711", None),
+    ("\uff11\uff14.03.26", None),  # full-width digits
+    ("\u0661\u0664.03.26", None),  # Arabic-Indic digits
     ("", None),
     ("yesterday", None),
 ]
@@ -177,6 +229,25 @@ DATES = [
 @pytest.mark.parametrize(("text", "expected"), DATES)
 def test_parse_date(text: str, expected: date | None) -> None:
     assert parse_date(text) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "1" * 65_536,
+        "1." * 32_768,
+        "14.03.26" + " " * 65_536 + "x",
+        "14.03.26 " + "1:" * 32_768,
+        "1-" * 32_768,
+    ],
+    ids=["digits", "dots", "spaces", "colons", "dashes"],
+)
+def test_parse_date_is_linear_on_hostile_input(text: str) -> None:
+    """Every quantifier is bounded or separates disjoint classes: no backtracking blow-up."""
+    started = time.perf_counter()
+
+    assert parse_date(text) is None
+    assert time.perf_counter() - started < 0.5
 
 
 YEARS_BEFORE = [
@@ -381,7 +452,9 @@ def test_date_checks(text: str | None, today: date, expected: str | None) -> Non
 DATE_MESSAGES = [
     ("2026-10-06", "The date 2026-10-06 is in the future."),
     ("04.10.2024", "The date 2024-10-04 is more than 2 years ago."),
-    ("31.02.2026", 'The date "31.02.2026" is not a valid date in YYYY-MM-DD or DD.MM.YYYY.'),
+    ("31.02.2026", 'The date "31.02.2026" is not a valid date.'),
+    ("04.10.24", "The date 2024-10-04 is more than 2 years ago."),
+    ("5.10.26 9:00", 'The date "5.10.26 9:00" is not a valid date.'),
 ]
 
 
