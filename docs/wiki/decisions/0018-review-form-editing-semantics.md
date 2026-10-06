@@ -15,7 +15,7 @@ F06 builds `PATCH /expenses/{id}`, `POST /expenses/{id}/confirm`, `DELETE /expen
   - A user's choice is stored on the item only. Saving it to the lookup table for the next receipt is F07.
 - **Foreign item ids:** a line item `id` that doesn't belong to the expense is `422 validation_error` with `fields` pointing at `line_items.<i>.id`.
 - **AI badge is client-side, no contract change:** while the expense is unconfirmed and `source` is `ai`, every non-null extracted value shows an "AI-generated" badge; editing a field removes its badge for the page session. A reloaded `ai_corrected` expense shows one expense-level note ("AI-extracted, corrected by you — check the remaining values") instead of per-field badges. `manual` and confirmed expenses show none.
-- **Explicit Save:** the review form sends one PATCH when the user clicks **Save** (only the changed scalar fields, plus the full `line_items` list if any item changed) and re-renders flags and status from the response. Confirm is disabled while there are unsaved changes.
+- **Explicit Save** (replaced by Save & confirm and Save draft in [0019](0019-lean-extraction-line-totals-date-as-printed.md)): the review form sends one PATCH when the user clicks **Save** (only the changed scalar fields, plus the full `line_items` list if any item changed) and re-renders flags and status from the response. Confirm is disabled while there are unsaved changes.
 - **Pages in F06:** Upload and Review only. The Expenses page (list, filter, delete) moves to F10 with the CSV export.
 
 ## Consequences

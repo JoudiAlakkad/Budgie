@@ -37,6 +37,7 @@ back; the parent records them.
 - [0016 — API representation and stub convention](decisions/0016-api-representation-and-stub-convention.md)
 - [0017 — Personal data is kept out by the schema and redacted by code](decisions/0017-personal-data-is-redacted-by-code.md)
 - [0018 — Review form editing semantics](decisions/0018-review-form-editing-semantics.md)
+- [0019 — Lean extraction: line totals, date as printed, Pfand](decisions/0019-lean-extraction-line-totals-date-as-printed.md)
 
 ## Areas
 
