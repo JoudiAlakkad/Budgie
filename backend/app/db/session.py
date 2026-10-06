@@ -50,7 +50,11 @@ class Database:
             if self._engine is None:
                 connect_args = {"check_same_thread": False} if self.url.startswith("sqlite") else {}
                 try:
-                    self._engine = create_engine(self.url, connect_args=connect_args)
+                    # hide_parameters: a logged traceback (api/errors.py logs StorageError
+                    # with its cause) must never quote a merchant or a description.
+                    self._engine = create_engine(
+                        self.url, connect_args=connect_args, hide_parameters=True
+                    )
                 except _ENGINE_ERRORS as exc:
                     raise StorageError("DATABASE_URL is not usable.") from exc
             return self._engine
