@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.schemas import ErrorBody, ErrorCode, FieldError
-from app.errors import BudgieError, StorageError
+from app.errors import BudgieError, InvalidFields, StorageError
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +114,10 @@ async def _budgie_error(_: Request, exc: Exception) -> JSONResponse:
     # Storage and other server-side errors keep their cause and traceback in the log only.
     if isinstance(exc, StorageError) or (status >= 500 and exc.code != "not_implemented"):
         logger.exception("%s: %s", type(exc).__name__, exc.detail, exc_info=exc)
-    return error_response(status, exc.code, exc.detail)
+    fields = None
+    if isinstance(exc, InvalidFields):
+        fields = [FieldError(field=field, message=message) for field, message in exc.fields]
+    return error_response(status, exc.code, exc.detail, fields)
 
 
 async def _http_error(_: Request, exc: Exception) -> JSONResponse:
