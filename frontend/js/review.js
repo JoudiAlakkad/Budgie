@@ -227,13 +227,19 @@ function itemPayload(row) {
   const payload = {};
   if (row.id !== null) payload.id = row.id;
   for (const def of ITEM_FIELDS) payload[def.name] = parseValue(def.kind, row[def.name]).value;
+  const item = serverItem(row.id);
+  const descriptionChanged =
+    item !== null && !sameValue(parseValue("text", row.description), item.description);
+  // The form doesn't show unit or unit price (decision 0019). Send the stored values back,
+  // or the server would erase unit_price; a changed description lets it derive the unit anew.
+  if (item !== null) {
+    if (item.unit_price !== null) payload.unit_price = item.unit_price;
+    if (!descriptionChanged && item.unit !== null) payload.unit = item.unit;
+  }
   // Send a category only when the user chose one, so a stored category keeps its source.
   // A user's earlier choice is sent again when the description changes, or the server
   // would recategorise the item (decision 0018).
   if (row.category !== UNCATEGORIZED) {
-    const item = serverItem(row.id);
-    const descriptionChanged =
-      item !== null && !sameValue(parseValue("text", row.description), item.description);
     if (!item || item.category !== row.category || (descriptionChanged && item.category_source === "user")) {
       payload.category = row.category;
     }
