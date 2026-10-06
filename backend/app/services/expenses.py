@@ -262,11 +262,14 @@ class ExpenseService:
             if current.confirmed:
                 return expense_view(current)
             _check_confirmable(current)
-            expenses.set_confirmed(expense_id, True)
+            # A retry committed between the read and this write deletes the expense.
+            if not expenses.set_confirmed(expense_id, True):
+                raise NotFound(f"Expense {expense_id} does not exist.")
             if current.receipt_id is not None:
                 _move_receipt(ReceiptRepository(session), current, "extracted", "confirmed")
             expense = expenses.get(expense_id)
-        assert expense is not None
+        if expense is None:
+            raise NotFound(f"Expense {expense_id} does not exist.")
         logger.info("Expense %d confirmed", expense_id)
         return expense_view(expense)
 

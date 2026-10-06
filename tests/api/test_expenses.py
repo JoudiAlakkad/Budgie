@@ -718,6 +718,20 @@ def test_confirming_twice_is_a_no_op(api: TestClient, model: ModelServer) -> Non
     assert receipt_status(api, receipt_id) == "confirmed"
 
 
+def test_confirm_racing_a_retry_is_404_not_500(
+    api: TestClient, model: ModelServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A retry that deletes the expense between confirm's read and write leaves 0 rows."""
+    receipt_id, expense = extracted(api, model)
+    patch(api, expense["id"], {"line_items": categorised(expense)})
+    monkeypatch.setattr(ExpenseRepository, "set_confirmed", lambda *args, **kwargs: False)
+
+    response = api.post(f"/api/expenses/{expense['id']}/confirm")
+
+    assert (response.status_code, response.json()["error"]) == (404, "not_found")
+    assert receipt_status(api, receipt_id) == "extracted"
+
+
 def test_a_manual_expense_without_receipt_can_be_confirmed(api: TestClient) -> None:
     items = [{**item, "category": "groceries.fresh"} for item in MANUAL["line_items"]]
     expense = create(api, line_items=items)

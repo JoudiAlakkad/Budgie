@@ -7,7 +7,7 @@ Every non-2xx response has this body:
 ```
 
 - `error` is a stable machine-readable code, and `detail` is a message a person can read.
-- `fields` is set only for `validation_error`: a list of `{field, message}`. `field` is the error location joined with `.`, without the `body` prefix, e.g. `line_items.0.amount`. Query and path errors keep their prefix, e.g. `query.month`. For every other code it is `null`.
+- `fields` is set only for `validation_error`: a list of `{field, message}`. `field` is the error location joined with `.`, without the `body` prefix, e.g. `line_items.0.amount`. Query and path errors keep their prefix, e.g. `query.month`. For every other code it is `null`. A service can raise `validation_error` with `fields` too (`app.errors.InvalidFields`), e.g. for a foreign or repeated line item id on PATCH (`line_items.2.id`).
 - Stack traces, exception text and internal paths are never included. An HTTP status or error code that has no row below is logged and answered as `500 internal_error`.
 - One mapping in `backend/app/api/errors.py` turns error codes into HTTP statuses. Routing errors from Starlette (unknown path, wrong method, broken multipart body) use the same format.
 

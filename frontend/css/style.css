@@ -534,3 +534,8 @@ tr.needs-category select {
   display: grid;
   gap: 0.35rem;
 }
+
+/* An empty optional field: a quiet dash, not the "unknown" hint. */
+input::placeholder {
+  color: var(--muted);
+}

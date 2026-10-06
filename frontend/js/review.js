@@ -157,7 +157,10 @@ function serverItem(id) {
 function sameValue(parsed, serverValue) {
   if (!parsed.ok) return false;
   const a = parsed.value;
-  const b = serverValue === undefined ? null : serverValue;
+  let b = serverValue === undefined ? null : serverValue;
+  // Inputs are trimmed, so compare stored text trimmed too: an untrimmed or empty AI value
+  // must not make the form dirty on load.
+  if (typeof b === "string") b = b.trim() || null;
   if (a === null || b === null) return a === b;
   if (typeof a === "number") return a === Number(b);
   return a === String(b);
@@ -227,9 +230,15 @@ function itemPayload(row) {
   if (row.id !== null) payload.id = row.id;
   for (const def of ITEM_FIELDS) payload[def.name] = parseValue(def.kind, row[def.name]).value;
   // Send a category only when the user chose one, so a stored category keeps its source.
+  // A user's earlier choice is sent again when the description changes, or the server
+  // would recategorise the item (decision 0018).
   if (row.category !== UNCATEGORIZED) {
     const item = serverItem(row.id);
-    if (!item || item.category !== row.category) payload.category = row.category;
+    const descriptionChanged =
+      item !== null && !sameValue(parseValue("text", row.description), item.description);
+    if (!item || item.category !== row.category || (descriptionChanged && item.category_source === "user")) {
+      payload.category = row.category;
+    }
   }
   return payload;
 }
@@ -530,14 +539,16 @@ function scalarField(def, readOnly, flags) {
     attrs: {
       inputmode: def.kind === "money" ? "decimal" : null,
       maxlength: def.kind === "currency" ? "3" : null,
+      placeholder: def.required ? null : "–",
       autocomplete: "off",
       "aria-describedby": describedBy.join(" ") || null,
       "aria-invalid": errors.length ? "true" : null,
     },
   });
 
+  // Only required fields say "unknown, please fill in"; an empty optional one shows a quiet "–".
   let unknown = null;
-  if (expense && serverValue === null) {
+  if (def.required && expense && serverValue === null) {
     unknown = h("span", { className: "unknown" }, readOnly ? "unknown" : UNKNOWN_TEXT);
     unknown.hidden = state.draft[def.name].trim() !== "";
   }
@@ -616,13 +627,14 @@ function itemRow(row, index, readOnly, flagsByItemId) {
       required: def.required,
       attrs: {
         inputmode: def.kind === "money" || def.kind === "qty" ? "decimal" : null,
+        placeholder: def.required ? null : "–",
         autocomplete: "off",
         "aria-describedby": describedBy.join(" ") || null,
         "aria-invalid": errors.length ? "true" : null,
       },
     });
     let unknown = null;
-    if (item && serverValue === null) {
+    if (def.required && item && serverValue === null) {
       unknown = h("span", { className: "unknown" }, readOnly ? "unknown" : UNKNOWN_TEXT);
       unknown.hidden = row[def.name].trim() !== "";
     }

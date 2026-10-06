@@ -23,3 +23,9 @@ F06 builds `PATCH /expenses/{id}`, `POST /expenses/{id}/confirm`, `DELETE /expen
 - After a reload, the UI can't say which fields of an `ai_corrected` expense are still the model's. The CSV `source` column stays expense-level anyway. A per-field `edited_fields` list in the contract would fix both and was rejected for now as more contract change than the criterion needs.
 - Flags are stale between an edit and Save; the Save button and the disabled Confirm make that visible.
 - Until F07, a user categorises every item of every receipt by hand.
+- A changed description recategorises the item, so the review page sends a `user` category again with the new description (found in F06 review).
+- **Known limits (F06 review):**
+  - Clearing an item's `qty` or `unit` doesn't stick: an explicit `null` falls back to what the normaliser reads from the description.
+  - An `unreadable` flag on `payment_method` can't be cleared, since it isn't an editable field; the expense stays `needs_review`. Confirm ignores flags, so nothing is blocked.
+  - A PATCH that sends unchanged values still turns `ai` into `ai_corrected` and un-confirms. The page sends only changed fields, so only API clients hit this.
+  - The badge also marks values the server filled in, not the model: the `EUR` default and the normaliser's `qty`/`unit`.
