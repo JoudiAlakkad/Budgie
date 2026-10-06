@@ -156,10 +156,15 @@ def test_entering_a_failed_receipt_by_hand_makes_it_extracted(
     api: TestClient, settings: Settings, model: ModelServer
 ) -> None:
     receipt_id = failed_receipt(api, model)
+    before = stored(settings, receipt_id)
+    assert before.raw_model_output is not None and before.model_name is not None
 
     expense = create(api, receipt_id=receipt_id)
 
     assert (expense["receipt_id"], expense["source"]) == (receipt_id, "manual")
+    after = stored(settings, receipt_id)
+    assert (after.error, after.model_name, after.prompt_version) == (None, None, None)
+    assert (after.latency_ms, after.raw_model_output) == (None, None)
     receipt = api.get(f"/api/receipts/{receipt_id}").json()
     assert (receipt["status"], receipt["error"], receipt["error_detail"]) == (
         "extracted",

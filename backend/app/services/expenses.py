@@ -156,11 +156,24 @@ class ExpenseService:
 
     @staticmethod
     def _attach(receipts: ReceiptRepository, receipt_id: int) -> None:
-        """Enter manually: the failed receipt becomes `extracted`."""
+        """Enter manually: the failed receipt becomes `extracted`.
+
+        Like retry, it clears the failed attempt: `error`, `model_name`, `prompt_version`,
+        `latency_ms` and `raw_model_output`.
+        """
         current = receipts.get(receipt_id)
         if current is None:
             raise NotFound(f"Receipt {receipt_id} does not exist.")
-        if not receipts.transition(receipt_id, "failed", "extracted", error=None):
+        if not receipts.transition(
+            receipt_id,
+            "failed",
+            "extracted",
+            error=None,
+            model_name=None,
+            prompt_version=None,
+            latency_ms=None,
+            raw_model_output=None,
+        ):
             raise InvalidState(
                 f"Receipt {receipt_id} is {current.status}; an expense can be entered by hand "
                 "only for a failed receipt."
