@@ -39,7 +39,7 @@ All bodies are JSON unless stated otherwise. Errors use the [error format](error
 
 - **Filters:** `category` (`Category` or `uncategorized`) matches expenses with at least one item in that category. `from` and `to` are inclusive dates. There is no pagination; the data is one user's.
 - **Rules rerun on every write:** `POST /expenses` and `PATCH /expenses/{id}` recompute `flags` and `review_status` from the rules ([domain-logic](../backend/domain-logic.md#confidencepy-f4)), so a fixed field clears its flag. Every field stays editable whatever the review status.
-- **Manual entry for a failed receipt:** `POST /expenses` with `receipt_id` attaches a hand-typed expense to the photo. The expense gets `source: manual`, and the receipt becomes `extracted` ([0015](../decisions/0015-non-receipt-is-a-failure-with-retry-or-manual-entry.md)). The merchant is stored as typed. A `category` sent on an item is stored with `category_source: user`.
+- **Manual entry for a failed receipt:** `POST /expenses` with `receipt_id` attaches a hand-typed expense to the photo. The expense gets `source: manual`, and the receipt becomes `extracted` ([0015](../decisions/0015-non-receipt-is-a-failure-with-retry-or-manual-entry.md)). The merchant is stored as typed. A `category` sent on an item is stored with `category_source: user`. The failed attempt's `error` and model data are cleared, as on retry.
 - **Upload size:** Starlette reads the whole multipart body before the `413 file_too_large` check runs, so an oversized upload still costs its transfer.
 
 ## Item categories (the lookup table)

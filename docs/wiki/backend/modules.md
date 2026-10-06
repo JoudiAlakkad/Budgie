@@ -38,7 +38,7 @@ The rules are enforced by `import-linter` ([0006](../decisions/0006-sqlite-behin
   - "domain is pure": forbids everything app-internal except `app.errors`, plus `httpx`, `fastapi`, `pydantic_settings` and `sqlalchemy`; checks indirect imports too
   - "api does not import db or ai": direct imports only, because `api → services → db` is the intended path
   - "only app.db imports sqlalchemy": applies to all of `app`, ignoring `app.db` and `app.db.**`; direct imports only. It needs `unmatched_ignore_imports_alerting = "none"`, because `**` matches only submodules.
-- Dependencies use compatible ranges with the current version as the lower bound. `python-multipart` is held below `0.1` (`>=0.0.32,<0.1`), because its 0.0.x releases have changed the API. ruff is pinned exactly, to match `.pre-commit-config.yaml`.
+- Dependencies use compatible ranges with the current version as the lower bound. `python-multipart` is held below `0.1` (`>=0.0.32,<0.1`), because its 0.0.x releases have changed the API. `tzdata` (F05) has no upper cap, since it is calendar-versioned data only. ruff is pinned exactly, to match `.pre-commit-config.yaml`.
 
 ## Stub routes
 From F2 every documented endpoint exists as a route with its final signature ([0016](../decisions/0016-api-representation-and-stub-convention.md)). Until its feature is built, the body is `raise NotImplementedYet("F05")`, which answers `501 not_implemented`. A feature replaces only the body with a service call, so the spec doesn't change. Routers import only `app.api.schemas`, `app.api.errors`, `app.errors` and `app.services`. This is checked in review; no import-linter contract enforces it.

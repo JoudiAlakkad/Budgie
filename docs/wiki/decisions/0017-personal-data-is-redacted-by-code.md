@@ -22,6 +22,8 @@ The first version of that code was a broad regex table: addresses, URLs, phone n
   | raw model output | `redact_text` |
 
 - **Production:** the pipeline (F05) applies these before storing. Raw model output, prompts and image bytes are never logged. A merchant the user types in by hand is stored as typed; these rules target model output.
+  - The model's `date` and `currency` also go through `redact_text` before the rules run, because their flag messages quote the text and are stored (F05 review: `01.10.2026 Bon-Nr: 4711`).
+  - Storage errors are logged without SQL parameters (`hide_parameters=True`, [persistence](../backend/persistence.md)).
 - **Fixtures:**
   - `scripts/make_fixtures.py` generates `tests/fixtures/recorded_responses/` deterministically. It reads only strict-schema spike outputs and makes every other case synthetic.
   - It refuses to write if a rule still matches or the independent scan flags a text.
@@ -32,7 +34,8 @@ The first version of that code was a broad regex table: addresses, URLs, phone n
 - The schema removes most leaks at the source. The small rule set is cheap, precise, runs in linear time (guarded by a fixed-size test: the input is bounded at 65,536 characters, and every rule must finish each hostile string of that size under 2 s, a limit only exponential backtracking can reach), and doesn't touch item names.
 - A rule that is missing is added once and tested once, for the database, the logs, the fixtures and the evaluation alike.
 - **Known gaps:**
-  - header text the model copies into `merchant` stays in the stored raw output when that output doesn't parse as JSON (`malformed_output`). Decided in F05: raw output that parses gets its `merchant` replaced by the `clean_merchant` result, then `redact_text`; the formatting and code fences are lost, which F11 doesn't need, since it reruns the model.
+  - header text the model copies into `merchant` stays in the stored raw output when that output doesn't parse as JSON (`malformed_output`). Decided in F05: raw output that parses gets its `merchant` replaced by the `clean_merchant` result, then `redact_text`; the formatting, code fences and any prose around the JSON are lost, which F11 doesn't need, since it reruns the model. "Parses" means the extractor's own loader (`ai.extractor.load_json`): the first F05 version used a narrower parser, and the review found prose-wrapped answers keeping the address.
+  - a `malformed_output` raw text keeps phone numbers and street addresses, because `redact_text` has no rule for them (a test pins `Tel. 0231 123456` surviving)
   - the part of an e-mail address before the `@` can survive in `merchant`
   - a label glued into a rejected value isn't seen (`Kasse-Bon 1234`)
   - an id value without any digit isn't redacted, e.g. a TSE signature like `abc+/==` (real ones almost always contain digits)

@@ -17,7 +17,7 @@ Retry (POST /receipts/{id}/extract) from failed or extracted ──► uploaded
 | `extracting` | an expense is extracted | `extracted` |
 | `extracting` | extraction fails | `failed`, with a [receipt error code](error-format.md#receipt-error-codes) |
 | `failed`, `extracted` | `POST /receipts/{id}/extract` | `uploaded`; an unconfirmed expense is deleted |
-| `failed` | `POST /expenses` with `receipt_id` (enter manually) | `extracted`, with a `manual` expense |
+| `failed` | `POST /expenses` with `receipt_id` (enter manually) | `extracted`, with a `manual` expense; `error` becomes `null` |
 | `extracted` | `POST /expenses/{id}/confirm` | `confirmed` |
 | `confirmed` | `PATCH /expenses/{id}` | `extracted`; the expense is unconfirmed and must be confirmed again |
 | `uploaded`, `extracting` | the app restarts | `failed`, `error: interrupted` |

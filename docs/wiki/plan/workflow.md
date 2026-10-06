@@ -12,6 +12,8 @@ How a feature from the [roadmap](roadmap.md) moves from issue to merge.
    - Agents run in parallel only if their files don't overlap and the contract for the feature is already fixed ([0009](../decisions/0009-contract-first-parallel-development.md)).
    - The wiki must be committed before agents start, because a worktree only contains committed files.
    - The agent must check its worktree's base commit before starting. In F1 one worktree started from `main` instead of the feature branch, and the agent had to fast-forward it. Its commit then needs a cherry-pick, not a fast-forward merge.
+   - In F05 the worktree started on an older commit (`d7dc706`) again. The brief named the expected base hash and said to `git reset --hard` to it if reachable, so the agent fixed it itself and the branch fast-forwarded cleanly. Always put the base hash in the brief.
+   - The worktree shares `/workspace/.venv`, whose editable install points at the main checkout. Run checks in a worktree with `PYTHONPATH=<worktree>/backend make check VENV=/workspace/.venv`, or they test the main checkout's code.
 4. **Verification:**
    - `make check` must pass (lint, tests, import boundaries, OpenAPI drift).
    - The `reviewer` agent checks the diff, and `/code-review` runs on it.

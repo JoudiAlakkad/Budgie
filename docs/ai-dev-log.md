@@ -154,3 +154,38 @@ Modified: the agent's code was accepted after two fix rounds. Its correction of 
 - Float-built amounts falsely flagged at the 0.02 boundary → `reviewer`, reproduced → rounding to cents (`5a7f80b`)
 - `1e30` crashed the sum check → `/code-review` → wide decimal context (`a6dcf06`)
 - Branch created tracking `origin/main`, so `git push` put F04 onto `main` without a PR → GitHub's "no commits" → kept; branches now use `--no-track` ([workflow](wiki/plan/workflow.md#git-conventions))
+
+## Episode 6 — F05: review catches a merchant-address leak in the pipeline
+- **Date:** 2026-10-06 · **Feature:** F05 · **Commits:** `5369759..b13c713` · **Outcome:** partial
+
+**1. Development task given to the agent**
+"Plan feature f05", then "go ahead" and "start it": the receipt pipeline, covering upload, background extraction, persistence and failure handling (`.github/issues/F05.md`).
+
+**2. Relevant context and instructions**
+The Plan agent's design. The user made four decisions on it: `POST /expenses` moves to F05, the cleaned merchant also goes into the stored raw output, `interrupted` covers unexpected task errors, and a lock lets only one extraction run at a time. They were recorded in the wiki and in amendments to 0007 and 0017 before implementation (`5369759`).
+
+**3. Agent's proposed contribution**
+`backend-dev` built the tables, repositories, pipeline and receipt and expense routes in five commits (`6e76078..9aefa38`, 33 files, about 4,100 lines). It reported six departures from the design, for example `AUTOINCREMENT` after it saw ids being reused.
+
+**4. Tools or permissions used by the agent**
+- Plan agent (read-only)
+- `backend-dev` (Read, Edit, Write, Bash, Grep, Glob) in a worktree, limited to `backend/` and `tests/`
+- `reviewer` (read-only) and `/code-review`
+- `git commit` and `git reset` need confirmation; nothing was pushed
+
+**5. How the result was verified**
+- `make check`, re-run by the main session: 1667 passed, 4 import contracts kept, OpenAPI unchanged
+- `reviewer`: 1 blocker, 5 should-fix, 5 nits; `/code-review`: 1 finding
+- By hand through the API: the happy path and the `llm_unavailable` path both worked
+
+**6. What was accepted, modified or rejected**
+Modified. The design and the six departures were accepted. Findings 1–5, 7, 8 and 9 were fixed in eight commits. The thread-pool stall was not fixed and was kept as a documented known limit.
+
+**7. Observed benefit, limitation or risk**
+*Risk:* a privacy rule that looks implemented can be bypassed by a second code path. The pipeline and the extractor parsed JSON differently, and only a review that compared the two found it.
+
+**Detected and corrected**
+- Worktree started on `d7dc706` → agent's base check → reset to `5369759`
+- Prose-wrapped JSON kept the merchant's address in raw output → `reviewer`, reproduced → shared loader (`3581a16`)
+- Range check before rounding → `GET /receipts` gave 500 → `reviewer`, reproduced → check after rounding (`7df0692`)
+- Storage-error logs could hold SQL parameters with personal data → `reviewer` → `hide_parameters` (`7551747`)
