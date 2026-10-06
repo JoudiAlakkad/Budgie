@@ -320,11 +320,28 @@ def test_cut_off_output_is_malformed_without_repair(
         {"total": 1e10},
         {"total": -1e10},
         {"subtotal": 12345678901.5},
+        {"total": 9999999999.995},
+        {"total": -9999999999.995},
         {"tax": 1e300},
         {"line_items": [{"description": "BROT", "qty": 1, "unit_price": None, "amount": 1e10}]},
         {"line_items": [{"description": "BROT", "qty": 1, "unit_price": 1e12, "amount": 2.49}]},
+        {
+            "line_items": [
+                {"description": "BROT", "qty": 1, "unit_price": 9999999999.995, "amount": 2.49}
+            ]
+        },
     ],
-    ids=["total", "negative total", "subtotal", "tax", "item amount", "unit price"],
+    ids=[
+        "total",
+        "negative total",
+        "subtotal",
+        "rounds up to the limit",
+        "rounds down to minus the limit",
+        "tax",
+        "item amount",
+        "unit price",
+        "unit price rounds up",
+    ],
 )
 def test_an_amount_beyond_money_is_malformed_output(
     api: TestClient, settings: Settings, model: ModelServer, fields: dict
@@ -337,6 +354,7 @@ def test_an_amount_beyond_money_is_malformed_output(
     row = stored(settings, receipt["id"])
     assert row.raw_model_output == redact_raw_output(content)
     assert row.latency_ms is not None
+    assert api.get("/api/receipts").status_code == 200  # nothing unshowable was stored
 
 
 @pytest.mark.parametrize("name", ["not_a_receipt", "not_a_receipt_loose"])

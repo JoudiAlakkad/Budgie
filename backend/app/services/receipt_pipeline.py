@@ -90,9 +90,14 @@ Outcome = Extracted | Failed
 
 
 def to_amount(value: float) -> Decimal:
-    """A model amount as a Decimal via `str(float)`; raises `AmountOutOfRange`."""
+    """A model amount as a Decimal via `str(float)`; raises `AmountOutOfRange`.
+
+    The check runs on the value as it will be stored, rounded to cents: 9999999999.995
+    rounds up to 10**10, which `Money` can't show. The unrounded check comes first, so a
+    huge value never reaches `quantize` (which would overflow the context precision).
+    """
     amount = Decimal(str(value))
-    if abs(amount) >= MAX_AMOUNT:
+    if abs(amount) >= MAX_AMOUNT or abs(cents(amount)) >= MAX_AMOUNT:
         raise AmountOutOfRange()
     return amount
 
