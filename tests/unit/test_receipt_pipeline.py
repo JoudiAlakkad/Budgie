@@ -111,7 +111,7 @@ def get(db: Database, receipt_id: int) -> ReceiptRecord | None:
 
 
 def pipeline(db: Database, images: ImageStore, extractor: FakeExtractor) -> ReceiptPipeline:
-    return ReceiptPipeline(db, images, lambda: extractor, PlaceholderCategorizer(), TODAY)
+    return ReceiptPipeline(db, images, lambda: extractor, PlaceholderCategorizer(), lambda: TODAY)
 
 
 def test_the_lock_is_taken_before_uploaded_to_extracting(db_url: str, images: ImageStore) -> None:
@@ -274,4 +274,29 @@ def test_model_name_prompt_version_and_latency_are_stored(db_url: str, images: I
         "v1",
         250,
     )
+    db.dispose()
+
+
+def test_today_is_read_inside_the_task_when_the_rules_run(db_url: str, images: ImageStore) -> None:
+    db = Database(db_url)
+    receipt_id = new_receipt(db, images)
+    extractor = FakeExtractor(ok_result())
+    events: list[str] = []
+    real_extract = extractor.extract
+
+    def extract(image: bytes, mime: str) -> ExtractionResult:
+        events.append("extract")
+        return real_extract(image, mime)
+
+    def today() -> dt.date:
+        events.append("today")
+        return TODAY
+
+    extractor.extract = extract  # type: ignore[method-assign]
+    task = ReceiptPipeline(db, images, lambda: extractor, PlaceholderCategorizer(), today)
+    assert events == []  # building the task (at request time) doesn't read the clock
+
+    task.run(receipt_id)
+
+    assert events == ["extract", "today"]
     db.dispose()

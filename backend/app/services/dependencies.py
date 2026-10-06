@@ -8,6 +8,7 @@ parameters, or the OpenAPI spec would change (modules.md).
 import datetime as dt
 from collections.abc import Callable
 from threading import Lock
+from zoneinfo import ZoneInfo
 
 from fastapi import Depends
 
@@ -19,8 +20,11 @@ from app.db.images import ImageStore
 from app.db.session import Database
 from app.services.categorization import ItemCategorizer, PlaceholderCategorizer
 from app.services.expenses import ExpenseService
-from app.services.receipt_pipeline import ExtractorFactory, ReceiptPipeline
+from app.services.receipt_pipeline import ExtractorFactory, ReceiptPipeline, Today
 from app.services.receipts import ReceiptService
+
+# Budgie targets German receipts; "today" for the date rules is the local date there.
+BERLIN = ZoneInfo("Europe/Berlin")
 
 _databases: dict[str, Database] = {}
 _databases_lock = Lock()
@@ -92,9 +96,19 @@ def get_extractor_factory(
     return lambda: build_extractor(settings, client)
 
 
-def get_today() -> dt.date:
-    """Today's date for the date rules; tests override it."""
-    return dt.date.today()
+def berlin_date(instant: dt.datetime) -> dt.date:
+    """The Europe/Berlin calendar date of an aware instant."""
+    return instant.astimezone(BERLIN).date()
+
+
+def today_in_berlin() -> dt.date:
+    return berlin_date(dt.datetime.now(dt.UTC))
+
+
+def get_today() -> Today:
+    """A clock for the date rules, called when the rules run (inside the task for an
+    extraction), not when the request arrives. Tests override it."""
+    return today_in_berlin
 
 
 def get_item_categorizer() -> ItemCategorizer:
@@ -107,7 +121,7 @@ def get_receipt_pipeline(
     images: ImageStore = Depends(get_image_store),
     extractor_factory: ExtractorFactory = Depends(get_extractor_factory),
     categorizer: ItemCategorizer = Depends(get_item_categorizer),
-    today: dt.date = Depends(get_today),
+    today: Today = Depends(get_today),
 ) -> ReceiptPipeline:
     return ReceiptPipeline(db, images, extractor_factory, categorizer, today)
 
@@ -115,6 +129,6 @@ def get_receipt_pipeline(
 def get_expense_service(
     db: Database = Depends(get_database),
     categorizer: ItemCategorizer = Depends(get_item_categorizer),
-    today: dt.date = Depends(get_today),
+    today: Today = Depends(get_today),
 ) -> ExpenseService:
     return ExpenseService(db, categorizer, today)

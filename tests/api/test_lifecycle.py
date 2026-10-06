@@ -198,7 +198,7 @@ def test_startup_resets_uploaded_and_extracting_to_interrupted(
 ) -> None:
     app = create_app(settings)
     app.dependency_overrides[get_receipt_pipeline] = NoopPipeline
-    app.dependency_overrides[get_today] = lambda: TODAY
+    app.dependency_overrides[get_today] = lambda: lambda: TODAY
     with TestClient(app) as client:
         queued, running, done = (upload(client).json()["id"] for _ in range(3))
     set_status(settings, running, "uploaded", "extracting")

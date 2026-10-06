@@ -65,6 +65,8 @@ class ReceiptExtractor(Protocol):
 
 
 ExtractorFactory = Callable[[], ReceiptExtractor]
+Today = Callable[[], date]
+"""A clock for the date rules, called when they run."""
 
 
 class AmountOutOfRange(ValueError):
@@ -144,7 +146,7 @@ class ReceiptPipeline:
         images: ImageStore,
         extractor_factory: ExtractorFactory,
         categorizer: ItemCategorizer,
-        today: date,
+        today: Today,
     ) -> None:
         self._db = db
         self._images = images
@@ -248,7 +250,8 @@ class ReceiptPipeline:
             raise NotAReceipt(
                 "plausibility rule", raw_output=result.raw_output, latency_s=result.latency_s
             )
-        review_status, flags = assess(facts, self._today)
+        # Called here, inside the task: a receipt queued over midnight uses the new day.
+        review_status, flags = assess(facts, self._today())
 
         items = []
         for item, description, (amount, unit_price), category in zip(

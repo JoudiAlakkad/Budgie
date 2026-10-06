@@ -25,7 +25,7 @@ def api(settings: Settings, model: ModelServer) -> Iterator[TestClient]:
     """
     app = create_app(settings)
     app.dependency_overrides[get_llm_client] = model.client
-    app.dependency_overrides[get_today] = lambda: TODAY
+    app.dependency_overrides[get_today] = lambda: lambda: TODAY
     with TestClient(app) as client:
         yield client
     dispose_databases()

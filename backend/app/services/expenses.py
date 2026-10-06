@@ -17,6 +17,7 @@ from app.domain.confidence import assess
 from app.domain.facts import ItemFacts, ReceiptFacts
 from app.errors import InvalidState, NotFound
 from app.services.categorization import ItemCategorizer
+from app.services.receipt_pipeline import Today
 from app.services.views import ExpenseView, cents, expense_view, optional_cents
 
 logger = logging.getLogger(__name__)
@@ -61,7 +62,7 @@ class ExpenseInput(Protocol):
 
 
 class ExpenseService:
-    def __init__(self, db: Database, categorizer: ItemCategorizer, today: dt.date) -> None:
+    def __init__(self, db: Database, categorizer: ItemCategorizer, today: Today) -> None:
         self._db = db
         self._categorizer = categorizer
         self._today = today
@@ -109,7 +110,7 @@ class ExpenseService:
             total=body.total,
             items=tuple(ItemFacts(item.description, item.amount, item.category) for item in items),
         )
-        review_status, flags = assess(facts, self._today)
+        review_status, flags = assess(facts, self._today())
         new = NewExpense(
             receipt_id=body.receipt_id,
             merchant=body.merchant,
