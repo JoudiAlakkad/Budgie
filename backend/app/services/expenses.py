@@ -318,7 +318,7 @@ class ExpenseService:
 
     def _edited_items(
         self, current: ExpenseRecord, sent: Sequence[EditedLineItem]
-    ) -> list[LineItemChange]:
+    ) -> tuple[LineItemChange, ...]:
         """The sent items, categorised per decision 0018, after checking their ids."""
         stored = {item.id: item for item in current.line_items}
         problems: list[tuple[str, str]] = []
@@ -334,10 +334,10 @@ class ExpenseService:
             seen.add(item.id)
         if problems:
             raise InvalidFields(problems)
-        return [
+        return tuple(
             self._edited_item(item, stored[item.id] if item.id is not None else None)
             for item in sent
-        ]
+        )
 
     def _edited_item(self, item: EditedLineItem, stored: LineItemRecord | None) -> LineItemChange:
         """`category` sent: the user's. An existing item with an unchanged description and
