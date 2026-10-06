@@ -6,7 +6,7 @@
 In the first run of F06 on the host, the student found the review page showed more than a user needs (subtotal, tax, unit, unit price), and the model mixed up per-unit and per-line prices. The user cares what was bought, how many, and what the line cost: "Kuchen, qty 3, 4,99 €". The prompt also asked the small model to transcribe *and* reformat the date, and it didn't tell a Pfand charged for bottles from a Pfand returned.
 
 ## Decision
-- **Per item, the model extracts only the name (`description`), `qty` and `amount`, the total for the line.** `unit_price` is removed from the model schema.
+- **Per item, the model extracts only the name (`description`), `qty` and `amount`, the total for the line.** v2 reads an item as a block of one or more lines grouped by the layout, so the amount is the total printed for the block, wherever its quantity line sits (refined 2026-10-06). `unit_price` is removed from the model schema.
 - **`subtotal` and `tax` are no longer extracted.** They also leave `unreadable_fields`. The API fields stay (`api/schemas.py` is unchanged) and are `null` for AI expenses; manual entry through the API may still set them.
 - **The date is transcribed as printed** (`14.03.26`, `14.03.2026`), without the time. `domain.validation.parse_date` turns it into a date; an unknown format stays `date_unparseable`.
 - **Pfand:** a Pfand line for bottles bought (Pfand, Einwegpfand, Mehrweg) is its own item with a **positive** amount, a cost. Leergut, Pfandrückgabe, Pfandbon or Pfand zurück is money back: its own item with a **negative** amount. Until F07, `PlaceholderCategorizer` categorises names containing `pfand` or `leergut` as `deposit` (source `seed`).
