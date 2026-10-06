@@ -21,7 +21,7 @@ Line items: one item per purchased product.
 - A Pfand line printed for bottles you bought (Pfand, Einwegpfand, Mehrweg) is an extra cost: its own item with a positive amount.
 - Leergut, Pfandrückgabe, Pfandbon or Pfand zurück is money given back for returned bottles: its own item with a negative amount.
 
-These lines are not items: SUMME, ZU ZAHLEN, BAR, GEGEBEN, ZURÜCK or RÜCKGELD, Kartenzahlung, EC-Karte or VISA, the rows of the tax table, and change. A payment line only sets payment_method.
+These lines are not items: SUMME, ZU ZAHLEN, BAR, GEGEBEN, ZURÜCK or RÜCKGELD for the change given back (but Pfand zurück is an item, see above), Kartenzahlung, EC-Karte or VISA, and the rows of the tax table. A payment line only sets payment_method.
 
 Never copy card numbers, IBANs, terminal, transaction or receipt numbers, addresses or names of staff into any field.
 

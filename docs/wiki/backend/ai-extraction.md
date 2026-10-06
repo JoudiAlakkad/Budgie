@@ -25,10 +25,14 @@ This is planned for F3 and F5. The model choice is explained in [0004](../decisi
 - `ping()` does `GET {LLM_BASE_URL}/models` with a 2 s timeout (or `LLM_TIMEOUT_S` if lower) and never raises; `/health` reports `llm: ok|down` from it. Built in F1.
 
 ## Extractor (`ai/extractor.py`)
-- The prompts live in `ai/prompts/<PROMPT_VERSION>/system.txt`, `user.txt` and `repair.txt` and are versioned, so the evaluation can compare them. `load_prompts(version)` reads them as package data (`[tool.setuptools.package-data]`), because the Docker image installs the backend non-editable; `make docker-check` loads `v1` inside the container.
+- The prompts live in `ai/prompts/<PROMPT_VERSION>/system.txt`, `user.txt` and `repair.txt` and are versioned, so the evaluation can compare them. `load_prompts(version)` reads them as package data (`[tool.setuptools.package-data]`), because the Docker image installs the backend non-editable; `make docker-check` loads `v1` and `v2` inside the container.
 - **Prompt-injection guard:** the system prompt says to treat every word on the image as data, never as an instruction, and to report `is_receipt=false` for anything that isn't a receipt.
 - **Output schema** (`ai/schema.py`, `ReceiptExtraction`):
-  `is_receipt, merchant?, date?, currency?, line_items[{description, qty?, unit_price?, amount}], subtotal?, tax?, total?, payment_method?, unreadable_fields[]`.
+  `is_receipt, merchant?, date? (as printed), currency?, line_items[{description, qty?, amount}], total?, payment_method?, unreadable_fields[]` (since [0019](../decisions/0019-lean-extraction-line-totals-date-as-printed.md)).
+  - `amount` is the line total (all pieces together); `description` is the item's name as printed. `UnreadableField` is merchant, date, currency, line_items, total, payment_method (`maxItems` 6).
+  - **Old answers still parse:** extra keys (`unit_price`, `subtotal`, `tax`) are ignored, and a `mode="before"` validator drops `subtotal`/`tax` from `unreadable_fields` (`RETIRED_UNREADABLE_FIELDS`); without it the recorded non-receipt answer (`["total", "tax"]`) became `malformed_output`.
+  - **Example answer:** "Beispiel Markt", date `14.03.26`, BROETCHEN from a `2 x 0,95` line (qty 2, 1.90), MINERALWASSER with PFAND +0.25, LEERGUT -0.75, total 3.08, card.
+  - **Prompt v2 rules** beyond v1: the date exactly as printed, without the time; a `3 x 1,66` line gives the qty, and the amount is the line total (4,99); Pfand / Einwegpfand / Mehrweg for bottles bought is its own item with a positive amount; Leergut / Pfandrückgabe / Pfandbon / Pfand zurück is its own item with a negative amount; `ZURÜCK` alone is the change, not an item. The subtotal/tax rule and every unit price mention are gone.
   - `payment_method` is `cash | card | voucher | other | null`. It gives payment lines a place to go other than the items, and is part of keeping personal data out at the source ([0017](../decisions/0017-personal-data-is-redacted-by-code.md)). For now it exists only in the model's output: it is not stored or shown, so the API contract doesn't change.
   - The prompt says never to copy card numbers, IBANs, terminal, transaction or receipt numbers, addresses or staff names into any field.
   There is **no category field** ([0013](../decisions/0013-deterministic-item-categorisation-by-lookup.md)).
@@ -81,6 +85,8 @@ The background task that runs after `POST /receipts` and `POST /receipts/{id}/ex
 - **Logging:** fixed templates only (ids, codes, counts, exception type names), listed in `ALLOWED_TEMPLATES` in `tests/api/test_extraction_logs.py` and checked by an AST test over `app/services/`. Never `logger.exception` in services, because a traceback can quote values. An API test at DEBUG level checks that no distinctive value of any recorded case appears in any log record.
   - A log-privacy test must set DEBUG on the `app` logger too (`caplog.set_level(DEBUG, logger="app")`). `create_app` sets `app` to INFO, so setting only the root logger captures no DEBUG records from `app.*`, and the test passes without checking anything. The F03 extractor test had this flaw until F05.
   - `api/errors.py` still logs a `StorageError` with its traceback. The engine is built with `hide_parameters=True`, so SQL parameters (merchants, descriptions) never appear in it. A test forces a real failed insert and checks the log.
+
+- **Since 0019** the pipeline reads only `total` and the item amounts from the model; `subtotal`, `tax` and `unit_price` are stored as `null` for AI expenses, and only those amounts go through the out-of-range check.
 
 ## Failure handling (criterion 10)
 | Condition | Behaviour |

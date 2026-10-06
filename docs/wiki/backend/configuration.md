@@ -11,7 +11,7 @@ All settings come from environment variables, read by `app/config.py`. This tabl
 | `LLM_MAX_RETRIES` | `1` | on timeout or connection error only |
 | `LLM_TEMPERATURE` | `0` | |
 | `LLM_MAX_TOKENS` | `2048` | an 11-item receipt used 695 tokens in the spike; output that reaches the limit is `malformed_output` |
-| `PROMPT_VERSION` | `v1` | folder under `ai/prompts/`; must be a plain folder name (`[A-Za-z0-9_.-]+`, no `..`), else `UnknownPromptVersion` on the first extraction, which fails that receipt with `interrupted` |
+| `PROMPT_VERSION` | `v2` (since [0019](../decisions/0019-lean-extraction-line-totals-date-as-printed.md); `v1` is kept for the F11 comparison and describes the old schema) | folder under `ai/prompts/`; must be a plain folder name (`[A-Za-z0-9_.-]+`, no `..`), else `UnknownPromptVersion` on the first extraction, which fails that receipt with `interrupted` |
 | `DATABASE_URL` | `sqlite:///./data/budgie.db` | |
 | `UPLOAD_DIR` | `./data/uploads` | |
 | `MAX_UPLOAD_MB` | `10` | |
