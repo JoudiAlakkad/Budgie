@@ -9,7 +9,15 @@ import pytest
 from sqlalchemy import text
 
 from app.db.models import DecimalText, MoneyCents
-from app.db.records import ExpenseFilter, FlagRecord, NewExpense, NewLineItem
+from app.db.records import (
+    ExpenseChanges,
+    ExpenseFilter,
+    ExpenseRecord,
+    FlagRecord,
+    LineItemChange,
+    NewExpense,
+    NewLineItem,
+)
 from app.db.repositories.expenses import ExpenseRepository
 from app.db.repositories.receipts import ReceiptRepository
 from app.db.session import Database
@@ -334,6 +342,199 @@ def test_delete_unconfirmed_for_receipt(db: Database) -> None:
         assert repo.delete_unconfirmed_for_receipt(b) == 0
         assert repo.get_by_receipt(a) is None
         assert repo.get_by_receipt(b) is not None
+    with db.engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM line_items")).scalar() == 1
+
+
+def changes(stored: ExpenseRecord, *items: LineItemChange, **values: object) -> ExpenseChanges:
+    """`stored` with `values` and `items` (the stored items unchanged if none are given)."""
+    if not items:
+        items = tuple(
+            LineItemChange(
+                id=i.id,
+                description=i.description,
+                normalized_name=i.normalized_name,
+                qty=i.qty,
+                unit=i.unit,
+                unit_price=i.unit_price,
+                amount=i.amount,
+                category=i.category,
+                category_source=i.category_source,
+            )
+            for i in stored.line_items
+        )
+    fields = {
+        name: getattr(stored, name)
+        for name in (
+            "merchant",
+            "date",
+            "currency",
+            "subtotal",
+            "tax",
+            "total",
+            "source",
+            "review_status",
+            "flags",
+            "unreadable_fields",
+            "confirmed",
+        )
+    }
+    return ExpenseChanges(**(fields | values), line_items=items)  # type: ignore[arg-type]
+
+
+def edited_item(
+    item_id: int | None, description: str, amount: str = "1.00", category: str = "other"
+) -> LineItemChange:
+    return LineItemChange(
+        id=item_id,
+        description=description,
+        normalized_name=description.lower(),
+        qty=None,
+        unit="kg",
+        unit_price=None,
+        amount=Decimal(amount),
+        category=category,
+        category_source="user",
+    )
+
+
+def test_update_writes_the_merged_state(db: Database) -> None:
+    receipt_id = new_receipt(db)
+    with db.transaction() as session:
+        stored = ExpenseRepository(session).insert(expense(receipt_id, confirmed=True))
+
+    with db.transaction() as session:
+        updated = ExpenseRepository(session).update(
+            stored.id,
+            changes(
+                stored,
+                merchant="Edeka",
+                date=None,
+                currency="CHF",
+                subtotal=Decimal("0.005"),  # rounded half up by the column
+                tax=Decimal("0.40"),
+                total=None,
+                source="ai_corrected",
+                review_status="rejected",
+                flags=(FlagRecord("total", "missing_total", "The total is missing."),),
+                unreadable_fields=(),
+                confirmed=False,
+            ),
+        )
+    with db.transaction() as session:
+        again = ExpenseRepository(session).get(stored.id)
+
+    assert again == updated
+    assert (updated.merchant, updated.date, updated.currency) == ("Edeka", None, "CHF")
+    assert (updated.subtotal, updated.tax, updated.total) == (
+        Decimal("0.01"),
+        Decimal("0.40"),
+        None,
+    )
+    assert (updated.source, updated.review_status, updated.confirmed) == (
+        "ai_corrected",
+        "rejected",
+        False,
+    )
+    assert updated.flags == (FlagRecord("total", "missing_total", "The total is missing."),)
+    assert updated.unreadable_fields == ()
+    assert updated.receipt_id == receipt_id
+    assert updated.created_at == stored.created_at
+    assert updated.updated_at >= stored.updated_at
+    assert updated.line_items == stored.line_items
+
+
+def test_update_replaces_the_items_in_order(db: Database) -> None:
+    with db.transaction() as session:
+        stored = ExpenseRepository(session).insert(
+            expense(line_items=(item("BROT"), item("MILCH"), item("PFAND", "-0.25")))
+        )
+    brot, milch, _pfand = stored.line_items
+
+    with db.transaction() as session:
+        updated = ExpenseRepository(session).update(
+            stored.id,
+            changes(
+                stored,
+                edited_item(None, "WASSER", "0.49"),
+                edited_item(milch.id, "MILCH 1L", "1.29"),
+                edited_item(brot.id, "BROT", "2.49", category="groceries.staples"),
+            ),
+        )
+
+    wasser, milch_after, brot_after = updated.line_items
+    assert [i.position for i in updated.line_items] == [0, 1, 2]
+    assert wasser.id not in {i.id for i in stored.line_items}
+    assert (wasser.description, wasser.amount, wasser.unit) == ("WASSER", Decimal("0.49"), "kg")
+    assert milch_after.id == milch.id
+    assert (milch_after.description, milch_after.normalized_name) == ("MILCH 1L", "milch 1l")
+    assert (milch_after.amount, milch_after.category) == (Decimal("1.29"), "other")
+    assert (brot_after.id, brot_after.category, brot_after.category_source) == (
+        brot.id,
+        "groceries.staples",
+        "user",
+    )
+    with db.engine.connect() as conn:  # PFAND is gone
+        assert conn.execute(text("SELECT count(*) FROM line_items")).scalar() == 3
+
+
+def test_update_rejects_unknown_expenses_and_foreign_items(db: Database) -> None:
+    with db.transaction() as session:
+        repo = ExpenseRepository(session)
+        mine, other = repo.insert(expense()), repo.insert(expense())
+
+    with pytest.raises(NotFound), db.transaction() as session:
+        ExpenseRepository(session).update(999, changes(mine))
+    foreign = edited_item(other.line_items[0].id, "BROT")
+    with pytest.raises(ValueError, match="not an item"), db.transaction() as session:
+        ExpenseRepository(session).update(mine.id, changes(mine, foreign))
+    own = edited_item(mine.line_items[0].id, "BROT")
+    with pytest.raises(ValueError, match="repeated"), db.transaction() as session:
+        ExpenseRepository(session).update(mine.id, changes(mine, own, own))
+
+    with db.transaction() as session:
+        assert ExpenseRepository(session).get(other.id) == other
+        assert ExpenseRepository(session).get(mine.id) == mine
+
+
+def test_set_confirmed(db: Database) -> None:
+    with db.transaction() as session:
+        stored = ExpenseRepository(session).insert(expense())
+
+    with db.transaction() as session:
+        repo = ExpenseRepository(session)
+        assert repo.set_confirmed(stored.id, True) is True
+        confirmed = repo.get(stored.id)  # fresh in the same session
+        assert repo.set_confirmed(999, True) is False
+    with db.transaction() as session:
+        repo = ExpenseRepository(session)
+        assert repo.get(stored.id) == confirmed
+        assert repo.set_confirmed(stored.id, False) is True
+        unconfirmed = repo.get(stored.id)
+
+    assert confirmed is not None and confirmed.confirmed is True
+    assert confirmed.updated_at >= stored.updated_at
+    assert unconfirmed is not None and unconfirmed.confirmed is False
+    assert confirmed.line_items == stored.line_items
+
+
+def test_delete_expense_keeps_the_receipt(db: Database) -> None:
+    receipt_id = new_receipt(db)
+    with db.transaction() as session:
+        repo = ExpenseRepository(session)
+        stored = repo.insert(expense(receipt_id))
+        other = repo.insert(expense()).id
+
+    with db.transaction() as session:
+        repo = ExpenseRepository(session)
+        deleted = repo.delete(stored.id)
+        assert repo.delete(stored.id) is None
+        assert repo.get(stored.id) is None
+
+    assert deleted == stored
+    with db.transaction() as session:
+        assert ReceiptRepository(session).get(receipt_id) is not None
+        assert ExpenseRepository(session).get(other) is not None
     with db.engine.connect() as conn:
         assert conn.execute(text("SELECT count(*) FROM line_items")).scalar() == 1
 
