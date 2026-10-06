@@ -23,7 +23,7 @@ ALLOWED_TEMPLATES = {
     "Startup reset of interrupted receipts failed (%s)",
     "Startup reset %d interrupted receipts to failed",
     "Receipt %s: image file not removed (%s)",
-    "Receipt %d: extraction task stopped (%s)",
+    "Receipt %d: extraction task stopped (%s); marking it failed",
     "Receipt %d: not extracted, it is gone or no longer uploaded",
     "Receipt %d: extraction started",
     "Receipt %d: outcome not stored (%s); marking it failed",

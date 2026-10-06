@@ -158,9 +158,16 @@ class ReceiptPipeline:
             try:
                 self._run(receipt_id)
             except Exception as exc:
-                # Only reached if transaction 1 fails; the startup reset catches the receipt.
+                # Reached if transaction 1 fails (the outcome write has its own handling).
+                # One guarded try to fail the receipt, so it doesn't stay queued until the
+                # next restart; the lock is held, so no other task is extracting it.
                 logger.error(
-                    "Receipt %d: extraction task stopped (%s)", receipt_id, type(exc).__name__
+                    "Receipt %d: extraction task stopped (%s); marking it failed",
+                    receipt_id,
+                    type(exc).__name__,
+                )
+                self._mark_failed(
+                    receipt_id, ("uploaded", "extracting"), ExtractionInterrupted.code
                 )
 
     def _run(self, receipt_id: int) -> None:
@@ -289,7 +296,8 @@ class ReceiptPipeline:
                 receipt_id,
                 type(exc).__name__,
             )
-            self._mark_failed(receipt_id, outcome)
+            code = outcome.code if isinstance(outcome, Failed) else ExtractionInterrupted.code
+            self._mark_failed(receipt_id, ("extracting",), code)
             return
         if not stored:
             logger.info("Receipt %d: result discarded, the receipt is gone", receipt_id)
@@ -329,14 +337,11 @@ class ReceiptPipeline:
             ExpenseRepository(session).insert(outcome.expense)
             return True
 
-    def _mark_failed(self, receipt_id: int, outcome: Outcome) -> None:
-        """One more try after a failed outcome write; the startup reset is the fallback."""
-        code = outcome.code if isinstance(outcome, Failed) else ExtractionInterrupted.code
+    def _mark_failed(self, receipt_id: int, from_: tuple[str, ...], code: str) -> None:
+        """One more guarded try to set `failed`; the startup reset is the fallback."""
         try:
             with self._db.transaction() as session:
-                ReceiptRepository(session).transition(
-                    receipt_id, "extracting", "failed", error=code
-                )
+                ReceiptRepository(session).transition(receipt_id, from_, "failed", error=code)
         except Exception as exc:
             logger.error(
                 "Receipt %d: not marked failed (%s); the startup reset will",

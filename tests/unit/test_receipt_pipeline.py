@@ -220,20 +220,44 @@ def test_when_the_second_try_fails_too_the_receipt_stays_extracting(
     db.dispose()
 
 
-def test_a_storage_error_before_the_start_leaves_the_receipt_uploaded(
+def test_a_storage_error_before_the_start_marks_the_receipt_failed(
     db_url: str, images: ImageStore, caplog: pytest.LogCaptureFixture
 ) -> None:
     db = FlakyDatabase(db_url, failing=set())
-    receipt_id = new_receipt(db, images)
-    db.failing = {2}
+    receipt_id = new_receipt(db, images)  # transaction 1
+    db.failing = {2}  # 2: uploaded -> extracting, 3: the try to mark it failed
     extractor = FakeExtractor(ok_result())
 
     pipeline(db, images, extractor).run(receipt_id)
 
     assert extractor.calls == 0
     record = get(db, receipt_id)
-    assert record is not None and record.status == "uploaded"
-    assert f"Receipt {receipt_id}: extraction task stopped (StorageError)" in caplog.messages
+    assert record is not None
+    assert (record.status, record.error) == ("failed", "interrupted")
+    assert (
+        f"Receipt {receipt_id}: extraction task stopped (StorageError); marking it failed"
+        in caplog.messages
+    )
+    db.dispose()
+
+
+def test_when_marking_it_failed_fails_too_the_receipt_stays_uploaded(
+    db_url: str, images: ImageStore, caplog: pytest.LogCaptureFixture
+) -> None:
+    db = FlakyDatabase(db_url, failing=set())
+    receipt_id = new_receipt(db, images)
+    db.failing = {2, 3}
+    extractor = FakeExtractor(ok_result())
+
+    pipeline(db, images, extractor).run(receipt_id)  # never raises
+
+    assert extractor.calls == 0
+    record = get(db, receipt_id)
+    assert record is not None and record.status == "uploaded"  # until the next restart
+    assert (
+        f"Receipt {receipt_id}: not marked failed (StorageError); the startup reset will"
+        in caplog.messages
+    )
     db.dispose()
 
 
