@@ -13,7 +13,7 @@ import httpx
 import pytest
 
 from app.ai.prompts import load_prompts
-from app.ai.schema import EXAMPLE_JSON
+from app.ai.schema import EXAMPLE_JSON, EXAMPLE_JSON_V1
 from tests.unit.fixture_shape import assert_fixture_shape
 
 RECORDED = Path(__file__).resolve().parent / "fixtures" / "recorded_responses"
@@ -51,7 +51,8 @@ def distinctive_values(case: dict, image: bytes) -> set[str]:
 
     Also the image (base64, as sent), the prompts and the example answer.
     """
-    values = {base64.b64encode(image).decode("ascii"), EXAMPLE_JSON, '"Beispiel Markt"'}
+    values = {base64.b64encode(image).decode("ascii"), EXAMPLE_JSON, EXAMPLE_JSON_V1}
+    values.add('"Beispiel Markt"')
     for version in ("v1", "v2"):
         prompts = load_prompts(version)
         values |= {prompts.system.splitlines()[0], prompts.user.strip(), prompts.repair}

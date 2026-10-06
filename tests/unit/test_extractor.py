@@ -16,12 +16,21 @@ from app.ai.extractor import (
     ExtractionResult,
     Extractor,
     InvalidOutput,
+    MissingOutputSpec,
+    output_spec,
     parse_output,
     strip_fence,
     system_prompt,
 )
-from app.ai.prompts import load_prompts
-from app.ai.schema import EXAMPLE_JSON, RESPONSE_FORMAT
+from app.ai.prompts import Prompts, UnknownPromptVersion, load_prompts
+from app.ai.schema import (
+    EXAMPLE_JSON,
+    EXAMPLE_JSON_V1,
+    OUTPUT_SPECS,
+    RESPONSE_FORMAT,
+    RESPONSE_FORMAT_V1,
+    ReceiptExtraction,
+)
 from app.errors import (
     ExtractionError,
     LLMError,
@@ -489,6 +498,165 @@ def test_cut_off_repair_is_malformed() -> None:
     assert raised.value.raw_output == cut["body"]["choices"][0]["message"]["content"]
     assert len(raised.value.attempts) == 2
     assert "cut off" in raised.value.reason
+
+
+# ---------------------------------------------------------------- output spec per version
+
+PROMPTS_V1 = load_prompts("v1")
+VALID_V1 = {
+    **VALID,
+    "line_items": [{"description": "BROT", "qty": 1, "unit_price": 2.49, "amount": 2.49}],
+    "subtotal": 2.49,
+    "tax": 0.16,
+    "unreadable_fields": ["tax", "merchant"],
+}
+
+
+def make_v1_extractor(transport: httpx.BaseTransport) -> Extractor:
+    client = LLMClient(
+        base_url="http://model-server/v1",
+        api_key="ollama",
+        model="gemma3:4b",
+        timeout=120,
+        transport=transport,
+        max_retries=1,
+    )
+    return Extractor(client, PROMPTS_V1, temperature=0, max_tokens=2048)
+
+
+@pytest.mark.parametrize(
+    ("prompts", "response_format", "example"),
+    [(PROMPTS_V1, RESPONSE_FORMAT_V1, EXAMPLE_JSON_V1), (PROMPTS, RESPONSE_FORMAT, EXAMPLE_JSON)],
+    ids=["v1", "v2"],
+)
+def test_request_carries_the_versions_response_format_and_example(
+    prompts: Prompts, response_format: dict, example: str
+) -> None:
+    transport, seen = answering(json.dumps(VALID_V1))
+    client = LLMClient(
+        base_url="http://model-server/v1",
+        api_key="ollama",
+        model="gemma3:4b",
+        timeout=120,
+        transport=transport,
+        max_retries=1,
+    )
+
+    Extractor(client, prompts, temperature=0, max_tokens=2048).extract(IMAGE, "image/jpeg")
+
+    sent = body(seen[0])
+    assert sent["response_format"] == response_format
+    system = sent["messages"][0]["content"]
+    assert system == prompts.system.replace("{example}", example)
+    assert system.endswith(example)
+
+
+def test_v1_request_has_the_v1_example_and_schema() -> None:
+    transport, seen = answering(json.dumps(VALID_V1))
+
+    make_v1_extractor(transport).extract(IMAGE, "image/jpeg")
+
+    sent = body(seen[0])
+    system = sent["messages"][0]["content"]
+    assert '"date": "2026-03-14"' in system
+    assert '"unit_price": 0.95' in system
+    assert EXAMPLE_JSON not in system
+    schema = sent["response_format"]["json_schema"]["schema"]
+    assert {"subtotal", "tax"} <= set(schema["properties"])
+    assert "unit_price" in schema["properties"]["line_items"]["items"]["properties"]
+
+
+def test_v1_answer_becomes_a_v2_extraction_and_raw_output_stays_v1() -> None:
+    raw = json.dumps(VALID_V1)
+    transport, _ = answering(raw)
+
+    result = make_v1_extractor(transport).extract(IMAGE, "image/jpeg")
+
+    assert type(result.extraction) is ReceiptExtraction
+    assert result.extraction == ReceiptExtraction.model_validate(
+        {**VALID, "unreadable_fields": ["merchant"]}
+    )
+    assert (result.prompt_version, result.repaired) == ("v1", False)
+    assert result.raw_output == raw  # v1-shaped, for F11 to score v1's own fields
+
+
+def test_recorded_valid_receipt_extracts_under_v1() -> None:
+    case = load_case("valid_receipt")
+    transport, seen = replay(case)
+
+    result = make_v1_extractor(transport).extract(IMAGE, "image/jpeg")
+
+    assert len(seen) == 1
+    assert type(result.extraction) is ReceiptExtraction
+    assert result.extraction.merchant == "ALDI"
+    assert len(result.extraction.line_items) == 11
+    assert result.raw_output == answers(case)[0]
+
+
+def test_v2_answer_under_v1_gets_one_repair_naming_the_missing_keys() -> None:
+    transport, seen = answering(VALID_TEXT, json.dumps(VALID_V1))
+
+    result = make_v1_extractor(transport).extract(IMAGE, "image/jpeg")
+
+    assert result.repaired is True
+    assert len(seen) == 2
+    repair_text = body(seen[1])["messages"][-1]["content"]
+    for line in ("subtotal: Field required", "tax: Field required", "line_items.0.unit_price"):
+        assert line in repair_text
+    assert body(seen[1])["response_format"] == RESPONSE_FORMAT_V1
+
+
+def test_v2_answer_under_v1_twice_is_malformed_output() -> None:
+    transport, seen = answering(VALID_TEXT, VALID_TEXT)
+
+    with pytest.raises(MalformedOutput) as raised:
+        make_v1_extractor(transport).extract(IMAGE, "image/jpeg")
+    assert len(seen) == 2
+    assert raised.value.attempts == (VALID_TEXT, VALID_TEXT)
+    assert "subtotal: Field required" in raised.value.reason
+
+
+def test_v1_answer_that_cant_become_v2_is_invalid_output() -> None:
+    # Valid for v1 (8 entries allowed), but 7 entries are left after subtotal/tax are
+    # dropped, more than v2's cap of 6.
+    raw = json.dumps({**VALID_V1, "unreadable_fields": ["total"] * 7 + ["tax"]})
+
+    with pytest.raises(InvalidOutput) as raised:
+        parse_output(raw, OUTPUT_SPECS["v1"])
+    assert "unreadable_fields" in raised.value.reason
+
+
+def test_parse_output_defaults_to_the_v2_model() -> None:
+    with pytest.raises(InvalidOutput):
+        parse_output(json.dumps({**VALID, "line_items": [{"description": "X", "amount": 1}]}))
+    with pytest.raises(InvalidOutput):
+        parse_output(VALID_TEXT, OUTPUT_SPECS["v1"])
+
+
+def test_a_prompt_version_without_an_output_spec_cannot_build_an_extractor() -> None:
+    prompts = Prompts(version="v9", system="s {example}", user="u", repair="r {errors}")
+    transport, seen = answering(VALID_TEXT)
+
+    with pytest.raises(UnknownPromptVersion, match="no output spec") as raised:
+        make_extractor_with(transport, prompts)
+    assert isinstance(raised.value, MissingOutputSpec)
+    with pytest.raises(MissingOutputSpec):
+        system_prompt(prompts)
+    with pytest.raises(MissingOutputSpec):
+        output_spec("v9")
+    assert seen == []
+
+
+def make_extractor_with(transport: httpx.BaseTransport, prompts: Prompts) -> Extractor:
+    client = LLMClient(
+        base_url="http://model-server/v1",
+        api_key="ollama",
+        model="gemma3:4b",
+        timeout=120,
+        transport=transport,
+        max_retries=1,
+    )
+    return Extractor(client, prompts, temperature=0, max_tokens=2048)
 
 
 # Every log template the AI layer may emit. A new template has to be added here, after

@@ -26,6 +26,7 @@ from tests.api.helpers import (
     ModelServer,
     NoopPipeline,
     answer,
+    answer_v1,
     inline_case,
     stored,
     upload,
@@ -145,7 +146,7 @@ def test_retry_of_an_interrupted_receipt_is_allowed(
     receipt_id = upload(api).json()["id"]
     assert api.get(f"/api/receipts/{receipt_id}").json()["error"] == "interrupted"
     settings.prompt_version = "v1"
-    model.serve(inline_case(answer()))
+    model.serve(inline_case(answer_v1()))
 
     assert api.post(f"/api/receipts/{receipt_id}/extract").status_code == 202
     assert api.get(f"/api/receipts/{receipt_id}").json()["status"] == "extracted"

@@ -15,9 +15,16 @@ type arrays and required nullable keys. The nullable enum (`payment_method`),
 `additionalProperties: false` on every object and `maxItems` are new in F03; the live
 integration test passed with them against Ollama 0.35.1 on 2026-10-04. `uniqueItems`
 stays out (never tried); `maxItems` on `unreadable_fields` bounds repeats instead.
+
+Each prompt version has its own output spec (`OUTPUT_SPECS`): the model that validates
+the answer, the `response_format` sent with the request and the example answer for the
+system prompt. `v2` uses `ReceiptExtraction` (decision 0019). `v1` keeps the schema and
+example from before 0019, frozen as the F11 baseline; the extractor converts a valid v1
+answer to `ReceiptExtraction`, so nothing after the extractor sees the v1 shape.
 """
 
 from copy import deepcopy
+from dataclasses import dataclass
 from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -184,3 +191,99 @@ EXAMPLE_OUTPUT = ReceiptExtraction(
     unreadable_fields=[],
 )
 EXAMPLE_JSON = EXAMPLE_OUTPUT.model_dump_json(indent=2)
+
+
+# ---------------------------------------------------------------- prompt v1 (frozen)
+# FROZEN for the F11 prompt comparison: prompt v1's output schema and example exactly as
+# before decision 0019 (commit a4a32e8). Do not change anything in this block: the
+# generated schema, the schema name and the example JSON must stay byte-identical to
+# what a4a32e8 produced (golden tests in tests/unit/test_ai_schema.py). Fixes go into v2
+# or a new prompt version.
+
+UnreadableFieldV1 = Literal[
+    "merchant", "date", "currency", "line_items", "subtotal", "tax", "total", "payment_method"
+]
+MAX_UNREADABLE_FIELDS_V1 = 8  # one per value key; stops a model repeating enum values
+
+
+class LineItemV1(_Output):
+    description: str = Field(description="the product name exactly as printed")
+    qty: float | None = Field(description="count or weight; null if not printed")
+    unit_price: float | None = Field(description="price per unit or per kg; null if not printed")
+    amount: float = Field(description="the line price; negative for discounts and deposit returns")
+
+
+class ReceiptExtractionV1(_Output):
+    # Key order drives the generated schema, and so the order the model writes in.
+    is_receipt: bool = Field(description="false if the image is not a shop receipt")
+    merchant: str | None = Field(description="the shop name only, no address or phone")
+    date: str | None = Field(description="purchase date as YYYY-MM-DD")
+    currency: str | None = Field(description="ISO 4217 code, e.g. EUR")
+    line_items: list[LineItemV1] = Field(
+        max_length=MAX_LINE_ITEMS,
+        description="purchased products only, never payment or summary lines",
+    )
+    subtotal: float | None = Field(description="only if printed on the receipt, else null")
+    tax: float | None = Field(description="only if printed on the receipt, else null")
+    total: float | None = Field(
+        description="the amount paid (SUMME / ZU ZAHLEN), not a row of the tax table"
+    )
+    payment_method: PaymentMethod | None = Field(
+        description=(
+            "how it was paid: cash (BAR), card (EC, girocard, credit, contactless, mobile), "
+            "voucher, other; never card numbers"
+        )
+    )
+    unreadable_fields: list[UnreadableFieldV1] = Field(
+        max_length=MAX_UNREADABLE_FIELDS_V1,
+        description="the keys whose value could not be read and is null",
+    )
+
+
+RESPONSE_SCHEMA_V1: dict[str, Any] = response_schema(ReceiptExtractionV1)
+
+RESPONSE_FORMAT_V1: dict[str, Any] = {
+    "type": "json_schema",
+    "json_schema": {"name": "receipt_extraction", "schema": RESPONSE_SCHEMA_V1},
+}
+
+# a4a32e8 wrote the date as `date(2026, 3, 14).isoformat()`; the string is the same.
+EXAMPLE_OUTPUT_V1 = ReceiptExtractionV1(
+    is_receipt=True,
+    merchant="Beispiel Markt",
+    date="2026-03-14",
+    currency="EUR",
+    line_items=[
+        LineItemV1(description="VOLLMILCH 3,5%", qty=1, unit_price=1.19, amount=1.19),
+        # from the two lines "BROETCHEN" and "2 x 0,95"
+        LineItemV1(description="BROETCHEN", qty=2, unit_price=0.95, amount=1.9),
+        LineItemV1(description="BANANEN", qty=1, unit_price=1.49, amount=1.49),
+        LineItemV1(description="PFAND", qty=1, unit_price=-0.25, amount=-0.25),
+    ],
+    subtotal=None,
+    tax=None,
+    total=4.33,
+    payment_method="card",
+    unreadable_fields=[],
+)
+EXAMPLE_JSON_V1 = EXAMPLE_OUTPUT_V1.model_dump_json(indent=2)
+
+
+# ---------------------------------------------------------------- output spec per version
+
+
+@dataclass(frozen=True)
+class OutputSpec:
+    """One prompt version's answer: the model that validates it, the `response_format`
+    sent with the request, and the example JSON for the system prompt's `{example}`."""
+
+    model: type[BaseModel]
+    response_format: dict[str, Any]
+    example_json: str
+
+
+# Every prompt folder in `ai/prompts/` needs an entry (tests/unit/test_prompts.py).
+OUTPUT_SPECS: dict[str, OutputSpec] = {
+    "v1": OutputSpec(ReceiptExtractionV1, RESPONSE_FORMAT_V1, EXAMPLE_JSON_V1),
+    "v2": OutputSpec(ReceiptExtraction, RESPONSE_FORMAT, EXAMPLE_JSON),
+}

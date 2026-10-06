@@ -13,6 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
+from app.ai.schema import EXAMPLE_JSON_V1, OUTPUT_SPECS, RESPONSE_FORMAT_V1
 from app.config import Settings
 from app.db.images import ImageStore
 from app.services.categorization import CategorizedItem
@@ -492,6 +493,51 @@ def test_unknown_prompt_version_is_interrupted_without_a_model_call(
     assert_failed(api.get(f"/api/receipts/{receipt_id}").json(), "interrupted")
     row = stored(settings, receipt_id)
     assert (row.model_name, row.prompt_version, row.raw_model_output) == (None, None, None)
+
+
+def test_a_prompt_version_without_an_output_spec_is_interrupted_without_a_model_call(
+    api: TestClient, settings: Settings, model: ModelServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delitem(OUTPUT_SPECS, "v1")
+    settings.prompt_version = "v1"
+
+    receipt_id = upload(api).json()["id"]
+
+    assert_failed(api.get(f"/api/receipts/{receipt_id}").json(), "interrupted")
+    row = stored(settings, receipt_id)
+    assert (row.model_name, row.prompt_version, row.raw_model_output) == (None, None, None)
+
+
+def test_prompt_v1_extracts_the_recorded_receipt_with_its_frozen_schema(
+    api: TestClient, settings: Settings, model: ModelServer
+) -> None:
+    """v1 runs as before decision 0019 (the F11 baseline); the result is stored v2-shaped."""
+    settings.prompt_version = "v1"
+    case = load_case("valid_receipt")
+    settings.llm_max_tokens = case["max_tokens"]
+    seen = model.serve(case)
+
+    receipt_id = upload(api).json()["id"]
+    receipt = api.get(f"/api/receipts/{receipt_id}").json()
+
+    [request] = seen
+    sent = json.loads(request.content)
+    assert sent["response_format"] == RESPONSE_FORMAT_V1
+    assert EXAMPLE_JSON_V1 in sent["messages"][0]["content"]
+    assert receipt["status"] == "extracted"
+    expense = receipt["expense"]
+    # The recording has subtotal 14.16, tax 0.99 and unit prices; none is stored (0019).
+    assert (expense["subtotal"], expense["tax"], expense["total"]) == (None, None, 15.15)
+    assert len(expense["line_items"]) == 11
+    assert all(item["unit_price"] is None for item in expense["line_items"])
+    assert expense["merchant"] == "ALDI"
+    row = stored(settings, receipt_id)
+    assert (row.model_name, row.prompt_version) == ("gemma3:4b", "v1")
+    # The raw output keeps v1's own fields, so F11 can score them.
+    assert row.raw_model_output == redact_raw_output(answers(case)[0])
+    raw = json.loads(row.raw_model_output)
+    assert (raw["subtotal"], raw["tax"]) == (14.16, 0.99)
+    assert raw["line_items"][0]["unit_price"] == 1.51
 
 
 class VanishedImages(ImageStore):

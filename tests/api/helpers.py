@@ -73,6 +73,23 @@ def answer(**fields: Any) -> str:
     return json.dumps(data | fields, ensure_ascii=False)
 
 
+def answer_v1(**fields: Any) -> str:
+    """A synthetic answer valid for prompt v1's frozen schema (subtotal, tax, unit_price)."""
+    data: dict[str, Any] = {
+        "is_receipt": True,
+        "merchant": "Beispiel Markt",
+        "date": "2026-10-01",
+        "currency": "EUR",
+        "line_items": [{"description": "BROT", "qty": 1, "unit_price": 2.49, "amount": 2.49}],
+        "subtotal": None,
+        "tax": None,
+        "total": 2.49,
+        "payment_method": "cash",
+        "unreadable_fields": [],
+    }
+    return json.dumps(data | fields, ensure_ascii=False)
+
+
 def inline_case(*contents: str) -> dict[str, Any]:
     """A case in the recorded shape, for answers no fixture covers."""
     return {

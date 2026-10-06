@@ -2,7 +2,9 @@
 
 import pytest
 
+from app.ai.extractor import output_spec
 from app.ai.prompts import Prompts, UnknownPromptVersion, available_versions, load_prompts
+from app.ai.schema import OUTPUT_SPECS, ReceiptExtraction, ReceiptExtractionV1
 from app.config import Settings
 
 # v1 stays for the F11 comparison; v2 is the default (decision 0019).
@@ -29,6 +31,18 @@ def test_the_default_version_is_v2_and_exists() -> None:
 
     assert default == "v2"
     assert load_prompts(default).version == "v2"
+    assert output_spec(default).model is ReceiptExtraction
+
+
+@pytest.mark.parametrize("version", available_versions())
+def test_every_prompt_version_has_an_output_spec(version: str) -> None:
+    """A folder without a spec would fail every receipt with `interrupted`."""
+    assert version in OUTPUT_SPECS
+    assert output_spec(version) is OUTPUT_SPECS[version]
+
+
+def test_v1_has_its_frozen_output_spec() -> None:
+    assert output_spec("v1").model is ReceiptExtractionV1
 
 
 @pytest.mark.parametrize("version", ["v0", "V1", "", "nope"])

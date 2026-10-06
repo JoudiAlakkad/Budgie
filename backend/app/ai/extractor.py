@@ -6,7 +6,14 @@ answer and even when the rest of that answer is invalid. The
 extractor does not redact: `raw_output` is the model's own text, and the pipeline
 redacts it before storing (decision 0017). Nothing from the prompts, the image or
 the model's answer is logged. The system prompt's `{example}` is filled here with
-`schema.EXAMPLE_JSON` (`system_prompt`), so `ai.prompts` stays plain text.
+the example JSON of the prompt version's output spec (`system_prompt`), so `ai.prompts`
+stays plain text.
+
+Each prompt version has its own output spec (`schema.OUTPUT_SPECS`): the request sends
+its `response_format`, and the answer is validated against its model. A valid answer
+to another model than `ReceiptExtraction` (the frozen v1) is then converted to
+`ReceiptExtraction`, so `ExtractionResult.extraction` always has the current shape;
+`raw_output` stays what the model sent.
 """
 
 import base64
@@ -20,8 +27,8 @@ from typing import Any, Protocol
 from pydantic import ValidationError
 
 from app.ai.client import ChatCompletion
-from app.ai.prompts import Prompts
-from app.ai.schema import EXAMPLE_JSON, RESPONSE_FORMAT, ReceiptExtraction
+from app.ai.prompts import Prompts, UnknownPromptVersion
+from app.ai.schema import OUTPUT_SPECS, OutputSpec, ReceiptExtraction
 from app.errors import ExtractionError, MalformedOutput, NotAReceipt
 
 logger = logging.getLogger(__name__)
@@ -55,6 +62,25 @@ class ExtractionResult:
     raw_output: str  # the accepted answer, unredacted; never log it
     repaired: bool
     completion_tokens: int | None  # summed over the calls; None if the server didn't say
+
+
+class MissingOutputSpec(UnknownPromptVersion):
+    """A prompt version without an entry in `OUTPUT_SPECS`.
+
+    A subclass of `UnknownPromptVersion`, so it fails like an unknown version: the
+    extractor can't be built, and the pipeline fails the receipt with `interrupted`.
+    """
+
+
+def output_spec(version: str) -> OutputSpec:
+    """The output spec of a prompt version; raises `MissingOutputSpec`."""
+    try:
+        return OUTPUT_SPECS[version]
+    except KeyError:
+        raise MissingOutputSpec(
+            f"Prompt version {version!r} has no output spec; "
+            f"specs exist for: {', '.join(sorted(OUTPUT_SPECS))}"
+        ) from None
 
 
 class InvalidOutput(Exception):
@@ -126,24 +152,36 @@ def _validation_lines(exc: ValidationError) -> str:
     return "\n".join(lines)
 
 
-def parse_output(raw: str) -> ReceiptExtraction:
-    """Parse and validate the model's answer; raises `InvalidOutput`."""
+def parse_output(raw: str, spec: OutputSpec | None = None) -> ReceiptExtraction:
+    """Parse and validate the model's answer; raises `InvalidOutput`.
+
+    The answer is validated against `spec.model` (default: the current version's
+    `ReceiptExtraction`). An answer to another model is then converted to
+    `ReceiptExtraction`: keys it doesn't know are ignored, and `subtotal`/`tax` leave
+    `unreadable_fields`. A conversion error is invalid output too.
+    """
+    model = ReceiptExtraction if spec is None else spec.model
     data = load_json(raw)
     if not isinstance(data, dict):
         raise InvalidOutput("The answer must be one JSON object.")
     try:
-        return ReceiptExtraction.model_validate(data)
+        parsed = model.model_validate(data)
+        if isinstance(parsed, ReceiptExtraction):
+            return parsed
+        return ReceiptExtraction.model_validate(parsed.model_dump())
     except ValidationError as exc:
         raise InvalidOutput(_validation_lines(exc)) from None
 
 
 def system_prompt(prompts: Prompts) -> str:
-    """The system prompt with `{example}` filled with `EXAMPLE_JSON`.
+    """The system prompt with `{example}` filled with the version's example JSON.
 
     It is filled here, not in `ai.prompts`, so the prompt loader stays free of the
     schema: the prompt files are text, and the example is built from the models.
+    Raises `MissingOutputSpec` for a version without an output spec.
     """
-    return prompts.system.replace(EXAMPLE_PLACEHOLDER, EXAMPLE_JSON)
+    example = output_spec(prompts.version).example_json
+    return prompts.system.replace(EXAMPLE_PLACEHOLDER, example)
 
 
 def _says_not_a_receipt(raw: str) -> bool:
@@ -166,6 +204,8 @@ class Extractor:
     ) -> None:
         self._client = client
         self._prompts = prompts
+        # Raises MissingOutputSpec here, so a version without a spec fails the build.
+        self._spec = output_spec(prompts.version)
         self._temperature = temperature
         self._max_tokens = max_tokens
 
@@ -204,7 +244,7 @@ class Extractor:
             messages,
             temperature=self._temperature,
             max_tokens=self._max_tokens,
-            response_format=RESPONSE_FORMAT,
+            response_format=self._spec.response_format,
         )
 
     def _extract(self, image: bytes, mime: str, started: float) -> ExtractionResult:
@@ -229,7 +269,7 @@ class Extractor:
                 attempts=(first_raw,),
             )
         try:
-            extraction = parse_output(first_raw)
+            extraction = parse_output(first_raw, self._spec)
         except InvalidOutput as invalid:
             if _says_not_a_receipt(first_raw):
                 raise NotAReceipt("is_receipt=false", raw_output=first_raw) from None
@@ -254,7 +294,7 @@ class Extractor:
                 attempts=attempts,
             )
         try:
-            extraction = parse_output(second_raw)
+            extraction = parse_output(second_raw, self._spec)
         except InvalidOutput as invalid:
             if _says_not_a_receipt(second_raw):
                 raise NotAReceipt("is_receipt=false", raw_output=second_raw) from None
