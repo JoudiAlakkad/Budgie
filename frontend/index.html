@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Upload a receipt · Budgie</title>
+    <link rel="stylesheet" href="css/style.css" />
+    <script type="module" src="js/upload.js"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="index.html">Budgie</a>
+      <nav aria-label="Main">
+        <ul>
+          <li><a href="index.html" aria-current="page">Upload</a></li>
+        </ul>
+      </nav>
+    </header>
+    <main>
+      <div id="error-banner" class="error-banner" role="alert" hidden></div>
+      <h1>Upload a receipt</h1>
+      <section aria-labelledby="upload-heading">
+        <h2 id="upload-heading" class="visually-hidden">New receipt</h2>
+        <div id="drop-zone" class="drop-zone">
+          <p>Drag a photo of a receipt here, or choose a file.</p>
+          <label for="file-input">Receipt photo (JPEG, PNG or WebP)</label>
+          <input id="file-input" type="file" accept="image/jpeg,image/png,image/webp" />
+        </div>
+        <p id="upload-status" class="upload-status" role="status" aria-live="polite"></p>
+      </section>
+      <section aria-labelledby="recent-heading">
+        <h2 id="recent-heading">Recent receipts</h2>
+        <p id="recent-empty" class="hint" hidden>No receipts yet.</p>
+        <ul id="recent-list" class="receipt-list"></ul>
+      </section>
+    </main>
+  </body>
+</html>
