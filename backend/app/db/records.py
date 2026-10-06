@@ -94,6 +94,35 @@ class NewExpense:
 
 
 @dataclass(frozen=True)
+class LineItemChange(NewLineItem):
+    """A line item after an edit: `id` None inserts it, an id of the expense updates that item."""
+
+    id: int | None = None
+
+
+@dataclass(frozen=True)
+class ExpenseChanges:
+    """The merged state of an edited expense (PATCH, decision 0018).
+
+    The repository writes every field; the items replace the stored list in order, so
+    `position` is the index. Stored items whose id isn't listed are deleted.
+    """
+
+    merchant: str | None
+    date: dt.date | None
+    currency: str
+    subtotal: Decimal | None
+    tax: Decimal | None
+    total: Decimal | None
+    source: str
+    review_status: str
+    flags: tuple[FlagRecord, ...]
+    unreadable_fields: tuple[str, ...]
+    confirmed: bool
+    line_items: tuple[LineItemChange, ...]
+
+
+@dataclass(frozen=True)
 class ExpenseFilter:
     """`GET /expenses` filters; `None` means no filter."""
 

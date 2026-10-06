@@ -189,3 +189,35 @@ Modified. The design and the six departures were accepted. Findings 1–5, 7, 8 
 - Prose-wrapped JSON kept the merchant's address in raw output → `reviewer`, reproduced → shared loader (`3581a16`)
 - Range check before rounding → `GET /receipts` gave 500 → `reviewer`, reproduced → check after rounding (`7df0692`)
 - Storage-error logs could hold SQL parameters with personal data → `reviewer` → `hide_parameters` (`7551747`)
+
+## Episode 7 — F06: parallel agents, a Python 3.12 crash and prompt fixes from host tests
+- **Date:** 2026-10-06 · **Feature:** F06 · **Commits:** `48d27fe..e511596` · **Outcome:** partial
+
+**1. Development task given to the agent**
+Build F06: the upload and review/correct pages, plus editing, confirming and deleting expenses. Then, after the student's host tests, rework the extraction and the form ([0019](wiki/decisions/0019-lean-extraction-line-totals-date-as-printed.md)): line totals, the date as printed, Pfand, multi-line item blocks and manual entry.
+
+**2. Relevant context and instructions**
+The issue `.github/issues/F06.md`, decisions 0018 and 0019 (written by the main session before the agents started), the contracts pages and `frontend/CLAUDE.md`. Every brief named the base commit. The student supplied the item-block prompt text.
+
+**3. Agent's proposed contribution**
+- `backend-dev`: PATCH, confirm and delete; prompt v2; the frozen v1 output spec; `parse_date`; the Pfand rule.
+- `frontend-dev`: `index.html`, `review.html`, `api.js`, Save & confirm, and manual entry.
+
+**4. Tools or permissions used by the agent**
+- Main session plus `backend-dev` and `frontend-dev` (Read, Edit, Write, Bash, Grep, Glob), in worktrees. The last rounds worked uncommitted in `/workspace`.
+- `reviewer` was read-only.
+- `make check` was allowed, `git commit` asked for approval, and the agents never pushed.
+
+**5. How the result was verified**
+`make check` (1876 passed), the `reviewer` agent, two `/code-review` runs, and the student's Docker runs on the host with Ollama. There is no JS engine in the container, so the pages were checked as text and by replaying their API calls.
+
+**6. What was accepted, modified or rejected**
+The backend and the pages were accepted after review fixes: a lost user category, the confirm race, and the dirty check. The first lean design was modified twice after host tests. Unit price, subtotal and tax were dropped from extraction. The student's item-block prompt replaced the agent's layout rules. One example in that prompt was corrected because its numbers didn't add up. Expenses and manual listing were deferred to F10.
+
+**7. Observed benefit, limitation or risk**
+Risk: the dev container ran Python 3.14 while the image runs 3.12, so all 1766 tests, the reviewer and `/code-review` passed code that crashed on start. Only running the real image caught it, which is why `make docker-check` belongs before every push.
+
+**Detected and corrected**
+- A `-> list[...]` hint that pointed to the `ExpenseService.list` method crashed the 3.12 image, while the 3.14 tests passed → the student's `docker run` → a tuple return plus ruff A003 (`dccb2bf`)
+- Reloading the manual form created a duplicate expense → `/code-review` → `?expense=<id>` set via `replaceState` (`e511596`)
+- The shared schema left v1 incoherent after 0019 → `/code-review` → a frozen v1 output spec (`1478a04`)

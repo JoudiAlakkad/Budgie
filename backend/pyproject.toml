@@ -49,7 +49,10 @@ line-length = 100
 src = ["."]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP", "SIM"]
+# A003: a class member shadowing a builtin that the class then uses in an annotation
+# (`def list` + `-> list[...]`) crashes on 3.12, which evaluates annotations eagerly,
+# but passes on the dev container's 3.14 (F06).
+select = ["E", "F", "I", "B", "UP", "SIM", "A003"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]

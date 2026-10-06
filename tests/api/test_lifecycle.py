@@ -1,7 +1,8 @@
 """Every transition in contracts/receipt-lifecycle.md through the API.
 
 Extraction itself (`uploaded` -> `extracting` -> `extracted`/`failed`) is covered row by
-row in test_extraction.py; this file covers retry, the startup reset and delete.
+row in test_extraction.py; this file covers retry, confirm and edit, the startup reset and
+delete.
 """
 
 import os
@@ -25,6 +26,7 @@ from tests.api.helpers import (
     ModelServer,
     NoopPipeline,
     answer,
+    answer_v1,
     inline_case,
     stored,
     upload,
@@ -144,7 +146,7 @@ def test_retry_of_an_interrupted_receipt_is_allowed(
     receipt_id = upload(api).json()["id"]
     assert api.get(f"/api/receipts/{receipt_id}").json()["error"] == "interrupted"
     settings.prompt_version = "v1"
-    model.serve(inline_case(answer()))
+    model.serve(inline_case(answer_v1()))
 
     assert api.post(f"/api/receipts/{receipt_id}/extract").status_code == 202
     assert api.get(f"/api/receipts/{receipt_id}").json()["status"] == "extracted"
@@ -175,7 +177,7 @@ def test_retry_of_a_confirmed_receipt_is_409(
     api: TestClient, settings: Settings, model: ModelServer
 ) -> None:
     receipt = extracted_receipt(api, settings, model)
-    set_status(settings, receipt["id"], "extracted", "confirmed")  # F06 builds confirm
+    set_status(settings, receipt["id"], "extracted", "confirmed")
 
     response = api.post(f"/api/receipts/{receipt['id']}/extract")
 
@@ -188,6 +190,53 @@ def test_retry_of_an_unknown_receipt_is_404(api: TestClient) -> None:
 
     assert response.status_code == 404
     assert response.json()["error"] == "not_found"
+
+
+# ---------------------------------------------------------------- confirm and edit (F06)
+
+
+def categorise_all(api: TestClient, expense: dict) -> None:
+    items = [
+        {"id": i["id"], "description": i["description"], "amount": i["amount"], "category": "other"}
+        for i in expense["line_items"]
+    ]
+    response = api.patch(f"/api/expenses/{expense['id']}", json={"line_items": items})
+    assert response.status_code == 200, response.text
+
+
+def test_confirm_moves_extracted_to_confirmed(
+    api: TestClient, settings: Settings, model: ModelServer
+) -> None:
+    receipt = extracted_receipt(api, settings, model)
+    categorise_all(api, receipt["expense"])
+
+    response = api.post(f"/api/expenses/{receipt['expense']['id']}/confirm")
+
+    assert response.status_code == 200
+    after = api.get(f"/api/receipts/{receipt['id']}").json()
+    assert (after["status"], after["expense"]["confirmed"]) == ("confirmed", True)
+    # A confirmed receipt can't be extracted again.
+    assert_invalid_state(
+        api.post(f"/api/receipts/{receipt['id']}/extract"), receipt["id"], "confirmed"
+    )
+
+
+def test_editing_a_confirmed_expense_moves_confirmed_to_extracted(
+    api: TestClient, settings: Settings, model: ModelServer
+) -> None:
+    receipt = extracted_receipt(api, settings, model)
+    expense_id = receipt["expense"]["id"]
+    categorise_all(api, receipt["expense"])
+    assert api.post(f"/api/expenses/{expense_id}/confirm").status_code == 200
+
+    response = api.patch(f"/api/expenses/{expense_id}", json={"merchant": "ALDI"})
+
+    assert response.status_code == 200
+    after = api.get(f"/api/receipts/{receipt['id']}").json()
+    assert (after["status"], after["expense"]["confirmed"]) == ("extracted", False)
+    # Back in `extracted`, retry is allowed again and replaces the unconfirmed expense.
+    api.app.dependency_overrides[get_receipt_pipeline] = NoopPipeline  # type: ignore[attr-defined]
+    assert api.post(f"/api/receipts/{receipt['id']}/extract").status_code == 202
 
 
 # ---------------------------------------------------------------- startup reset

@@ -71,6 +71,20 @@ def error_detail(code: str | None) -> str | None:
     return ERROR_DETAIL.get(code) if code is not None else None
 
 
+def remove_image(images: ImageStore, receipt_id: int | None, name: str) -> None:
+    """Remove an image file after its rows are gone; a failure is logged by type only,
+    since an orphan file is harmless (persistence.md). Shared by `DELETE /receipts/{id}`
+    and `DELETE /expenses/{id}`."""
+    try:
+        images.remove(name)
+    except StorageError as exc:
+        logger.warning(
+            "Receipt %s: image file not removed (%s)",
+            receipt_id,
+            type(exc.__cause__ or exc).__name__,
+        )
+
+
 class ReceiptService:
     def __init__(self, db: Database, images: ImageStore, max_upload_mb: int) -> None:
         self._db = db
@@ -97,7 +111,7 @@ class ReceiptService:
             with self._db.transaction() as session:
                 receipt = ReceiptRepository(session).create(name, kind, utc_now())
         except BaseException:
-            self._remove_image(None, name)
+            remove_image(self._images, None, name)
             raise
         logger.info("Receipt %d uploaded (%s)", receipt.id, kind)
         return receipt_view(receipt, None, None)
@@ -165,18 +179,8 @@ class ReceiptService:
             receipt = ReceiptRepository(session).delete(receipt_id)
         if receipt is None:
             raise NotFound(f"Receipt {receipt_id} does not exist.")
-        self._remove_image(receipt_id, receipt.image_path)
+        remove_image(self._images, receipt_id, receipt.image_path)
         logger.info("Receipt %d deleted", receipt_id)
-
-    def _remove_image(self, receipt_id: int | None, name: str) -> None:
-        try:
-            self._images.remove(name)
-        except StorageError as exc:
-            logger.warning(
-                "Receipt %s: image file not removed (%s)",
-                receipt_id,
-                type(exc.__cause__ or exc).__name__,
-            )
 
 
 def reset_interrupted(db: Database) -> int:

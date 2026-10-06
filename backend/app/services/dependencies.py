@@ -130,5 +130,6 @@ def get_expense_service(
     db: Database = Depends(get_database),
     categorizer: ItemCategorizer = Depends(get_item_categorizer),
     today: Today = Depends(get_today),
+    images: ImageStore = Depends(get_image_store),
 ) -> ExpenseService:
-    return ExpenseService(db, categorizer, today)
+    return ExpenseService(db, categorizer, today, images)

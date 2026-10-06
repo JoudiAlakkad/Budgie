@@ -35,8 +35,15 @@ _DOT_THOUSANDS = re.compile(r"-?[1-9]\d{0,2}(?:\.\d{3})+", re.ASCII)
 _DOT_DECIMAL = re.compile(r"-?\d+\.(?!\d{3}$)\d+", re.ASCII)
 _INTEGER = re.compile(r"-?\d+", re.ASCII)
 
-_ISO_DATE = re.compile(r"(\d{4})-(\d{2})-(\d{2})", re.ASCII)
-_GERMAN_DATE = re.compile(r"(\d{2})\.(\d{2})\.(\d{4})", re.ASCII)
+# parse_date (decision 0019: the model copies the date as printed). ASCII digits only;
+# every quantifier is bounded or separates disjoint classes, so matching is linear.
+# - `YYYY-MM-DD`
+# - day first: a 1- or 2-digit day and month, a 4- or 2-digit year (`YY` -> 2000+YY),
+#   separated by `.`, `/` or `-`, the same one twice: `14.03.26`, `1.3.2026`, `14/03/2026`
+# - either may be followed, after whitespace, by a time `HH:MM` or `HH:MM:SS`
+_TIME = r"(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?"
+_ISO_DATE = re.compile(r"(\d{4})-(\d{2})-(\d{2})" + _TIME, re.ASCII)
+_DAY_FIRST_DATE = re.compile(r"(\d{1,2})([./-])(\d{1,2})\2(\d{4}|\d{2})" + _TIME, re.ASCII)
 _CURRENCY_CODE = re.compile(r"[A-Za-z]{3}", re.ASCII)
 _EURO = {"€", "EUR"}
 
@@ -64,13 +71,22 @@ def normalize_currency(text: str) -> str | None:
 
 
 def parse_date(text: str) -> date | None:
-    """`YYYY-MM-DD` or `DD.MM.YYYY` as a real calendar date, else None."""
+    """A date as printed on a receipt, as a real calendar date; else None.
+
+    `YYYY-MM-DD`, or day first `D.M.YY` to `DD.MM.YYYY` with `.`, `/` or `-`, each
+    optionally followed by a valid `HH:MM` or `HH:MM:SS`, which is dropped.
+    """
     value = text.strip()
     if match := _ISO_DATE.fullmatch(value):
-        year, month, day = match.groups()
-    elif match := _GERMAN_DATE.fullmatch(value):
-        day, month, year = match.groups()
+        year, month, day, *clock = match.groups()
+    elif match := _DAY_FIRST_DATE.fullmatch(value):
+        day, _, month, year, *clock = match.groups()
+        if len(year) == 2:
+            year = f"20{year}"
     else:
+        return None
+    hour, minute, second = (int(part) if part else 0 for part in clock)
+    if hour > 23 or minute > 59 or second > 59:
         return None
     try:
         return date(int(year), int(month), int(day))
@@ -128,7 +144,7 @@ def check_date(text: str | None, today: date) -> list[Flag]:
         return []
     parsed = parse_date(text)
     if parsed is None:
-        message = f'The date "{text.strip()}" is not a valid date in YYYY-MM-DD or DD.MM.YYYY.'
+        message = f'The date "{text.strip()}" is not a valid date.'
         return [Flag("date", "date_unparseable", message)]
     if parsed > today:
         message = f"The date {parsed.isoformat()} is in the future."

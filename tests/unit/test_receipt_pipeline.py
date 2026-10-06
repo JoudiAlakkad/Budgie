@@ -27,9 +27,7 @@ VALID = ReceiptExtraction.model_validate(
         "merchant": "Beispiel Markt",
         "date": "2026-10-01",
         "currency": "EUR",
-        "line_items": [{"description": "BROT", "qty": 1, "unit_price": 2.49, "amount": 2.49}],
-        "subtotal": None,
-        "tax": None,
+        "line_items": [{"description": "BROT", "qty": 1, "amount": 2.49}],
         "total": 2.49,
         "payment_method": None,
         "unreadable_fields": [],
@@ -39,7 +37,7 @@ VALID = ReceiptExtraction.model_validate(
 
 class FakeExtractor:
     model = "fake-model"
-    prompt_version = "v1"
+    prompt_version = "v2"
 
     def __init__(self, outcome: ExtractionResult | Exception, gate: threading.Event | None = None):
         self.outcome = outcome
@@ -66,7 +64,7 @@ class FakeExtractor:
 
 
 def ok_result() -> ExtractionResult:
-    return ExtractionResult(VALID, "fake-model", "v1", 0.25, VALID.model_dump_json(), False, 10)
+    return ExtractionResult(VALID, "fake-model", "v2", 0.25, VALID.model_dump_json(), False, 10)
 
 
 class FlakyDatabase(Database):
@@ -271,7 +269,7 @@ def test_model_name_prompt_version_and_latency_are_stored(db_url: str, images: I
     assert record is not None
     assert (record.model_name, record.prompt_version, record.latency_ms) == (
         "fake-model",
-        "v1",
+        "v2",
         250,
     )
     db.dispose()

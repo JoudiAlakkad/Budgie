@@ -8,6 +8,9 @@
   `prompt_version`; no session is open during the model call; transaction 2 writes the
   outcome. Both are guarded transitions, so a receipt deleted meanwhile discards the
   result.
+- **Lean extraction** (decision 0019): the model gives each item's name, qty and line
+  total; subtotal, tax and unit price are stored as null. The date comes as printed and
+  goes through `redact_text`, then `parse_date`.
 - **Redaction** (decision 0017): `clean_merchant` on the merchant and `redact_text` on
   every description before the facts are built, and on the stored raw output.
 - **Logs** use fixed templates with ids, codes, counts and exception type names only;
@@ -212,11 +215,10 @@ class ReceiptPipeline:
     def _extracted(self, receipt_id: int, result: ExtractionResult) -> Extracted:
         """Convert, redact, check and assess; raises `MalformedOutput` or `NotAReceipt`."""
         ex: ReceiptExtraction = result.extraction
+        # Decision 0019: the model gives no subtotal, tax or unit price; they stay null.
         try:
-            subtotal, tax, total = (to_optional_amount(v) for v in (ex.subtotal, ex.tax, ex.total))
-            amounts = [
-                (to_amount(i.amount), to_optional_amount(i.unit_price)) for i in ex.line_items
-            ]
+            total = to_optional_amount(ex.total)
+            amounts = [to_amount(i.amount) for i in ex.line_items]
         except AmountOutOfRange:
             raise MalformedOutput(
                 "an amount is out of range",
@@ -235,12 +237,12 @@ class ReceiptPipeline:
             merchant=merchant,
             date=date_text,
             currency=currency_text,
-            subtotal=subtotal,
-            tax=tax,
+            subtotal=None,
+            tax=None,
             total=total,
             items=tuple(
                 ItemFacts(description, amount, category.category)
-                for description, (amount, _), category in zip(
+                for description, amount, category in zip(
                     descriptions, amounts, categorized, strict=True
                 )
             ),
@@ -254,7 +256,7 @@ class ReceiptPipeline:
         review_status, flags = assess(facts, self._today())
 
         items = []
-        for item, description, (amount, unit_price), category in zip(
+        for item, description, amount, category in zip(
             ex.line_items, descriptions, amounts, categorized, strict=True
         ):
             items.append(
@@ -264,7 +266,7 @@ class ReceiptPipeline:
                     # The model's qty wins over the normaliser's; it is stored unrounded.
                     qty=Decimal(str(item.qty)) if item.qty is not None else category.qty,
                     unit=category.unit,
-                    unit_price=optional_cents(unit_price),
+                    unit_price=None,
                     amount=cents(amount),
                     category=category.category,
                     category_source=category.category_source,
@@ -278,8 +280,8 @@ class ReceiptPipeline:
             date=parse_date(date_text) if date_text else None,
             currency=(normalize_currency(currency_text) if currency_text else None)
             or DEFAULT_CURRENCY,
-            subtotal=optional_cents(subtotal),
-            tax=optional_cents(tax),
+            subtotal=None,
+            tax=None,
             total=optional_cents(total),
             source="ai",
             review_status=review_status,

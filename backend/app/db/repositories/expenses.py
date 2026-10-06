@@ -3,17 +3,21 @@
 import datetime as dt
 from collections.abc import Iterable
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.db.models import ExpenseRow, LineItemRow
 from app.db.records import (
+    ExpenseChanges,
     ExpenseFilter,
     ExpenseRecord,
     FlagRecord,
+    LineItemChange,
     LineItemRecord,
     NewExpense,
+    NewLineItem,
 )
+from app.errors import NotFound
 
 
 def _now() -> dt.datetime:
@@ -60,6 +64,23 @@ def to_record(row: ExpenseRow) -> ExpenseRecord:
     )
 
 
+def _flags_json(flags: Iterable[FlagRecord]) -> list[dict[str, str | None]]:
+    return [{"field": flag.field, "code": flag.code, "message": flag.message} for flag in flags]
+
+
+def _write_item(row: LineItemRow, position: int, item: NewLineItem) -> LineItemRow:
+    row.position = position
+    row.description = item.description
+    row.normalized_name = item.normalized_name
+    row.qty = item.qty
+    row.unit = item.unit
+    row.unit_price = item.unit_price
+    row.amount = item.amount
+    row.category = item.category
+    row.category_source = item.category_source
+    return row
+
+
 def _with_items() -> Select[tuple[ExpenseRow]]:
     return select(ExpenseRow).options(selectinload(ExpenseRow.line_items))
 
@@ -81,29 +102,80 @@ class ExpenseRepository:
             source=new.source,
             review_status=new.review_status,
             confirmed=new.confirmed,
-            flags=[
-                {"field": flag.field, "code": flag.code, "message": flag.message}
-                for flag in new.flags
-            ],
+            flags=_flags_json(new.flags),
             unreadable_fields=list(new.unreadable_fields),
             created_at=now,
             updated_at=now,
             line_items=[
-                LineItemRow(
-                    position=position,
-                    description=item.description,
-                    normalized_name=item.normalized_name,
-                    qty=item.qty,
-                    unit=item.unit,
-                    unit_price=item.unit_price,
-                    amount=item.amount,
-                    category=item.category,
-                    category_source=item.category_source,
-                )
+                _write_item(LineItemRow(), position, item)
                 for position, item in enumerate(new.line_items)
             ],
         )
         self._session.add(row)
+        return self._reloaded(row)
+
+    def update(self, expense_id: int, changes: ExpenseChanges) -> ExpenseRecord:
+        """Write the merged state of an edited expense; `updated_at` becomes now.
+
+        Items with an id are updated in place, items without one are inserted, stored
+        items that aren't listed are deleted; `position` is the index in the list. Raises
+        `NotFound` for an unknown expense and `ValueError` for an item id that isn't one
+        of its items (the service checks both first).
+        """
+        row = self._session.scalars(_with_items().where(ExpenseRow.id == expense_id)).first()
+        if row is None:
+            raise NotFound(f"Expense {expense_id} does not exist.")
+        stored = {item.id: item for item in row.line_items}
+        items: list[LineItemRow] = []
+        for position, change in enumerate(changes.line_items):
+            items.append(_write_item(self._item_row(stored, change), position, change))
+        row.merchant = changes.merchant
+        row.date = changes.date
+        row.currency = changes.currency
+        row.subtotal = changes.subtotal
+        row.tax = changes.tax
+        row.total = changes.total
+        row.source = changes.source
+        row.review_status = changes.review_status
+        row.confirmed = changes.confirmed
+        row.flags = _flags_json(changes.flags)
+        row.unreadable_fields = list(changes.unreadable_fields)
+        row.updated_at = _now()
+        row.line_items = items  # delete-orphan removes the items left out
+        return self._reloaded(row)
+
+    @staticmethod
+    def _item_row(stored: dict[int, LineItemRow], change: LineItemChange) -> LineItemRow:
+        if change.id is None:
+            return LineItemRow()
+        row = stored.pop(change.id, None)
+        if row is None:
+            raise ValueError(f"line item {change.id} is not an item of this expense, or repeated")
+        return row
+
+    def set_confirmed(self, expense_id: int, confirmed: bool) -> bool:
+        """Set `confirmed` and `updated_at`; True if the expense exists."""
+        statement = (
+            update(ExpenseRow)
+            .where(ExpenseRow.id == expense_id)
+            .values(confirmed=confirmed, updated_at=_now())
+        )
+        result = self._session.execute(statement)
+        # The bulk update bypasses the identity map; a later get must see the new value.
+        self._session.expire_all()
+        return result.rowcount == 1  # type: ignore[attr-defined]
+
+    def delete(self, expense_id: int) -> ExpenseRecord | None:
+        """Delete the expense and its items (not its receipt); the deleted record, or None."""
+        row = self._session.scalars(_with_items().where(ExpenseRow.id == expense_id)).first()
+        if row is None:
+            return None
+        record = to_record(row)
+        self._session.delete(row)
+        self._session.flush()
+        return record
+
+    def _reloaded(self, row: ExpenseRow) -> ExpenseRecord:
         self._session.flush()
         # Reload, so the record holds what the column types made of the values
         # (e.g. money rounded to cents), exactly as a later read would.

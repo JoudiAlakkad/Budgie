@@ -18,6 +18,8 @@ There are two separate families:
   which must never be logged; the pipeline redacts it before storing (decision 0017).
 """
 
+from collections.abc import Sequence
+
 
 class BudgieError(Exception):
     """Base class for all expected application errors."""
@@ -78,6 +80,22 @@ class IncompleteExpense(BudgieError):
 
     code = "incomplete_expense"
     detail = "Merchant, date and total are required before the expense can be confirmed."
+
+
+class InvalidFields(BudgieError):
+    """A request that passed schema validation but names a field the server can't accept,
+    e.g. a line item id of another expense (decision 0018).
+
+    Answered like a schema `validation_error`: `fields` holds `(field, message)` pairs,
+    with `field` joined by `.` as in contracts/error-format.md (`line_items.0.id`).
+    """
+
+    code = "validation_error"
+    detail = "The request is invalid."
+
+    def __init__(self, fields: Sequence[tuple[str, str]], detail: str | None = None) -> None:
+        self.fields = tuple(fields)
+        super().__init__(detail)
 
 
 class NotImplementedYet(BudgieError):

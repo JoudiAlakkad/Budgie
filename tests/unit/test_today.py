@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.db.images import ImageStore
 from app.db.session import Database
 from app.services.categorization import PlaceholderCategorizer
 from app.services.dependencies import berlin_date, get_today, today_in_berlin
@@ -44,7 +45,7 @@ def test_manual_create_reads_the_clock_when_it_assesses(tmp_path: Path) -> None:
         reads.append(dt.date(2026, 10, 5))
         return reads[-1]
 
-    service = ExpenseService(db, PlaceholderCategorizer(), clock)
+    service = ExpenseService(db, PlaceholderCategorizer(), clock, ImageStore(str(tmp_path)))
     assert reads == []
     item = SimpleNamespace(
         description="BROT", qty=None, unit=None, unit_price=None, amount=Decimal("1"), category=None

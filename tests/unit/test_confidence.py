@@ -311,7 +311,8 @@ def _money(value: float | None) -> Decimal | None:
 def fixture_facts(name: str) -> ReceiptFacts:
     """The last recorded answer of a case as ReceiptFacts, items not yet categorised.
 
-    Test-only: F05 builds the real mapping in services/.
+    Test-only: F05 builds the real mapping in services/. Like the pipeline, it reads no
+    subtotal or tax from the model (decision 0019), though the recordings contain them.
     """
     case = load_case(name)
     content = case["responses"][-1]["body"]["choices"][0]["message"]["content"]
@@ -320,8 +321,8 @@ def fixture_facts(name: str) -> ReceiptFacts:
         merchant=extraction.merchant,
         date=extraction.date,
         currency=extraction.currency,
-        subtotal=_money(extraction.subtotal),
-        tax=_money(extraction.tax),
+        subtotal=None,
+        tax=None,
         total=_money(extraction.total),
         items=tuple(
             ItemFacts(line.description, Decimal(str(line.amount)), None)
@@ -335,9 +336,9 @@ def test_valid_receipt_fixture() -> None:
     """Dated 2026-09-17 in EUR (`€`): no date or currency flag.
 
     The model put the payment lines (ZU ZAHLEN 15.17, BAR 20.00, ZURÜCK 4.83) into
-    `line_items`, and even the 8 real items sum to 14.89, not 14.16. So the recording
-    is flagged `sum_mismatch` on `subtotal` and on `total` (15.15), which is the rule
-    working as intended.
+    `line_items`, and even the 8 real items sum to 14.89, not the total. So the
+    recording is flagged `sum_mismatch` on `total` (15.15), which is the rule working as
+    intended. Its recorded subtotal (14.16) is no longer read (decision 0019).
     """
     receipt = fixture_facts("valid_receipt")
 
@@ -346,9 +347,8 @@ def test_valid_receipt_fixture() -> None:
     assert is_plausible_receipt(receipt)
     assert status == "needs_review"
     validation = [flag for flag in flags if flag.code in VALIDATION_CODES]
-    assert pairs(validation) == [("subtotal", "sum_mismatch"), ("total", "sum_mismatch")]
-    assert validation[0].message == "Items sum to 54.89 but subtotal is 14.16."
-    assert validation[1].message == "Items sum to 54.89 but total is 15.15."
+    assert pairs(validation) == [("total", "sum_mismatch")]
+    assert validation[0].message == "Items sum to 54.89 but total is 15.15."
     unreadable = [flag.field for flag in flags if flag.code == "unreadable"]
     assert unreadable == ["merchant", "date", "total", "currency"]
 
@@ -384,9 +384,9 @@ def test_missing_fields_fixture_with_one_item_is_implausible() -> None:
 def test_non_receipt_claimed_receipt_fixture() -> None:
     """The pinboard with an invented shop: plausible, but flagged and in review.
 
-    The items sum to 22.98: within 0.02 of the invented subtotal (23.00), but not of
-    the invented total (25.00), so `sum_mismatch` is set on `total`. `date_too_old`
-    and the `unreadable` flags catch it as well.
+    The items sum to 22.98, not the invented total (25.00), so `sum_mismatch` is set on
+    `total`. `date_too_old` and the `unreadable` flag catch it as well. The recorded
+    `tax` in `unreadable_fields` is dropped on parsing (decision 0019).
     """
     receipt = fixture_facts("non_receipt_claimed_receipt")
 
@@ -398,6 +398,7 @@ def test_non_receipt_claimed_receipt_fixture() -> None:
     assert pairs(validation) == [("total", "sum_mismatch"), ("date", "date_too_old")]
     assert validation[0].message == "Items sum to 22.98 but total is 25.00."
     assert ("total", "unreadable") in pairs(flags)
+    assert receipt.unreadable_fields == ("total",)
 
 
 # --- flag codes match the wiki ------------------------------------------------------

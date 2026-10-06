@@ -1,5 +1,4 @@
-"""`/api/expenses` (contracts/api-endpoints.md#expenses). Edit, confirm and delete are stubs
-until F06, the CSV export until F10."""
+"""`/api/expenses` (contracts/api-endpoints.md#expenses). The CSV export is a stub until F10."""
 
 import datetime as dt
 
@@ -86,8 +85,10 @@ def get_expense(id: int, service: ExpenseService = Depends(get_expense_service))
     summary="Edit an expense; a confirmed expense becomes unconfirmed",
     responses=error_responses(404),
 )
-def update_expense(id: int, body: ExpenseUpdate) -> Expense:
-    raise NotImplementedYet("F06")
+def update_expense(
+    id: int, body: ExpenseUpdate, service: ExpenseService = Depends(get_expense_service)
+) -> Expense:
+    return Expense.model_validate(service.update(id, body), from_attributes=True)
 
 
 @router.post(
@@ -96,8 +97,8 @@ def update_expense(id: int, body: ExpenseUpdate) -> Expense:
     summary="Confirm an expense",
     responses=error_responses(404),
 )
-def confirm_expense(id: int) -> Expense:
-    raise NotImplementedYet("F06")
+def confirm_expense(id: int, service: ExpenseService = Depends(get_expense_service)) -> Expense:
+    return Expense.model_validate(service.confirm(id), from_attributes=True)
 
 
 @router.delete(
@@ -107,5 +108,5 @@ def confirm_expense(id: int) -> Expense:
     summary="Delete an expense, its receipt and its image",
     responses=error_responses(404),
 )
-def delete_expense(id: int) -> None:
-    raise NotImplementedYet("F06")
+def delete_expense(id: int, service: ExpenseService = Depends(get_expense_service)) -> None:
+    service.delete(id)
