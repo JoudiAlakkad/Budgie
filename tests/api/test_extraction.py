@@ -201,6 +201,24 @@ def test_date_and_currency_are_parsed_or_defaulted_and_keep_their_flags(
     assert codes == ({flag} if flag else set())
 
 
+@pytest.mark.parametrize(
+    ("fields", "code"),
+    [
+        ({"date": "01.10.2026 Bon-Nr: 4711"}, "date_unparseable"),
+        ({"currency": "EUR TID: 12345678"}, "currency_unknown"),
+    ],
+)
+def test_flag_messages_quote_the_date_and_currency_redacted(
+    api: TestClient, settings: Settings, model: ModelServer, fields: dict, code: str
+) -> None:
+    expense = extract(api, settings, model, inline_case(answer(**fields)))["expense"]
+
+    [flag] = [f for f in expense["flags"] if f["code"] == code]
+    assert "[id]" in flag["message"]
+    assert "4711" not in flag["message"] and "12345678" not in flag["message"]
+    assert (expense["date"] is None) == (code == "date_unparseable")
+
+
 def test_money_is_rounded_half_up_and_qty_is_not(
     api: TestClient, settings: Settings, model: ModelServer
 ) -> None:

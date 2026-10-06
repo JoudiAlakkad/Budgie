@@ -216,12 +216,16 @@ class ReceiptPipeline:
             ) from None
 
         merchant = clean_merchant(ex.merchant)
+        # The date and currency rules quote the text in their flag messages, which are
+        # stored; a real date or currency has nothing for redact_text to change.
+        date_text = redact_text(ex.date) if ex.date is not None else None
+        currency_text = redact_text(ex.currency) if ex.currency is not None else None
         descriptions = [redact_text(item.description) for item in ex.line_items]
         categorized = [self._categorizer.categorize(d) for d in descriptions]
         facts = ReceiptFacts(
             merchant=merchant,
-            date=ex.date,
-            currency=ex.currency,
+            date=date_text,
+            currency=currency_text,
             subtotal=subtotal,
             tax=tax,
             total=total,
@@ -261,8 +265,9 @@ class ReceiptPipeline:
             merchant=merchant,
             # An unparseable date is stored as null, an unknown currency as EUR; their
             # flags stay (domain-logic.md).
-            date=parse_date(ex.date) if ex.date else None,
-            currency=(normalize_currency(ex.currency) if ex.currency else None) or DEFAULT_CURRENCY,
+            date=parse_date(date_text) if date_text else None,
+            currency=(normalize_currency(currency_text) if currency_text else None)
+            or DEFAULT_CURRENCY,
             subtotal=optional_cents(subtotal),
             tax=optional_cents(tax),
             total=optional_cents(total),
