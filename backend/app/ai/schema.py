@@ -171,7 +171,7 @@ EXAMPLE_OUTPUT = ReceiptExtraction(
     currency="EUR",
     line_items=[
         LineItem(description="VOLLMILCH 3,5%", qty=1, amount=1.19),
-        # from the two lines "2 x 0,95" and "BROETCHEN": the amount is the line total
+        # one block of two lines, "2 x 0,95" and "BROETCHEN": the amount is its total
         LineItem(description="BROETCHEN", qty=2, amount=1.9),
         LineItem(description="MINERALWASSER", qty=1, amount=0.49),
         # the deposit charged for the bottle: a cost

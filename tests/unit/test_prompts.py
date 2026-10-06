@@ -92,12 +92,29 @@ def test_v2_rules() -> None:
     # the date as printed (decision 0019)
     assert "date: the purchase date exactly as printed (e.g. 14.03.26 or 14.03.2026)" in system
     assert "without the time; do not reformat it" in system
-    # line totals
+    # items are blocks of lines, grouped by the receipt's layout
+    assert system.startswith(
+        "You extract structured purchase data from shop receipt images. Preserve the "
+        "information printed on the receipt, but use the receipt's visual layout to determine "
+        "which physical lines belong to the same item. Do not invent, guess, correct, or "
+        "complete missing information."
+    )
+    assert "may occupy one or multiple consecutive lines" in system
+    assert "Do not treat every physical line as a separate item." in system
+    assert "regardless of whether it appears before or after the description" in system
+    assert "Do not automatically assign the line to the preceding description." in system
+    assert "Do not automatically assign it to the following description." in system
+    assert "above an item" not in system
+    # item totals
     assert "description: the name of the item as printed" in system
     assert "qty: how many pieces, or the weight" in system
-    assert "amount: the price printed for the whole line, for all pieces together" in system
-    assert '"3 x 1,66"' in system
-    assert "The amount is the line total (4,99), not the price of one piece (1,66)." in system
+    assert "amount: the total printed for the item, for all pieces together" in system
+    assert (
+        "Each block becomes one item: description is the product name, qty comes from its "
+        'quantity line (e.g. "3 x 1,66" gives qty 3), and amount is the total printed for the '
+        "block (4,99), not the price of one piece (1,66)."
+    ) in system
+    assert "amount: the price printed for the whole line" not in system
     # Pfand charged is a cost, Leergut is money back
     assert (
         "A Pfand line printed for bottles you bought (Pfand, Einwegpfand, Mehrweg) is an extra "
