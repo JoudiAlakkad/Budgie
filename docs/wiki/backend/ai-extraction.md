@@ -86,6 +86,11 @@ The background task that runs after `POST /receipts` and `POST /receipts/{id}/ex
   - A log-privacy test must set DEBUG on the `app` logger too (`caplog.set_level(DEBUG, logger="app")`). `create_app` sets `app` to INFO, so setting only the root logger captures no DEBUG records from `app.*`, and the test passes without checking anything. The F03 extractor test had this flaw until F05.
   - `api/errors.py` still logs a `StorageError` with its traceback. The engine is built with `hide_parameters=True`, so SQL parameters (merchants, descriptions) never appear in it. A test forces a real failed insert and checks the log.
 
+- **Per-version output spec:** `ai/schema.py` maps each prompt version to an `OutputSpec(model, response_format, example_json)` in `OUTPUT_SPECS`; the extractor takes `{example}`, the `response_format` and the validation model from it.
+  - **v1 is frozen** for F11: `ReceiptExtractionV1`, `LineItemV1`, `RESPONSE_FORMAT_V1` and `EXAMPLE_JSON_V1` are the pre-0019 schema and example, pinned by golden and SHA-256 tests against `a4a32e8`. Don't change them.
+  - A valid v1 answer is converted to the v2 `ReceiptExtraction` (`model_validate(v1.model_dump())`), so the pipeline and API stay v2-shaped; the stored raw output stays v1-shaped, so F11 can score v1's subtotal, tax and unit price. A v1 answer that can't be converted (more than 6 `unreadable_fields` after dropping subtotal/tax) is invalid output: one repair, then `malformed_output`.
+  - A v2-shaped answer under v1 lacks required keys: one repair, then `malformed_output`.
+  - A prompt folder without a spec raises `MissingOutputSpec` (an `UnknownPromptVersion`) when the extractor is built, so the receipt fails with `interrupted`; a test requires a spec for every folder.
 - **Since 0019** the pipeline reads only `total` and the item amounts from the model; `subtotal`, `tax` and `unit_price` are stored as `null` for AI expenses, and only those amounts go through the out-of-range check.
 
 ## Failure handling (criterion 10)
