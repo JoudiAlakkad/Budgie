@@ -1,11 +1,14 @@
-"""FastAPI dependency providers for infrastructure.
+"""FastAPI dependency providers for infrastructure and services.
 
 Routers depend on these (through services), never on `db` or `ai` directly.
-Tests swap them out with `app.dependency_overrides`.
+Tests swap them out with `app.dependency_overrides`. A provider must not declare request
+parameters, or the OpenAPI spec would change (modules.md).
 """
 
+import datetime as dt
 from collections.abc import Callable
 from threading import Lock
+from zoneinfo import ZoneInfo
 
 from fastapi import Depends
 
@@ -13,7 +16,15 @@ from app.ai.client import LLMClient
 from app.ai.extractor import Extractor
 from app.ai.prompts import load_prompts
 from app.config import Settings, get_settings
+from app.db.images import ImageStore
 from app.db.session import Database
+from app.services.categorization import ItemCategorizer, PlaceholderCategorizer
+from app.services.expenses import ExpenseService
+from app.services.receipt_pipeline import ExtractorFactory, ReceiptPipeline, Today
+from app.services.receipts import ReceiptService
+
+# Budgie targets German receipts; "today" for the date rules is the local date there.
+BERLIN = ZoneInfo("Europe/Berlin")
 
 _databases: dict[str, Database] = {}
 _databases_lock = Lock()
@@ -45,6 +56,18 @@ def get_db_ping(db: Database = Depends(get_database)) -> Callable[[], None]:
     return db.ping
 
 
+def get_image_store(settings: Settings = Depends(get_settings)) -> ImageStore:
+    return ImageStore(settings.upload_dir)
+
+
+def get_receipt_service(
+    settings: Settings = Depends(get_settings),
+    db: Database = Depends(get_database),
+    images: ImageStore = Depends(get_image_store),
+) -> ReceiptService:
+    return ReceiptService(db, images, settings.max_upload_mb)
+
+
 def get_llm_client(settings: Settings = Depends(get_settings)) -> LLMClient:
     return LLMClient(
         base_url=settings.llm_base_url,
@@ -55,14 +78,57 @@ def get_llm_client(settings: Settings = Depends(get_settings)) -> LLMClient:
     )
 
 
-def get_extractor(
-    settings: Settings = Depends(get_settings),
-    client: LLMClient = Depends(get_llm_client),
-) -> Extractor:
-    """The receipt extractor for `PROMPT_VERSION`; the pipeline (F05) will use it."""
+def build_extractor(settings: Settings, client: LLMClient) -> Extractor:
+    """The receipt extractor for `PROMPT_VERSION`; raises `UnknownPromptVersion`."""
     return Extractor(
         client,
         load_prompts(settings.prompt_version),
         temperature=settings.llm_temperature,
         max_tokens=settings.llm_max_tokens,
     )
+
+
+def get_extractor_factory(
+    settings: Settings = Depends(get_settings),
+    client: LLMClient = Depends(get_llm_client),
+) -> ExtractorFactory:
+    """Builds the extractor inside the task, so a bad PROMPT_VERSION fails the receipt."""
+    return lambda: build_extractor(settings, client)
+
+
+def berlin_date(instant: dt.datetime) -> dt.date:
+    """The Europe/Berlin calendar date of an aware instant."""
+    return instant.astimezone(BERLIN).date()
+
+
+def today_in_berlin() -> dt.date:
+    return berlin_date(dt.datetime.now(dt.UTC))
+
+
+def get_today() -> Today:
+    """A clock for the date rules, called when the rules run (inside the task for an
+    extraction), not when the request arrives. Tests override it."""
+    return today_in_berlin
+
+
+def get_item_categorizer() -> ItemCategorizer:
+    """The F05 placeholder; F07 replaces only this provider (decision 0013)."""
+    return PlaceholderCategorizer()
+
+
+def get_receipt_pipeline(
+    db: Database = Depends(get_database),
+    images: ImageStore = Depends(get_image_store),
+    extractor_factory: ExtractorFactory = Depends(get_extractor_factory),
+    categorizer: ItemCategorizer = Depends(get_item_categorizer),
+    today: Today = Depends(get_today),
+) -> ReceiptPipeline:
+    return ReceiptPipeline(db, images, extractor_factory, categorizer, today)
+
+
+def get_expense_service(
+    db: Database = Depends(get_database),
+    categorizer: ItemCategorizer = Depends(get_item_categorizer),
+    today: Today = Depends(get_today),
+) -> ExpenseService:
+    return ExpenseService(db, categorizer, today)

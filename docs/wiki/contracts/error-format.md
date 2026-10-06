@@ -39,8 +39,8 @@ A receipt with `status: failed` carries one of these in `Receipt.error`, plus a 
 | `llm_error` | the model server answered with an error (e.g. unknown model) | Retry, Enter manually |
 | `malformed_output` | the output wasn't valid JSON for the schema after one repair attempt, or was cut off at `LLM_MAX_TOKENS` | Retry, Enter manually |
 | `not_a_receipt` | the model reported `is_receipt=false`, or the plausibility rule judged the output not to be a receipt ([0015](../decisions/0015-non-receipt-is-a-failure-with-retry-or-manual-entry.md)) | Retry, Enter manually |
-| `unreadable_image` | the model server couldn't decode the image | Enter manually |
-| `interrupted` | the app restarted while the receipt was `uploaded` or `extracting` | Retry, Enter manually |
+| `unreadable_image` | the model server couldn't decode the image | Enter manually (the server still accepts a retry) |
+| `interrupted` | the app restarted while the receipt was `uploaded` or `extracting`, or an unexpected error stopped the extraction (e.g. an unknown `PROMPT_VERSION`) | Retry, Enter manually |
 
 - **Retry** is `POST /receipts/{id}/extract`. At temperature 0 the same model gives the same answer for the same image, so for `not_a_receipt` and `malformed_output` a retry helps only after a model or prompt change.
 - **Enter manually** is `POST /expenses` with `receipt_id` ([api-endpoints](api-endpoints.md#expenses)).

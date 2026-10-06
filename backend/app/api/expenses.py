@@ -1,8 +1,9 @@
-"""`/api/expenses` (contracts/api-endpoints.md#expenses). Stubs until F05, F06 and F10."""
+"""`/api/expenses` (contracts/api-endpoints.md#expenses). Edit, confirm and delete are stubs
+until F06, the CSV export until F10."""
 
 import datetime as dt
 
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Depends, Query, Response
 
 from app.api.errors import error_responses
 from app.api.schemas import (
@@ -13,6 +14,8 @@ from app.api.schemas import (
     ReviewStatus,
 )
 from app.errors import NotImplementedYet
+from app.services.dependencies import get_expense_service
+from app.services.expenses import ExpenseService
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])
 
@@ -26,8 +29,16 @@ def list_expenses(
     category: LineItemCategory | None = Query(
         None, description="expenses with at least one item in this category"
     ),
+    service: ExpenseService = Depends(get_expense_service),
 ) -> list[Expense]:
-    raise NotImplementedYet("F05")
+    views = service.list(
+        review_status=review_status,
+        confirmed=confirmed,
+        date_from=from_,
+        date_to=to,
+        category=category,
+    )
+    return [Expense.model_validate(view, from_attributes=True) for view in views]
 
 
 @router.post(
@@ -37,8 +48,10 @@ def list_expenses(
     summary="Create a manual expense, optionally for a failed receipt",
     responses=error_responses(404, 409),
 )
-def create_expense(body: ExpenseCreate) -> Expense:
-    raise NotImplementedYet("F06")
+def create_expense(
+    body: ExpenseCreate, service: ExpenseService = Depends(get_expense_service)
+) -> Expense:
+    return Expense.model_validate(service.create(body), from_attributes=True)
 
 
 # Declared before /{id:int}; the int converter also keeps `export.csv` from matching an id route.
@@ -63,8 +76,8 @@ def export_csv(
 @router.get(
     "/{id:int}", response_model=Expense, summary="Get an expense", responses=error_responses(404)
 )
-def get_expense(id: int) -> Expense:
-    raise NotImplementedYet("F05")
+def get_expense(id: int, service: ExpenseService = Depends(get_expense_service)) -> Expense:
+    return Expense.model_validate(service.get(id), from_attributes=True)
 
 
 @router.patch(

@@ -55,7 +55,32 @@ This is planned for F3 and F5. The model choice is explained in [0004](../decisi
 - `ExtractionResult` records the model name, the prompt version, the latency, the raw output, `repaired`, and the completion tokens summed over both calls. Every `ExtractionError` carries `latency_s` and, where there was an answer, `raw_output`; `str(exc)` never includes the raw output.
 - **Error family:** `ExtractionError` and its subclasses are deliberately **not** `BudgieError`s. They have no HTTP status, and one that escaped into a request would become a generic `500 internal_error`.
 - The extractor doesn't redact. `ai` can't import `domain`, so the pipeline (F05) redacts before storing ([0017](../decisions/0017-personal-data-is-redacted-by-code.md)).
-- **Worst case:** 2 calls × (1 + `LLM_MAX_RETRIES`) attempts × `LLM_TIMEOUT_S` ≈ 12 min per receipt with the defaults. F05 should know this for the `extracting` state.
+- **Worst case:** 2 calls × (1 + `LLM_MAX_RETRIES`) attempts × `LLM_TIMEOUT_S` ≈ 12 min per receipt with the defaults. That is why the pipeline holds no DB session during the call.
+
+## Pipeline (`services/receipt_pipeline.py`, F05)
+The background task that runs after `POST /receipts` and `POST /receipts/{id}/extract` ([0007](../decisions/0007-async-extraction-with-polling.md)).
+- **One at a time:** a module-level `threading.Lock`, taken before `uploaded` → `extracting`. So `uploaded` means queued. The local model serves one vision request at a time anyway, and parallel calls would only run into `LLM_TIMEOUT_S`.
+  - **Known limit:** each queued task holds a thread from AnyIO's shared pool of 40 while it waits, and every sync route uses the same pool. With 40 or more receipts queued, every request, including polling and `/health`, hangs until the queue drains. The user decided to accept this for one user rather than fix it ([0007](../decisions/0007-async-extraction-with-polling.md)).
+  - The lock and the startup reset assume a single worker process. With `--workers 2`, extractions would run in parallel, and one worker's startup reset would fail the other's running extraction.
+- **Short transactions:** transaction 1 sets `extracting`, `model_name` and `prompt_version`. No session is open during the model call. Transaction 2 writes the outcome. Both are guarded transitions: if the receipt was deleted meanwhile, the row count is 0 and the result is discarded.
+- The extractor is built inside the task, just before transaction 1, so that transaction can record `model_name` and `prompt_version`. A bad `PROMPT_VERSION` therefore fails the receipt (`extracting` → `failed`, `interrupted`), not the upload.
+- **If transaction 1 fails,** the task tries once, guarded, to set `failed` with `interrupted`. If that fails too, the receipt stays `uploaded` until the startup reset.
+- **Steps on success:**
+  1. Convert: amounts via `Decimal(str(float))`. An amount whose value rounded to cents has `abs ≥ 10**10` doesn't fit `Money` (`max_digits=12`) and raises `MalformedOutput`. The check runs after rounding, because `9999999999.995` rounds up to 13 digits; a cheap unrounded check runs first, so `1e300` never reaches the rounding.
+  2. Redact: `clean_merchant` on `merchant`, `redact_text` on each description and on the model's `date` and `currency`. The facts are built from the redacted values, because flag messages quote descriptions, dates and currencies.
+  3. `is_plausible_receipt` false → `NotAReceipt`, which takes the normal failure path.
+  4. `assess(facts, today)` gives the status and flags. `today` is the Europe/Berlin calendar date, read from a clock (`get_today` provides a `Callable[[], date]`) when the rules run, not when the upload arrived. Tests override the clock. Taking the container's UTC date would flag a receipt dated today as `date_in_future` between 00:00 and 02:00 German time.
+  5. Store: `parse_date` or `null` (the `date_unparseable` flag stays), `normalize_currency` or `EUR` (the `currency_unknown` flag stays), money quantized to 0.01 half up, `qty` unrounded.
+  6. Each item goes through the `ItemCategorizer` seam (`services/categorization.py`) for `normalized_name`, `unit`, `category` and `category_source`. The model's `qty` wins over the normaliser's.
+- **Until F07**, `PlaceholderCategorizer` lowercases and collapses whitespace and returns `uncategorized`/`none`. So every extracted receipt with items is `needs_review`. F07 changes only the provider in `services/dependencies.py`.
+- **Error mapping:** each `ExtractionError` subclass maps to its receipt code. Any other exception (a bug, `UnknownPromptVersion`, a missing image file) becomes `interrupted` via `ExtractionInterrupted`.
+- **If writing the outcome fails** (a `StorageError`), it is logged and the task tries once more to set `failed`. A failure outcome keeps its code (e.g. `llm_timeout`). A success outcome becomes `interrupted`, because the result is lost. Either way the raw output and latency are dropped. If the second try fails too, the startup reset catches it.
+- **Raw output:** stored redacted for success, `malformed_output` (the last attempt only) and `not_a_receipt`; `null` for the `llm_*` codes, `unreadable_image` and `interrupted`. It is parsed with the extractor's own loader, `ai.extractor.load_json` (fence stripping, then the `{…}` slice). If that gives an object, its `merchant` is replaced by the cleaned value and it is re-serialised, so prose around the JSON is dropped. Otherwise it only gets `redact_text`. `latency_ms` is kept for every outcome that has one.
+  - Before the review fix, the pipeline only tried fenced or bare JSON. So a prose-wrapped answer, which the extractor accepts, kept the merchant's address in the stored raw output. Any parser that judges model output must use the extractor's loader.
+- **Retry,** and manual entry for a failed receipt, clear `error`, `model_name`, `prompt_version`, `latency_ms` and `raw_model_output`.
+- **Logging:** fixed templates only (ids, codes, counts, exception type names), listed in `ALLOWED_TEMPLATES` in `tests/api/test_extraction_logs.py` and checked by an AST test over `app/services/`. Never `logger.exception` in services, because a traceback can quote values. An API test at DEBUG level checks that no distinctive value of any recorded case appears in any log record.
+  - A log-privacy test must set DEBUG on the `app` logger too (`caplog.set_level(DEBUG, logger="app")`). `create_app` sets `app` to INFO, so setting only the root logger captures no DEBUG records from `app.*`, and the test passes without checking anything. The F03 extractor test had this flaw until F05.
+  - `api/errors.py` still logs a `StorageError` with its traceback. The engine is built with `hide_parameters=True`, so SQL parameters (merchants, descriptions) never appear in it. A test forces a real failed insert and checks the log.
 
 ## Failure handling (criterion 10)
 | Condition | Behaviour |
@@ -63,11 +88,14 @@ This is planned for F3 and F5. The model choice is explained in [0004](../decisi
 | Model server unreachable | receipt `failed` with `error=llm_unavailable`; `/health` shows `llm: down`; the rest of the app keeps working |
 | Timeout | one retry, then `failed` with `error=llm_timeout` |
 | Model server answers with an error | `failed` with `error=llm_error` |
-| Malformed or unexpected output | one repair attempt, then `failed` with `error=malformed_output`, raw output kept |
+| Malformed or unexpected output | one repair attempt, then `failed` with `error=malformed_output`, the last attempt's raw output kept (redacted); an amount beyond the `Money` range counts as this too |
 | Output cut off at `LLM_MAX_TOKENS` | no repair (it would be cut off again), `failed` with `error=malformed_output`, raw output kept |
 | Not a receipt | `is_receipt=false` or the plausibility rule: `failed` with `error=not_a_receipt` ([0015](../decisions/0015-non-receipt-is-a-failure-with-retry-or-manual-entry.md)) |
 | Input can't be processed | wrong type or too large: `422 unsupported_file` / `413 file_too_large` at upload; the model server can't decode it: `failed` with `error=unreadable_image` |
 | DB read/write error | `500 storage_error`, logged; `/health` shows `db: error` |
+| Unexpected error in the extraction task | `failed` with `error=interrupted`, logged by exception type only |
+
+F05 has one API test per row.
 
 Every failed receipt offers **Enter manually**, and all but `unreadable_image` also offer **Retry** ([error-format](../contracts/error-format.md#receipt-error-codes)).
 

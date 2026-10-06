@@ -11,11 +11,12 @@ backend/
 │   │   ├── schemas.py     # public DTOs, the contract
 │   │   ├── errors.py      # error format and exception → HTTP mapping
 │   │   └── receipts.py, expenses.py, item_categories.py, budgets.py (budgets and goal), insights.py, health.py
-│   ├── services/          # dependencies.py (FastAPI providers), health.py, storage.py; later receipt_pipeline.py, expenses.py, insights.py
+│   ├── services/          # dependencies.py (FastAPI providers), health.py, storage.py, views.py (F05),
+│   │                      # receipts.py, receipt_pipeline.py, categorization.py (seam until F07), expenses.py (F05); later insights.py
 │   ├── domain/            # pure: redaction (F3), validation, confidence, categorize, duplicates, budget, leaks
 │   │   └── data/item_categories_seed.yaml
 │   ├── ai/                # client.py, extractor.py, schema.py, prompts/__init__.py (load_prompts) + prompts/<version>/{system,user,repair}.txt (package data)
-│   ├── db/                # models.py, session.py, repositories/*.py
+│   ├── db/                # models.py, session.py, records.py, images.py (image store), repositories/*.py
 │   └── seed.py            # python -m app.seed, loads the demo data through services
 ├── pyproject.toml         # deps, ruff, pytest, import-linter config
 tests/                     # at the repo root: unit/, api/, integration/ (-m integration, live model),
@@ -37,12 +38,12 @@ The rules are enforced by `import-linter` ([0006](../decisions/0006-sqlite-behin
   - "domain is pure": forbids everything app-internal except `app.errors`, plus `httpx`, `fastapi`, `pydantic_settings` and `sqlalchemy`; checks indirect imports too
   - "api does not import db or ai": direct imports only, because `api → services → db` is the intended path
   - "only app.db imports sqlalchemy": applies to all of `app`, ignoring `app.db` and `app.db.**`; direct imports only. It needs `unmatched_ignore_imports_alerting = "none"`, because `**` matches only submodules.
-- Dependencies use compatible ranges with the current version as the lower bound. `python-multipart` is held below `0.1` (`>=0.0.32,<0.1`), because its 0.0.x releases have changed the API. ruff is pinned exactly, to match `.pre-commit-config.yaml`.
+- Dependencies use compatible ranges with the current version as the lower bound. `python-multipart` is held below `0.1` (`>=0.0.32,<0.1`), because its 0.0.x releases have changed the API. `tzdata` (F05) has no upper cap, since it is calendar-versioned data only. ruff is pinned exactly, to match `.pre-commit-config.yaml`.
 
 ## Stub routes
 From F2 every documented endpoint exists as a route with its final signature ([0016](../decisions/0016-api-representation-and-stub-convention.md)). Until its feature is built, the body is `raise NotImplementedYet("F05")`, which answers `501 not_implemented`. A feature replaces only the body with a service call, so the spec doesn't change. Routers import only `app.api.schemas`, `app.api.errors`, `app.errors` and `app.services`. This is checked in review; no import-linter contract enforces it.
 
-Stub owners: receipts, and listing, creating and fetching expenses → F05; editing, confirming and deleting expenses → F06; item categories → F07; budgets, goal and insights summary → F08; leaks → F09; CSV export → F10.
+Stub owners: receipts, and listing, creating and fetching expenses → F05 (until F05 the `POST /expenses` stub and `test_contract.py` said F06; F05 owns it because manual entry belongs to the receipt lifecycle); editing, confirming and deleting expenses → F06; item categories → F07; budgets, goal and insights summary → F08; leaks → F09; CSV export → F10.
 
 **Frontend mount:** the static frontend is mounted at `/` with `FrontendMount`, a `Mount` that refuses `/api` and `/api/...`. Without it, Starlette preferred the static mount over a partial API match, so an unknown API path gave 405 and a wrong method gave 404.
 
@@ -50,4 +51,6 @@ Stub owners: receipts, and listing, creating and fetching expenses → F05; edit
 
 **Money in responses:** services round every amount to 0.01 (`Decimal.quantize`) before building a DTO. A response with more decimals fails validation and becomes `500 internal_error`; this matters first for projections in F08.
 
-Services receive the LLM client and the repositories through FastAPI dependencies, so tests can swap in fakes.
+Services receive the LLM client and the repositories through FastAPI dependencies, so tests can swap in fakes. From F05 this also covers `get_today`, the item categorizer, the image store and the extractor factory. A provider must not declare request parameters, or the spec would drift.
+
+**Services return views:** a service returns plain view dataclasses (`services/views.py`) whose field names match the DTOs, and the router builds the DTO with `model_validate(view, from_attributes=True)`. `api/health.py` already follows this pattern.

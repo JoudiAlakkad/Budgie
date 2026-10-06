@@ -11,9 +11,16 @@ from app import errors
 from app.api.errors import STATUS_BY_CODE
 from app.api.schemas import ReceiptErrorCode
 from app.config import Settings
-from app.errors import BudgieError, ExtractionError, LLMTimeout, MalformedOutput
+from app.errors import (
+    BudgieError,
+    ExtractionError,
+    ExtractionInterrupted,
+    LLMTimeout,
+    MalformedOutput,
+)
 from app.main import create_app
 from app.services.dependencies import dispose_databases
+from app.services.receipts import ERROR_DETAIL
 
 
 def _all_subclasses(cls: type) -> list[type]:
@@ -28,11 +35,17 @@ EXTRACTION_ERRORS = [
 ]
 
 
-def test_codes_are_the_receipt_error_codes_except_interrupted() -> None:
+def test_codes_are_the_receipt_error_codes() -> None:
     codes = [cls.code for cls in EXTRACTION_ERRORS]
 
     assert len(codes) == len(set(codes))
-    assert set(codes) == set(get_args(ReceiptErrorCode)) - {"interrupted"}
+    assert set(codes) == set(get_args(ReceiptErrorCode))
+    assert ExtractionInterrupted.code == "interrupted"
+
+
+def test_every_receipt_error_code_has_its_fixed_error_detail() -> None:
+    assert {cls.code: cls.detail for cls in EXTRACTION_ERRORS} == ERROR_DETAIL
+    assert set(ERROR_DETAIL) == set(get_args(ReceiptErrorCode))
 
 
 @pytest.mark.parametrize("cls", [ExtractionError, *EXTRACTION_ERRORS], ids=lambda c: c.__name__)

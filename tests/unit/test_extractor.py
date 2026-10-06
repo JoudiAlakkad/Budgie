@@ -30,7 +30,7 @@ from app.errors import (
     NotAReceipt,
     UnreadableImage,
 )
-from tests.recorded import case_names, load_case, replay
+from tests.recorded import case_names, distinctive_values, load_case, replay
 
 IMAGE = b"\xff\xd8\xff\xe0fake-jpeg-bytes\x00\x01"
 IMAGE_B64 = base64.b64encode(IMAGE).decode("ascii")
@@ -504,35 +504,6 @@ ALLOWED_TEMPLATES = {
     "LLM call failed: %s",
     "LLM ping failed: %s",
 }
-MIN_DISTINCTIVE = 6  # shorter values ("BROT", "ALDI") could appear by chance
-
-
-def distinctive_values(case: dict) -> set[str]:
-    """Values from a case that must never reach a log: answers, merchants, items, errors."""
-    values = {
-        IMAGE_B64,
-        PROMPTS.system.splitlines()[0],
-        PROMPTS.user.strip(),
-        PROMPTS.repair,
-        EXAMPLE_JSON,
-        '"Beispiel Markt"',
-    }
-    for response in case["responses"]:
-        if response["status_code"] != 200:
-            values.add(response["body"]["error"]["message"])
-            continue
-        content = response["body"]["choices"][0]["message"]["content"]
-        values.add(content.strip())
-        try:
-            data = json.loads(content.strip().removeprefix("```json").removesuffix("```"))
-        except ValueError:
-            continue
-        if isinstance(data, dict):
-            values.add(str(data.get("merchant") or ""))
-            for entry in data.get("line_items") or []:
-                if isinstance(entry, dict):
-                    values.add(str(entry.get("description") or ""))
-    return {value for value in values if len(value) >= MIN_DISTINCTIVE}
 
 
 def test_every_log_call_in_the_ai_layer_uses_an_allowed_template() -> None:
@@ -557,9 +528,11 @@ def test_logs_contain_no_prompt_output_or_image(
     caplog: pytest.LogCaptureFixture, name: str
 ) -> None:
     caplog.set_level(logging.DEBUG)
+    # Any earlier create_app() set the `app` logger to LOG_LEVEL (INFO).
+    caplog.set_level(logging.DEBUG, logger="app")
     run_case(name)
 
-    values = distinctive_values(load_case(name))
+    values = distinctive_values(load_case(name), IMAGE)
     assert IMAGE_B64 in values and len(values) >= 4
     assert caplog.records, "the extractor logs its outcome"
     for record in caplog.records:

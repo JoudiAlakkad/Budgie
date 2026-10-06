@@ -165,3 +165,12 @@ class UnreadableImage(ExtractionError):
 
     code = "unreadable_image"
     detail = "The image could not be read. Enter the receipt manually."
+
+
+class ExtractionInterrupted(ExtractionError):
+    """The extraction stopped unexpectedly: a restart, a bug, a missing image file or an
+    unknown `PROMPT_VERSION` (decision 0007, amendment). `reason` names only the exception
+    type."""
+
+    code = "interrupted"
+    detail = "The extraction was interrupted. Try again or enter the receipt manually."

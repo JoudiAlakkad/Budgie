@@ -80,7 +80,12 @@ def strip_fence(raw: str) -> str:
     return text
 
 
-def _load_json(raw: str) -> object:
+def load_json(raw: str) -> object:
+    """The answer as JSON: fences stripped, else the slice from the first `{` to the last `}`.
+
+    Raises `InvalidOutput`. The pipeline uses it too, so the raw output it stores is
+    parsed exactly as the extractor parsed it.
+    """
     text = strip_fence(raw)
     if not text:
         raise InvalidOutput("The answer is empty.")
@@ -123,7 +128,7 @@ def _validation_lines(exc: ValidationError) -> str:
 
 def parse_output(raw: str) -> ReceiptExtraction:
     """Parse and validate the model's answer; raises `InvalidOutput`."""
-    data = _load_json(raw)
+    data = load_json(raw)
     if not isinstance(data, dict):
         raise InvalidOutput("The answer must be one JSON object.")
     try:
@@ -144,7 +149,7 @@ def system_prompt(prompts: Prompts) -> str:
 def _says_not_a_receipt(raw: str) -> bool:
     """True if the answer is a JSON object with `is_receipt: false`, valid or not."""
     try:
-        data = _load_json(raw)
+        data = load_json(raw)
     except InvalidOutput:
         return False
     return isinstance(data, dict) and data.get("is_receipt") is False

@@ -17,16 +17,18 @@ Retry (POST /receipts/{id}/extract) from failed or extracted ──► uploaded
 | `extracting` | an expense is extracted | `extracted` |
 | `extracting` | extraction fails | `failed`, with a [receipt error code](error-format.md#receipt-error-codes) |
 | `failed`, `extracted` | `POST /receipts/{id}/extract` | `uploaded`; an unconfirmed expense is deleted |
-| `failed` | `POST /expenses` with `receipt_id` (enter manually) | `extracted`, with a `manual` expense |
+| `failed` | `POST /expenses` with `receipt_id` (enter manually) | `extracted`, with a `manual` expense; `error` becomes `null` |
 | `extracted` | `POST /expenses/{id}/confirm` | `confirmed` |
 | `confirmed` | `PATCH /expenses/{id}` | `extracted`; the expense is unconfirmed and must be confirmed again |
 | `uploaded`, `extracting` | the app restarts | `failed`, `error: interrupted` |
+| `extracting` | an unexpected error stops the task | `failed`, `error: interrupted` |
+| any | `DELETE /receipts/{id}` | gone; an extraction still running discards its result |
 
-Any other action returns `409 invalid_state`.
+Any other action returns `409 invalid_state`. Retry is allowed from every `failed` receipt, including `unreadable_image`; the UI just doesn't offer it there.
 
 | Status | Meaning | UI behaviour |
 |---|---|---|
-| `uploaded` | the image is stored and extraction is queued | show a spinner and poll every 2 s |
+| `uploaded` | the image is stored and extraction is queued; only one extraction runs at a time | show a spinner and poll every 2 s |
 | `extracting` | the model is running | spinner and poll |
 | `extracted` | an expense exists with a `review_status` and flags | open the review form |
 | `failed` | extraction failed; `error` and `error_detail` say why | show `error_detail` with **Retry** and **Enter manually** ([actions per code](error-format.md#receipt-error-codes)) |
