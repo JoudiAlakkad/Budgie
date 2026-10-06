@@ -527,6 +527,24 @@ def test_merchant_descriptions_and_raw_output_are_stored_redacted(
         assert value not in stored_text
 
 
+def test_prose_around_the_json_is_dropped_from_the_stored_raw_output(
+    api: TestClient, settings: Settings, model: ModelServer
+) -> None:
+    # The extractor accepts the slice from the first `{` to the last `}`; the stored raw
+    # output must be cleaned the same way, or the merchant's address would survive.
+    content = f"Here is the receipt:\n{PERSONAL}\nHope this helps."
+
+    receipt = extract(api, settings, model, inline_case(content))
+
+    assert receipt["status"] == "extracted"
+    raw = stored(settings, receipt["id"]).raw_model_output
+    assert raw is not None
+    assert json.loads(raw)["merchant"] == "REWE Markt GmbH"
+    assert "Hope this helps" not in raw
+    for value in PERSONAL_VALUES:
+        assert value not in raw
+
+
 def test_malformed_raw_output_that_is_not_json_is_still_redacted(
     api: TestClient, settings: Settings, model: ModelServer
 ) -> None:
@@ -562,6 +580,11 @@ def test_not_a_receipt_raw_output_gets_its_merchant_cleaned(
         ('{"merchant": null, "n": 20.00}', '{"merchant": null, "n": 20.0}'),
         ('{"other": "KARTE 4111111111111111"}', '{"other": "KARTE [card]"}'),
         ('["KARTE 4111111111111111"]', '["KARTE [card]"]'),  # not a dict: text only
+        (
+            'Here is the receipt: {"merchant": "REWE Markt\\nMusterstrasse 12, 44137 Dortmund",'
+            ' "is_receipt": true} Hope this helps.',
+            '{"merchant": "REWE Markt", "is_receipt": true}',
+        ),
         ('{"merchant": "A",', '{"merchant": "A",'),
         ("", ""),
         ('{"n": ' + "7" * 5000 + "}", '{"n": ' + "7" * 5000 + "}"),
@@ -573,6 +596,7 @@ def test_not_a_receipt_raw_output_gets_its_merchant_cleaned(
         "null",
         "other key",
         "list",
+        "prose around",
         "broken",
         "empty",
         "huge int",

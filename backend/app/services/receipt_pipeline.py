@@ -23,7 +23,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Protocol
 
-from app.ai.extractor import ExtractionResult, strip_fence
+from app.ai.extractor import ExtractionResult, InvalidOutput, load_json
 from app.ai.schema import ReceiptExtraction
 from app.db.images import ImageStore
 from app.db.records import FlagRecord, NewExpense, NewLineItem
@@ -104,18 +104,20 @@ def to_optional_amount(value: float | None) -> Decimal | None:
 def redact_raw_output(raw: str) -> str:
     """The raw output as stored (decision 0017, amendment).
 
-    If it parses as a JSON object, its `merchant` is replaced by the `clean_merchant`
-    result and it is re-serialised (formatting and code fences are lost). Either way it
-    then goes through `redact_text`.
+    It is parsed with the extractor's own loader (`load_json`: fences stripped, else the
+    slice from the first `{` to the last `}`), so every answer the extractor accepted is
+    handled here. If that gives a JSON object, its `merchant` is replaced by the
+    `clean_merchant` result and it is re-serialised; formatting, fences and any prose
+    around the object are dropped. Either way it then goes through `redact_text`.
     """
     try:
-        data = json.loads(strip_fence(raw))
-        if isinstance(data, dict):
-            if isinstance(data.get("merchant"), str):
-                data["merchant"] = clean_merchant(data["merchant"])
-            raw = json.dumps(data, ensure_ascii=False)
-    except (ValueError, RecursionError):
-        pass  # not JSON: only redact_text
+        data = load_json(raw)
+    except InvalidOutput:
+        data = None  # not JSON: only redact_text
+    if isinstance(data, dict):
+        if isinstance(data.get("merchant"), str):
+            data["merchant"] = clean_merchant(data["merchant"])
+        raw = json.dumps(data, ensure_ascii=False)
     return redact_text(raw)
 
 
