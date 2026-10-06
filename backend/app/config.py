@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     llm_max_retries: int = 1
     llm_temperature: float = 0
     llm_max_tokens: int = 2048
-    prompt_version: str = "v1"
+    prompt_version: str = "v2"
 
     database_url: str = "sqlite:///./data/budgie.db"
     upload_dir: str = "./data/uploads"

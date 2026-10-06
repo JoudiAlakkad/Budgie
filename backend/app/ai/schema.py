@@ -18,18 +18,19 @@ stays out (never tried); `maxItems` on `unreadable_fields` bounds repeats instea
 """
 
 from copy import deepcopy
-from datetime import date
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 MAX_LINE_ITEMS = 100
-MAX_UNREADABLE_FIELDS = 8  # one per value key; stops a model repeating enum values
-
 PaymentMethod = Literal["cash", "card", "voucher", "other"]
-UnreadableField = Literal[
-    "merchant", "date", "currency", "line_items", "subtotal", "tax", "total", "payment_method"
-]
+UnreadableField = Literal["merchant", "date", "currency", "line_items", "total", "payment_method"]
+# One per value key; stops a model repeating enum values.
+MAX_UNREADABLE_FIELDS = len(get_args(UnreadableField))
+# Keys removed by decision 0019. An answer to the old schema (prompt v1, the recorded
+# fixtures) may still list them in `unreadable_fields`; they are dropped, like the
+# removed keys themselves are ignored, so that answer still parses.
+RETIRED_UNREADABLE_FIELDS = frozenset({"subtotal", "tax"})
 
 
 class _Output(BaseModel):
@@ -37,24 +38,27 @@ class _Output(BaseModel):
 
 
 class LineItem(_Output):
-    description: str = Field(description="the product name exactly as printed")
-    qty: float | None = Field(description="count or weight; null if not printed")
-    unit_price: float | None = Field(description="price per unit or per kg; null if not printed")
-    amount: float = Field(description="the line price; negative for discounts and deposit returns")
+    # Decision 0019: name, qty and the line total only; no unit price.
+    description: str = Field(description="the item's name as printed")
+    qty: float | None = Field(description="how many pieces, or the weight; null if not printed")
+    amount: float = Field(
+        description=(
+            "the total paid for this line, all pieces together; positive for a Pfand charged, "
+            "negative for discounts and Pfand returned (Leergut)"
+        )
+    )
 
 
 class ReceiptExtraction(_Output):
     # Key order drives the generated schema, and so the order the model writes in.
     is_receipt: bool = Field(description="false if the image is not a shop receipt")
     merchant: str | None = Field(description="the shop name only, no address or phone")
-    date: str | None = Field(description="purchase date as YYYY-MM-DD")
+    date: str | None = Field(description="the purchase date exactly as printed, without the time")
     currency: str | None = Field(description="ISO 4217 code, e.g. EUR")
     line_items: list[LineItem] = Field(
         max_length=MAX_LINE_ITEMS,
         description="purchased products only, never payment or summary lines",
     )
-    subtotal: float | None = Field(description="only if printed on the receipt, else null")
-    tax: float | None = Field(description="only if printed on the receipt, else null")
     total: float | None = Field(
         description="the amount paid (SUMME / ZU ZAHLEN), not a row of the tax table"
     )
@@ -68,6 +72,14 @@ class ReceiptExtraction(_Output):
         max_length=MAX_UNREADABLE_FIELDS,
         description="the keys whose value could not be read and is null",
     )
+
+    @field_validator("unreadable_fields", mode="before")
+    @classmethod
+    def _drop_retired_keys(cls, value: Any) -> Any:
+        """Drop `subtotal` and `tax` (decision 0019); anything else is validated as usual."""
+        if isinstance(value, list):
+            return [key for key in value if key not in RETIRED_UNREADABLE_FIELDS]
+        return value
 
 
 def _resolve(node: Any, defs: dict[str, Any]) -> Any:
@@ -150,22 +162,24 @@ RESPONSE_FORMAT: dict[str, Any] = {
 }
 
 # A synthetic answer for the system prompt: it shows the shape, never values to copy.
-# Built as a model, so it is validated when the module loads.
+# Built as a model, so it is validated when the module loads. The date is as printed
+# (decision 0019); `domain.validation.parse_date` reads it.
 EXAMPLE_OUTPUT = ReceiptExtraction(
     is_receipt=True,
     merchant="Beispiel Markt",
-    date=date(2026, 3, 14).isoformat(),
+    date="14.03.26",
     currency="EUR",
     line_items=[
-        LineItem(description="VOLLMILCH 3,5%", qty=1, unit_price=1.19, amount=1.19),
-        # from the two lines "BROETCHEN" and "2 x 0,95"
-        LineItem(description="BROETCHEN", qty=2, unit_price=0.95, amount=1.9),
-        LineItem(description="BANANEN", qty=1, unit_price=1.49, amount=1.49),
-        LineItem(description="PFAND", qty=1, unit_price=-0.25, amount=-0.25),
+        LineItem(description="VOLLMILCH 3,5%", qty=1, amount=1.19),
+        # from the two lines "2 x 0,95" and "BROETCHEN": the amount is the line total
+        LineItem(description="BROETCHEN", qty=2, amount=1.9),
+        LineItem(description="MINERALWASSER", qty=1, amount=0.49),
+        # the deposit charged for the bottle: a cost
+        LineItem(description="PFAND", qty=1, amount=0.25),
+        # bottles brought back: money given back
+        LineItem(description="LEERGUT", qty=None, amount=-0.75),
     ],
-    subtotal=None,
-    tax=None,
-    total=4.33,
+    total=3.08,
     payment_method="card",
     unreadable_fields=[],
 )

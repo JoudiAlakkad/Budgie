@@ -92,7 +92,7 @@ def test_extracted_receipt_has_an_unconfirmed_ai_expense(
         assert (item["category"], item["category_source"]) == ("uncategorized", "none")
         assert item["normalized_name"] == " ".join(item["description"].lower().split())
     row = stored(settings, receipt["id"])
-    assert (row.model_name, row.prompt_version) == ("gemma3:4b", "v1")
+    assert (row.model_name, row.prompt_version) == ("gemma3:4b", "v2")
     assert row.latency_ms is not None and row.latency_ms >= 0
     assert row.raw_model_output == redact_raw_output(answers(case)[-1])
 
@@ -107,7 +107,8 @@ def test_valid_receipt_is_converted_and_assessed(
         "2026-09-17",
         "EUR",  # the model wrote "€"
     )
-    assert (expense["subtotal"], expense["tax"], expense["total"]) == (14.16, 0.99, 15.15)
+    # The recording has subtotal 14.16, tax 0.99 and unit prices; none is read (0019).
+    assert (expense["subtotal"], expense["tax"], expense["total"]) == (None, None, 15.15)
     items = expense["line_items"]
     assert len(items) == 11
     assert items[0] == {
@@ -116,16 +117,16 @@ def test_valid_receipt_is_converted_and_assessed(
         "normalized_name": "rispentomaten kg-ware",
         "qty": 1.0,
         "unit": None,
-        "unit_price": 1.51,
+        "unit_price": None,
         "amount": 1.51,
         "category": "uncategorized",
         "category_source": "none",
     }
     assert items[1]["qty"] == 2.0
     assert [item["description"] for item in items[-3:]] == ["ZU ZAHLEN", "BAR", "ZURÜCK"]
-    # The payment lines listed as items make both sums wrong (domain-logic.md).
+    assert all(item["unit_price"] is None for item in items)
+    # The payment lines listed as items make the sum wrong (domain-logic.md).
     assert [(f["field"], f["code"]) for f in expense["flags"]] == [
-        ("subtotal", "sum_mismatch"),
         ("total", "sum_mismatch"),
         ("merchant", "unreadable"),
         ("date", "unreadable"),
@@ -133,7 +134,7 @@ def test_valid_receipt_is_converted_and_assessed(
         ("currency", "unreadable"),
         *[(f"line_items[{i}]", "uncategorized_item") for i in range(11)],
     ]
-    assert expense["flags"][1]["message"] == "Items sum to 54.89 but total is 15.15."
+    assert expense["flags"][0]["message"] == "Items sum to 54.89 but total is 15.15."
 
 
 def test_missing_fields_are_null_and_flagged(
@@ -223,18 +224,18 @@ def test_money_is_rounded_half_up_and_qty_is_not(
     api: TestClient, settings: Settings, model: ModelServer
 ) -> None:
     items = [
-        {"description": "KAESE", "qty": 0.4567, "unit_price": 12.345, "amount": 5.635},
-        {"description": "PFAND", "qty": -1, "unit_price": 0.25, "amount": -0.255},
+        {"description": "KAESE", "qty": 0.4567, "amount": 5.635},
+        {"description": "LEERGUT", "qty": -1, "amount": -0.255},
     ]
-    content = answer(line_items=items, total=5.385, subtotal=9999999999.994, tax=0.005)
+    content = answer(line_items=items, total=5.385)
 
     expense = extract(api, settings, model, inline_case(content))["expense"]
 
-    assert [(i["qty"], i["unit_price"], i["amount"]) for i in expense["line_items"]] == [
-        (0.4567, 12.35, 5.64),
-        (-1.0, 0.25, -0.26),
+    assert [(i["qty"], i["amount"]) for i in expense["line_items"]] == [
+        (0.4567, 5.64),
+        (-1.0, -0.26),
     ]
-    assert (expense["total"], expense["tax"], expense["subtotal"]) == (5.39, 0.01, 9999999999.99)
+    assert expense["total"] == 5.39
 
 
 def test_empty_line_items_with_a_total_is_extracted(
@@ -337,28 +338,18 @@ def test_cut_off_output_is_malformed_without_repair(
     [
         {"total": 1e10},
         {"total": -1e10},
-        {"subtotal": 12345678901.5},
         {"total": 9999999999.995},
         {"total": -9999999999.995},
-        {"tax": 1e300},
-        {"line_items": [{"description": "BROT", "qty": 1, "unit_price": None, "amount": 1e10}]},
-        {"line_items": [{"description": "BROT", "qty": 1, "unit_price": 1e12, "amount": 2.49}]},
-        {
-            "line_items": [
-                {"description": "BROT", "qty": 1, "unit_price": 9999999999.995, "amount": 2.49}
-            ]
-        },
+        {"line_items": [{"description": "BROT", "qty": 1, "amount": 1e10}]},
+        {"line_items": [{"description": "BROT", "qty": 1, "amount": -9999999999.995}]},
     ],
     ids=[
         "total",
         "negative total",
-        "subtotal",
         "rounds up to the limit",
         "rounds down to minus the limit",
-        "tax",
         "item amount",
-        "unit price",
-        "unit price rounds up",
+        "item amount rounds down",
     ],
 )
 def test_an_amount_beyond_money_is_malformed_output(
@@ -373,6 +364,66 @@ def test_an_amount_beyond_money_is_malformed_output(
     assert row.raw_model_output == redact_raw_output(content)
     assert row.latency_ms is not None
     assert api.get("/api/receipts").status_code == 200  # nothing unshowable was stored
+
+
+def test_an_old_schema_answer_is_extracted_without_subtotal_tax_or_unit_price(
+    api: TestClient, settings: Settings, model: ModelServer
+) -> None:
+    """Decision 0019: a v1-shaped answer still parses; the retired keys are never read,
+    not even when they would be out of range for `Money`."""
+    content = answer(
+        line_items=[{"description": "BROT", "qty": 2, "unit_price": 1e12, "amount": 2.49}],
+        subtotal=12345678901.5,
+        tax=1e300,
+        unreadable_fields=["tax", "subtotal"],
+    )
+
+    receipt = extract(api, settings, model, inline_case(content))
+
+    assert receipt["status"] == "extracted"
+    expense = receipt["expense"]
+    assert (expense["subtotal"], expense["tax"], expense["total"]) == (None, None, 2.49)
+    [item] = expense["line_items"]
+    assert (item["qty"], item["unit_price"], item["amount"]) == (2.0, None, 2.49)
+    assert not [f for f in expense["flags"] if f["field"] in ("subtotal", "tax")]
+
+
+def test_a_date_as_printed_is_parsed(
+    api: TestClient, settings: Settings, model: ModelServer
+) -> None:
+    """Decision 0019: the model copies the date as printed; parse_date reads it."""
+    content = answer(date="01.10.26")
+
+    expense = extract(api, settings, model, inline_case(content))["expense"]
+
+    assert expense["date"] == "2026-10-01"
+    assert not [f for f in expense["flags"] if f["field"] == "date"]
+
+
+def test_pfand_and_leergut_lines_are_deposits(
+    api: TestClient, settings: Settings, model: ModelServer
+) -> None:
+    """Decision 0019: a Pfand charged is a cost, Leergut money back; both are `deposit`."""
+    items = [
+        {"description": "MINERALWASSER", "qty": 1, "amount": 0.49},
+        {"description": "PFAND 0,25", "qty": 1, "amount": 0.25},
+        {"description": "Pfandrückgabe", "qty": None, "amount": -0.75},
+    ]
+    content = answer(line_items=items, total=-0.01)
+
+    expense = extract(api, settings, model, inline_case(content))["expense"]
+
+    assert [
+        (i["description"], i["amount"], i["category"], i["category_source"])
+        for i in expense["line_items"]
+    ] == [
+        ("MINERALWASSER", 0.49, "uncategorized", "none"),
+        ("PFAND 0,25", 0.25, "deposit", "seed"),
+        ("Pfandrückgabe", -0.75, "deposit", "seed"),
+    ]
+    assert [(f["field"], f["code"]) for f in expense["flags"]] == [
+        ("line_items[0]", "uncategorized_item")
+    ]
 
 
 @pytest.mark.parametrize("name", ["not_a_receipt", "not_a_receipt_loose"])
@@ -414,8 +465,8 @@ def test_two_items_without_merchant_and_total_are_plausible(
     api: TestClient, settings: Settings, model: ModelServer
 ) -> None:
     items = [
-        {"description": "BROT", "qty": 1, "unit_price": 2.49, "amount": 2.49},
-        {"description": "MILCH", "qty": 1, "unit_price": 1.19, "amount": 1.19},
+        {"description": "BROT", "qty": 1, "amount": 2.49},
+        {"description": "MILCH", "qty": 1, "amount": 1.19},
     ]
     content = answer(merchant=None, total=None, line_items=items)
 
@@ -515,15 +566,14 @@ def test_receipt_is_extracting_during_the_model_call_and_no_session_is_open(
 PERSONAL = answer(
     merchant="REWE Markt GmbH\nMusterstrasse 12, 44137 Dortmund\nTel. 0231 123456",
     line_items=[
-        {"description": "BROT", "qty": 1, "unit_price": 2.49, "amount": 2.49},
-        {"description": "KARTE 4111111111111111", "qty": 1, "unit_price": 0, "amount": 0},
+        {"description": "BROT", "qty": 1, "amount": 2.49},
+        {"description": "KARTE 4111111111111111", "qty": 1, "amount": 0},
         {
             "description": "IBAN DE89 3704 0044 0532 0130 00",
             "qty": None,
-            "unit_price": None,
             "amount": 0,
         },
-        {"description": "Bon-Nr: 4711 Müsli", "qty": 1, "unit_price": 3.5, "amount": 3.5},
+        {"description": "Bon-Nr: 4711 Müsli", "qty": 1, "amount": 3.5},
     ],
     total=5.99,
 )
@@ -645,7 +695,7 @@ def test_redact_raw_output(raw: str, expected: str) -> None:
 def test_qty_text_round_trip_is_exact(
     api: TestClient, settings: Settings, model: ModelServer
 ) -> None:
-    items = [{"description": "KAESE", "qty": 0.1, "unit_price": None, "amount": 1.0}]
+    items = [{"description": "KAESE", "qty": 0.1, "amount": 1.0}]
     expense = extract(api, settings, model, inline_case(answer(line_items=items)))["expense"]
 
     with database_for(settings.database_url).engine.connect() as conn:

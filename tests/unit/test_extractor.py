@@ -34,16 +34,14 @@ from tests.recorded import case_names, distinctive_values, load_case, replay
 
 IMAGE = b"\xff\xd8\xff\xe0fake-jpeg-bytes\x00\x01"
 IMAGE_B64 = base64.b64encode(IMAGE).decode("ascii")
-PROMPTS = load_prompts("v1")
+PROMPTS = load_prompts("v2")
 
 VALID = {
     "is_receipt": True,
     "merchant": "ALDI",
     "date": "2026-09-17",
     "currency": "EUR",
-    "line_items": [{"description": "BROT", "qty": 1, "unit_price": 2.49, "amount": 2.49}],
-    "subtotal": None,
-    "tax": None,
+    "line_items": [{"description": "BROT", "qty": 1, "amount": 2.49}],
     "total": 2.49,
     "payment_method": "cash",
     "unreadable_fields": [],
@@ -223,7 +221,7 @@ def test_validation_errors_leave_out_input_values() -> None:
 
 
 def test_validation_errors_are_capped_at_ten_lines() -> None:
-    items = [{"description": 1, "qty": "x", "unit_price": "y", "amount": "z"}] * 5
+    items = [{"description": 1, "qty": "x", "amount": "z"}] * 5
 
     with pytest.raises(InvalidOutput) as raised:
         parse_output(json.dumps({**VALID, "line_items": items}))
@@ -275,7 +273,7 @@ def test_valid_receipt(name: str) -> None:
     assert isinstance(outcome, ExtractionResult)
     assert outcome.repaired is False
     assert outcome.raw_output == answers(case)[0]
-    assert (outcome.model, outcome.prompt_version) == ("gemma3:4b", "v1")
+    assert (outcome.model, outcome.prompt_version) == ("gemma3:4b", "v2")
     assert outcome.completion_tokens == case["responses"][0]["body"]["usage"]["completion_tokens"]
     assert outcome.extraction.is_receipt is True
     assert outcome.extraction.merchant == "ALDI"
@@ -460,7 +458,7 @@ def test_extractor_exposes_model_and_prompt_version() -> None:
     transport, _ = replay(load_case("valid_receipt"))
     extractor = make_extractor(transport)
 
-    assert (extractor.model, extractor.prompt_version) == ("gemma3:4b", "v1")
+    assert (extractor.model, extractor.prompt_version) == ("gemma3:4b", "v2")
 
 
 def test_timeout_on_the_repair_call_is_llm_timeout() -> None:

@@ -39,7 +39,7 @@ EXPECTED_SCHEMA = {
             "description": "false if the image is not a shop receipt",
         },
         "merchant": nullable("string", "the shop name only, no address or phone"),
-        "date": nullable("string", "purchase date as YYYY-MM-DD"),
+        "date": nullable("string", "the purchase date exactly as printed, without the time"),
         "currency": nullable("string", "ISO 4217 code, e.g. EUR"),
         "line_items": {
             "type": "array",
@@ -49,24 +49,25 @@ EXPECTED_SCHEMA = {
                 "properties": {
                     "description": {
                         "type": "string",
-                        "description": "the product name exactly as printed",
+                        "description": "the item's name as printed",
                     },
-                    "qty": nullable("number", "count or weight; null if not printed"),
-                    "unit_price": nullable(
-                        "number", "price per unit or per kg; null if not printed"
+                    "qty": nullable(
+                        "number", "how many pieces, or the weight; null if not printed"
                     ),
                     "amount": {
                         "type": "number",
-                        "description": "the line price; negative for discounts and deposit returns",
+                        "description": (
+                            "the total paid for this line, all pieces together; positive for "
+                            "a Pfand charged, negative for discounts and Pfand returned "
+                            "(Leergut)"
+                        ),
                     },
                 },
-                "required": ["description", "qty", "unit_price", "amount"],
+                "required": ["description", "qty", "amount"],
                 "additionalProperties": False,
             },
             "maxItems": 100,
         },
-        "subtotal": nullable("number", "only if printed on the receipt, else null"),
-        "tax": nullable("number", "only if printed on the receipt, else null"),
         "total": nullable(
             "number", "the amount paid (SUMME / ZU ZAHLEN), not a row of the tax table"
         ),
@@ -88,13 +89,11 @@ EXPECTED_SCHEMA = {
                     "date",
                     "currency",
                     "line_items",
-                    "subtotal",
-                    "tax",
                     "total",
                     "payment_method",
                 ],
             },
-            "maxItems": 8,
+            "maxItems": 6,
         },
     },
     "required": [
@@ -103,8 +102,6 @@ EXPECTED_SCHEMA = {
         "date",
         "currency",
         "line_items",
-        "subtotal",
-        "tax",
         "total",
         "payment_method",
         "unreadable_fields",
@@ -117,6 +114,18 @@ def test_generated_schema_is_the_golden_schema() -> None:
     assert RESPONSE_SCHEMA == EXPECTED_SCHEMA
     # Order matters too: the model writes the keys in this order.
     assert json.dumps(RESPONSE_SCHEMA) == json.dumps(EXPECTED_SCHEMA)
+
+
+RETIRED_KEYS = ("unit_price", "subtotal", "tax")
+
+
+def test_the_model_is_never_asked_for_unit_price_subtotal_or_tax() -> None:
+    """Decision 0019: they leave the schema the model server enforces, enums included."""
+    sent = json.dumps(RESPONSE_FORMAT)
+    for key in RETIRED_KEYS:
+        assert f'"{key}"' not in sent, key
+    assert "unit_price" not in EXAMPLE_JSON
+    assert not set(RETIRED_KEYS) & set(json.loads(EXAMPLE_JSON))
 
 
 def _walk(value: Any):
@@ -214,10 +223,15 @@ def test_example_content() -> None:
         "Beispiel Markt",
         "EUR",
     )
-    assert example.date and example.date.startswith("2026-")
-    assert len(example.line_items) == 4
-    assert any(e.qty == 2 and e.unit_price == 0.95 for e in example.line_items)
-    assert any(e.description == "PFAND" and e.amount == -0.25 for e in example.line_items)
+    # the date as printed, not reformatted (decision 0019)
+    assert example.date == "14.03.26"
+    by_name = {e.description: e for e in example.line_items}
+    # a multi-piece line carries the line total, not the price of one piece
+    assert (by_name["BROETCHEN"].qty, by_name["BROETCHEN"].amount) == (2, 1.9)
+    # a Pfand charged is a cost, Leergut is money back
+    assert by_name["PFAND"].amount == 0.25
+    assert by_name["LEERGUT"].amount < 0
+    assert "MINERALWASSER" in by_name
     assert example.unreadable_fields == []
     payment_words = ("SUMME", "BAR", "KARTE", "EC", "VISA", "ZAHLEN")
     for entry in example.line_items:
@@ -262,7 +276,8 @@ def test_unreadable_fields_enum_and_line_item_cap() -> None:
     assert set(get_args(UnreadableField)) == set(props) - {"is_receipt", "unreadable_fields"}
     assert props["payment_method"]["enum"] == [*get_args(PaymentMethod), None]
     assert props["line_items"]["maxItems"] == MAX_LINE_ITEMS == 100
-    assert props["unreadable_fields"]["maxItems"] == MAX_UNREADABLE_FIELDS == 8
+    assert props["unreadable_fields"]["maxItems"] == MAX_UNREADABLE_FIELDS == 6
+    assert len(get_args(UnreadableField)) == MAX_UNREADABLE_FIELDS
     # no `uniqueItems`: untested with Ollama; `maxItems` bounds repeats instead
     assert "uniqueItems" not in json.dumps(RESPONSE_SCHEMA)
 
@@ -294,9 +309,7 @@ def valid() -> dict:
         "merchant": "ALDI",
         "date": "2026-09-17",
         "currency": "EUR",
-        "line_items": [{"description": "BROT", "qty": 1, "unit_price": 2.49, "amount": 2.49}],
-        "subtotal": None,
-        "tax": None,
+        "line_items": [{"description": "BROT", "qty": 1, "amount": 2.49}],
         "total": 2.49,
         "payment_method": "card",
         "unreadable_fields": [],
@@ -316,7 +329,7 @@ def without(key: str) -> dict:
 
 
 def item(**changes: Any) -> dict:
-    return {"description": "BROT", "qty": 1, "unit_price": 2.49, "amount": 2.49, **changes}
+    return {"description": "BROT", "qty": 1, "amount": 2.49, **changes}
 
 
 REJECTED = {
@@ -325,7 +338,8 @@ REJECTED = {
     "missing item qty": with_change(line_items=[{"description": "X", "amount": 1.0}]),
     "101 items": with_change(line_items=[item()] * 101),
     "unknown unreadable field": with_change(unreadable_fields=["Summe"]),
-    "9 unreadable fields": with_change(unreadable_fields=["total"] * 9),
+    "7 unreadable fields": with_change(unreadable_fields=["total"] * 7),
+    "unreadable field not a list": with_change(unreadable_fields="tax"),
     "NaN total": with_change(total=math.nan),
     "infinite amount": with_change(line_items=[item(amount=math.inf)]),
     "string amount": with_change(line_items=[item(amount="1,99")]),
@@ -339,9 +353,16 @@ REJECTED = {
 ACCEPTED = {
     "valid": valid(),
     "null merchant": with_change(merchant=None),
-    "negative amount": with_change(line_items=[item(amount=-0.25, unit_price=-0.25)]),
+    "negative amount": with_change(line_items=[item(amount=-0.25)]),
     "100 items": with_change(line_items=[item()] * 100),
     "extra key ignored": with_change(category="food"),
+    # an answer to the old schema (prompt v1, the recorded fixtures), decision 0019
+    "old v1 answer": with_change(
+        line_items=[item(unit_price=2.49)],
+        subtotal=2.49,
+        tax=0.16,
+        unreadable_fields=["tax", "subtotal", "total"],
+    ),
     "unreadable merchant": with_change(merchant=None, unreadable_fields=["merchant"]),
     **{
         f"payment {method}": with_change(payment_method=method)
@@ -365,3 +386,13 @@ def test_accepted(data: dict) -> None:
     extraction = ReceiptExtraction.model_validate(data)
 
     assert not hasattr(extraction, "category")
+    for key in RETIRED_KEYS:
+        assert not hasattr(extraction, key)
+        assert all(not hasattr(entry, key) for entry in extraction.line_items)
+    assert not set(extraction.unreadable_fields) & set(RETIRED_KEYS)
+
+
+def test_retired_unreadable_keys_are_dropped_and_the_rest_kept_in_order() -> None:
+    data = with_change(unreadable_fields=["subtotal", "merchant", "tax", "date"], merchant=None)
+
+    assert ReceiptExtraction.model_validate(data).unreadable_fields == ["merchant", "date"]

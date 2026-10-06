@@ -378,7 +378,7 @@ def receipt_status(api: TestClient, receipt_id: int) -> str:
     return str(api.get(f"/api/receipts/{receipt_id}").json()["status"])
 
 
-TWO_BREADS = [{"description": "BROT", "qty": 1, "unit_price": 2.49, "amount": 2.49}] * 2
+TWO_BREADS = [{"description": "BROT", "qty": 1, "amount": 2.49}] * 2
 
 
 # ---------------------------------------------------------------- PATCH (F06)
@@ -405,7 +405,9 @@ def test_patch_can_clear_subtotal_and_tax(api: TestClient) -> None:
     ("answer_fields", "fix", "flag"),
     [
         ({"total": 9.99}, {"total": 2.49}, ("total", "sum_mismatch")),
-        ({"subtotal": 9.99}, {"subtotal": None}, ("subtotal", "sum_mismatch")),
+        # The model no longer gives a subtotal (decision 0019); a date it copied in an
+        # unknown form is the AI-side flag the user fixes instead.
+        ({"date": "14.03.2026 Uhr"}, {"date": "2026-10-04"}, ("date", "date_unparseable")),
         ({"date": "2026-10-09"}, {"date": "2026-10-04"}, ("date", "date_in_future")),
         ({"date": "2023-01-01"}, {"date": "2026-10-04"}, ("date", "date_too_old")),
         ({"date": None}, {"date": "2026-10-04"}, ("date", "missing_date")),
@@ -467,18 +469,18 @@ def test_an_empty_patch_changes_nothing(api: TestClient, model: ModelServer) -> 
 @pytest.mark.parametrize(
     ("keys", "edit", "left"),
     [
-        (["tax", "subtotal"], {"tax": 0.16}, ["subtotal"]),
-        (["tax", "subtotal"], {"subtotal": None}, ["tax"]),
-        (["tax", "subtotal"], {"merchant": "Edeka"}, ["tax", "subtotal"]),
-        (["line_items", "tax"], {"line_items": "resent"}, ["tax"]),
-        (["tax", "line_items"], {"total": 2.49}, ["tax", "line_items"]),
+        (["date", "total"], {"date": "2026-10-04"}, ["total"]),
+        (["date", "total"], {"total": 2.49}, ["date"]),
+        (["date", "total"], {"merchant": "Edeka"}, ["date", "total"]),
+        (["line_items", "date"], {"line_items": "resent"}, ["date"]),
+        (["date", "line_items"], {"total": 2.49}, ["date", "line_items"]),
         (["currency", "payment_method"], {"currency": "EUR"}, ["payment_method"]),
     ],
 )
 def test_an_edited_field_leaves_unreadable_fields(
     api: TestClient, model: ModelServer, keys: list, edit: dict, left: list
 ) -> None:
-    _, expense = extracted(api, model, subtotal=None, tax=None, unreadable_fields=keys)
+    _, expense = extracted(api, model, unreadable_fields=keys)
     assert unreadable(expense) == keys
     if edit.get("line_items") == "resent":
         edit = {"line_items": resent(expense)}

@@ -16,7 +16,7 @@ DEFAULTS = {
     "llm_max_retries": 1,
     "llm_temperature": 0,
     "llm_max_tokens": 2048,
-    "prompt_version": "v1",
+    "prompt_version": "v2",
     "database_url": "sqlite:///./data/budgie.db",
     "upload_dir": "./data/uploads",
     "max_upload_mb": 10,
@@ -49,7 +49,7 @@ OVERRIDES = [
     ("LLM_MAX_RETRIES", "3", "llm_max_retries", 3),
     ("LLM_TEMPERATURE", "0.2", "llm_temperature", 0.2),
     ("LLM_MAX_TOKENS", "4096", "llm_max_tokens", 4096),
-    ("PROMPT_VERSION", "v2", "prompt_version", "v2"),
+    ("PROMPT_VERSION", "v1", "prompt_version", "v1"),
     ("DATABASE_URL", "sqlite:////data/budgie.db", "database_url", "sqlite:////data/budgie.db"),
     ("UPLOAD_DIR", "/data/uploads", "upload_dir", "/data/uploads"),
     ("MAX_UPLOAD_MB", "5", "max_upload_mb", 5),
@@ -110,5 +110,5 @@ def test_extractor_uses_the_llm_settings(monkeypatch: pytest.MonkeyPatch) -> Non
     with pytest.raises(NotAReceipt):
         extractor.extract(b"img", "image/jpeg")
 
-    assert (extractor.model, extractor.prompt_version) == ("gemma3:4b", "v1")
+    assert (extractor.model, extractor.prompt_version) == ("gemma3:4b", "v2")
     assert (sent[0]["temperature"], sent[0]["max_tokens"]) == (0.2, 4096)

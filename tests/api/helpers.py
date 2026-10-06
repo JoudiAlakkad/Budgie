@@ -59,15 +59,13 @@ def completion(content: str, finish_reason: str = "stop", tokens: int = 180) -> 
 
 
 def answer(**fields: Any) -> str:
-    """A synthetic, schema-valid answer; `fields` override the defaults."""
+    """A synthetic answer valid for the current schema; `fields` override the defaults."""
     data: dict[str, Any] = {
         "is_receipt": True,
         "merchant": "Beispiel Markt",
         "date": "2026-10-01",
         "currency": "EUR",
-        "line_items": [{"description": "BROT", "qty": 1, "unit_price": 2.49, "amount": 2.49}],
-        "subtotal": None,
-        "tax": None,
+        "line_items": [{"description": "BROT", "qty": 1, "amount": 2.49}],
         "total": 2.49,
         "payment_method": "cash",
         "unreadable_fields": [],
