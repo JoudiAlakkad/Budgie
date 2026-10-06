@@ -21,10 +21,17 @@
       <h1>Upload a receipt</h1>
       <section aria-labelledby="upload-heading">
         <h2 id="upload-heading" class="visually-hidden">New receipt</h2>
-        <div id="drop-zone" class="drop-zone">
-          <p>Drag a photo of a receipt here, or choose a file.</p>
-          <label for="file-input">Receipt photo (JPEG, PNG or WebP)</label>
-          <input id="file-input" type="file" accept="image/jpeg,image/png,image/webp" />
+        <div class="upload-options">
+          <div id="drop-zone" class="drop-zone">
+            <p>Drag a photo of a receipt here, or choose a file.</p>
+            <label for="file-input">Receipt photo (JPEG, PNG or WebP)</label>
+            <input id="file-input" type="file" accept="image/jpeg,image/png,image/webp" />
+          </div>
+          <div class="manual-entry">
+            <h3>No photo?</h3>
+            <a class="button" href="review.html?manual=1" aria-describedby="manual-hint">Add expense manually</a>
+            <p id="manual-hint" class="hint">Type in merchant, date, total and items yourself. Manual expenses appear in the expense list (coming soon).</p>
+          </div>
         </div>
         <p id="upload-status" class="upload-status" role="status" aria-live="polite"></p>
       </section>

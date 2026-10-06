@@ -49,7 +49,19 @@ const ITEM_FIELDS = [
 const params = new URLSearchParams(window.location.search);
 const rawId = params.get("id") || "";
 const receiptId = /^\d+$/.test(rawId) ? Number(rawId) : null;
+// `review.html?expense=<id>`: reopens an expense without a photo, e.g. after a reload of a
+// manual entry whose confirm was refused. `?id=` wins over `?expense=`, which wins over `?manual=1`.
+const rawExpenseId = params.get("expense");
+const expenseParam = receiptId === null && rawExpenseId !== null;
+const expenseId =
+  expenseParam && /^[1-9]\d*$/.test(rawExpenseId) && Number.isSafeInteger(Number(rawExpenseId))
+    ? Number(rawExpenseId)
+    : null;
+// `review.html?manual=1`: an expense typed in without a photo (no receipt, no image column,
+// no receipt actions). A receipt id wins, so `?id=` keeps the receipt flow.
+const standalone = receiptId === null && (expenseParam || params.get("manual") === "1");
 
+const layout = document.querySelector(".review-layout");
 const panel = document.getElementById("panel");
 const figure = document.getElementById("receipt-figure");
 const live = document.getElementById("live");
@@ -257,7 +269,8 @@ function buildPatch() {
 }
 
 function buildCreate() {
-  const body = { receipt_id: receiptId };
+  // A failed receipt's manual entry attaches to its photo; a standalone one has no receipt.
+  const body = receiptId === null ? {} : { receipt_id: receiptId };
   for (const def of SCALARS) {
     const value = parseValue(def.kind, state.draft[def.name]).value;
     if (value !== null) body[def.name] = value;
@@ -353,7 +366,12 @@ function deleteButton() {
 }
 
 function panelHeader(title) {
-  return h("div", { className: "panel-header" }, h("h1", {}, title), deleteButton());
+  return h(
+    "div",
+    { className: "panel-header" },
+    h("h1", {}, title),
+    receiptId === null ? null : deleteButton(),
+  );
 }
 
 function flagNode(flag, id) {
@@ -842,7 +860,9 @@ function statusLine() {
       h("span", { className: "review-status" }, REVIEW_WORDS[expense.review_status] || expense.review_status),
     ),
     h("span", {}, "Source: ", SOURCE_WORDS[expense.source] || expense.source),
-    h("span", {}, "Receipt: ", RECEIPT_STATUS_WORDS[state.receipt.status] || state.receipt.status),
+    state.receipt
+      ? h("span", {}, "Receipt: ", RECEIPT_STATUS_WORDS[state.receipt.status] || state.receipt.status)
+      : null,
   ];
   return h("div", { className: "status-line" }, ...parts);
 }
@@ -853,10 +873,28 @@ function renderForm() {
   const readOnly = !manual && expense.confirmed && !state.unlocked;
   refs = { badges: new Map() };
 
-  const title = manual ? "Enter the expense manually" : readOnly ? "Confirmed expense" : "Review the expense";
+  const title = standalone
+    ? manual
+      ? "Add an expense manually"
+      : readOnly
+        ? "Confirmed expense"
+        : "Expense without a photo"
+    : manual
+      ? "Enter the expense manually"
+      : readOnly
+        ? "Confirmed expense"
+        : "Review the expense";
   const children = [panelHeader(title)];
 
-  if (manual) {
+  if (manual && standalone) {
+    children.push(
+      h(
+        "p",
+        { className: "note" },
+        "An expense without a photo. Merchant, date, total and at least one item are needed to save.",
+      ),
+    );
+  } else if (manual) {
     if (state.receipt.error === "not_a_receipt") {
       children.push(h("p", { className: "note warn" }, icon("⚠"), " ", NOT_A_RECEIPT_TEXT));
     }
@@ -869,6 +907,11 @@ function renderForm() {
     );
   } else {
     children.push(statusLine());
+    if (standalone && !expense.confirmed) {
+      children.push(
+        h("p", { className: "note" }, "Saved as a draft, not confirmed yet. Further saves update it."),
+      );
+    }
     if (expense.confirmed) {
       children.push(
         h(
@@ -1001,6 +1044,7 @@ function actionsBar(manual, readOnly) {
         "Edit again",
       ),
     );
+    if (standalone) bar.append(h("a", { className: "button", href: "index.html" }, "Back to home"));
     return bar;
   }
   refs.saveConfirm = h(
@@ -1023,7 +1067,11 @@ function actionsBar(manual, readOnly) {
     "Save draft",
   );
   bar.append(refs.saveConfirm, refs.saveDraft);
-  if (manual) {
+  if (standalone) {
+    // A plain link home: the beforeunload check warns about unsaved changes.
+    bar.append(h("a", { className: "button", href: "index.html" }, manual ? "Cancel" : "Back to home"));
+  }
+  if (manual && !standalone) {
     bar.append(
       h(
         "button",
@@ -1041,7 +1089,7 @@ function actionsBar(manual, readOnly) {
         "Cancel",
       ),
     );
-  } else {
+  } else if (!manual) {
     refs.dirty = h("span", { className: "dirty-marker" });
     bar.append(refs.dirty);
   }
@@ -1124,6 +1172,12 @@ async function saveChanges() {
     if (manual) {
       expense = await api.post("/expenses", buildCreate());
       state.mode = "review";
+      if (standalone) {
+        // The page stays open if the confirm is refused: put the new id in the URL (no
+        // navigation), so a reload reopens this draft instead of an empty form that would
+        // create a second expense.
+        window.history.replaceState(null, "", `review.html?expense=${expense.id}`);
+      }
     } else {
       expense = await api.patch(`/expenses/${state.expense.id}`, buildPatch());
     }
@@ -1206,6 +1260,7 @@ window.addEventListener("beforeunload", (e) => {
     (state.mode === "manual" &&
       state.draft &&
       (state.draft.merchant.trim() !== "" ||
+        state.draft.date.trim() !== "" ||
         state.draft.total.trim() !== "" ||
         state.draft.items.some((row) => row.description.trim() !== "")));
   if (unsaved) {
@@ -1214,12 +1269,88 @@ window.addEventListener("beforeunload", (e) => {
   }
 });
 
+function initStandalone() {
+  document.title = "Add an expense · Budgie";
+  figure.hidden = true;
+  layout.classList.add("single");
+  state.mode = "manual";
+  state.expense = null;
+  state.draft = emptyDraft();
+  state.fieldErrors = [];
+  render();
+  const first = panel.querySelector("input");
+  if (first) first.focus();
+}
+
+function expenseUnavailable(heading) {
+  panel.replaceChildren(
+    h("h1", {}, heading),
+    h(
+      "p",
+      {},
+      h("a", { href: "index.html" }, "Back to home"),
+      " or ",
+      h("a", { href: "review.html?manual=1" }, "add an expense manually"),
+      ".",
+    ),
+  );
+}
+
+/** `review.html?expense=<id>`: the standalone review of an expense without a photo. */
+async function initExpense() {
+  document.title = "Expense · Budgie";
+  figure.hidden = true;
+  layout.classList.add("single");
+  if (expenseId === null) {
+    expenseUnavailable("Expense not found");
+    return;
+  }
+  let expense;
+  try {
+    expense = await api.get(`/expenses/${expenseId}`);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) {
+      expenseUnavailable("Expense not found");
+    } else {
+      showError(err);
+      expenseUnavailable("Expense not available");
+    }
+    return;
+  }
+  if (expense.receipt_id !== null && expense.receipt_id !== undefined) {
+    // An expense with a photo keeps the receipt flow.
+    state.leaving = true;
+    window.location.replace(`review.html?id=${expense.receipt_id}`);
+    return;
+  }
+  state.unlocked = false;
+  applyExpense(expense);
+  state.mode = "review";
+  render();
+}
+
 async function init() {
+  if (expenseParam) {
+    initExpense();
+    return;
+  }
+  if (standalone) {
+    initStandalone();
+    return;
+  }
   if (receiptId === null) {
     figure.hidden = true;
+    layout.classList.add("single");
     panel.replaceChildren(
       h("h1", {}, "No receipt selected"),
-      h("p", {}, h("a", { href: "index.html" }, "Upload a receipt"), " or pick one from the list."),
+      h(
+        "p",
+        {},
+        h("a", { href: "index.html" }, "Upload a receipt"),
+        ", pick one from the list, or ",
+        h("a", { href: "review.html?manual=1" }, "add an expense manually"),
+        ".",
+      ),
     );
     return;
   }

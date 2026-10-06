@@ -237,6 +237,48 @@ select:disabled {
   border: none;
 }
 
+.upload-options {
+  display: grid;
+  grid-template-columns: 3fr minmax(220px, 1fr);
+  gap: 1rem;
+  align-items: stretch;
+}
+
+@media (max-width: 700px) {
+  .upload-options {
+    grid-template-columns: 1fr;
+  }
+}
+
+.manual-entry {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+}
+
+.manual-entry h3,
+.manual-entry p {
+  margin: 0;
+}
+
+.manual-entry h3 {
+  font-size: 1rem;
+}
+
+a.button {
+  text-align: center;
+}
+
+a.button:hover {
+  background: #eaf1fc;
+}
+
 .upload-status {
   min-height: 1.5rem;
   margin-top: 0.75rem;
@@ -284,6 +326,11 @@ select:disabled {
   .review-layout {
     grid-template-columns: 1fr;
   }
+}
+
+/* No photo (manual entry without a receipt): the form takes the full width. */
+.review-layout.single {
+  grid-template-columns: 1fr;
 }
 
 .receipt-image {
