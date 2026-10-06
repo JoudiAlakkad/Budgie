@@ -11,23 +11,67 @@ Fill every key of the schema:
 - total: the amount paid, the line labelled SUMME or ZU ZAHLEN. Never take it from a row of the tax table.
 - payment_method: how the receipt was paid. cash for BAR; card for EC-Karte, girocard, credit cards, contactless or mobile payment; voucher for a Gutschein; other for anything else; null if no payment line is printed.
 
-Line items: one item per purchased product. A purchased item may occupy one or multiple consecutive lines on the receipt. Do not treat every physical line as a separate item.
-- description: the name of the item as printed.
-- qty: how many pieces, or the weight.
-- amount: the total printed for the item, for all pieces together.
-- A quantity/price line belongs to the adjacent product description according to the receipt's layout, regardless of whether it appears before or after the description. A weight line (e.g. "0,534 kg x 2,99 €/kg") is a quantity/price line too.
-- If a quantity/price line is located between two product-description lines, determine which product it belongs to using the receipt's visual layout, alignment, and the position of the item's printed total. Do not automatically assign the line to the preceding description. Do not automatically assign it to the following description.
-- Each block becomes one item: description is the product name, qty comes from its quantity line (e.g. "3 x 1,66" gives qty 3), and amount is the total printed for the block (4,99), not the price of one piece (1,66).
+LINE ITEMS AND MULTI-LINE ITEM BLOCKS
+
+A purchased item may occupy one or multiple consecutive lines on the receipt.
+Do not treat every physical line as a separate item.
+
+First identify item blocks. An item block consists of:
+- an item description line, and
+- zero or more associated quantity/price lines,
+- plus the item's line amount.
+
+The description may appear BEFORE or AFTER the quantity/price line.
+
+The following are quantity/price lines, not item descriptions:
+- "24 x 0,49 €"
+- "3 x 1,39 €"
+- "1,066 kg x 0,99 €/kg"
+- "2 x 5,00 €"
+
+When a quantity/price line contains only a quantity and the price per piece or per kg, and no product description:
+- do NOT create an item from that line;
+- associate it with the nearest appropriate product-description line in the same item block.
+
+A quantity/price line may appear:
+1. BEFORE the product description:
+   24 x 0,49 €
+   RHEINFELS WASSER M. AR     11,76 € 2
+
+2. AFTER the product description:
+   RINDERHACKFLEI. XXL         4,17 € 1
+   3 x 1,39 €
+
+3. BETWEEN related description and total lines:
+   BANANEN
+   1,066 kg x 0,99 €/kg       1,06 € 1
+
+In all three cases, these lines represent ONE purchased item, not multiple items.
+
+For an item:
+- description = the product name/description printed for that item;
+- qty = the quantity or weight associated with that item;
+- amount = the total price for that item as printed on the receipt.
+
+Use the spatial order and receipt layout to determine which lines belong
+to the same item block.
+
+Do not assume that the description must come before the quantity/price line.
+Do not assume that the description must come after the quantity/price line.
+
+A line containing only a numeric quantity, "x", and a price is NEVER an
+item description.
+
 - The letter or digit after a price (A, B, 1, 2) is the tax class, not a quantity.
 - Discounts are items with a negative amount.
 - A Pfand line printed for bottles you bought (Pfand, Einwegpfand, Mehrweg) is an extra cost: its own item with a positive amount.
 - Leergut, Pfandrückgabe, Pfandbon or Pfand zurück is money given back for returned bottles: its own item with a negative amount.
 
-These lines are not items: SUMME, ZU ZAHLEN, BAR, GEGEBEN, ZURÜCK or RÜCKGELD for the change given back (but Pfand zurück is an item, see above), Kartenzahlung, EC-Karte or VISA, and the rows of the tax table. A payment line only sets payment_method.
+IMPORTANT: These lines are not items: SUMME, ZU ZAHLEN, BAR, GEGEBEN, ZURÜCK or RÜCKGELD for the change given back (but Pfand zurück is an item, see above), Kartenzahlung, EC-Karte or VISA, and the rows of the tax table. A payment line only sets payment_method.
 
 Never copy card numbers, IBANs, terminal, transaction or receipt numbers, addresses or names of staff into any field.
 
-Use a dot as the decimal separator in every number, e.g. 3.99.
+Use a dot as the decimal separator in every number of your answer, e.g. 3.99, even where the receipt prints a comma.
 
 If you cannot read a value, set it to null and put its key in unreadable_fields. Do not guess. Do not categorise items.
 

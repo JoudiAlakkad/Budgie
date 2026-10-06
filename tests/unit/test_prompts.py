@@ -113,22 +113,33 @@ def test_v2_rules() -> None:
         "which physical lines belong to the same item. Do not invent, guess, correct, or "
         "complete missing information."
     )
+    assert "LINE ITEMS AND MULTI-LINE ITEM BLOCKS" in system
     assert "may occupy one or multiple consecutive lines" in system
     assert "Do not treat every physical line as a separate item." in system
-    assert "regardless of whether it appears before or after the description" in system
-    assert "Do not automatically assign the line to the preceding description." in system
-    assert "Do not automatically assign it to the following description." in system
+    assert "First identify item blocks." in system
+    assert "do NOT create an item from that line" in system
+    # the three layouts: quantity line before, after and between
+    assert "24 x 0,49 €\n   RHEINFELS WASSER M. AR     11,76 € 2" in system
+    assert "RINDERHACKFLEI. XXL         4,17 € 1\n   3 x 1,39 €" in system  # 3 x 1,39 = 4,17
+    assert "BANANEN\n   1,066 kg x 0,99 €/kg       1,06 € 1" in system
+    assert "Do not assume that the description must come before the quantity/price line." in system
+    assert "Do not assume that the description must come after the quantity/price line." in system
+    never_a_description = 'only a numeric quantity, "x", and a price is NEVER an\nitem description.'
+    assert never_a_description in system
+    # the old layout bullets are gone
+    assert "regardless of whether it appears before or after the description" not in system
+    assert "Each block becomes one item" not in system
     assert "above an item" not in system
-    # item totals
-    assert "description: the name of the item as printed" in system
-    assert "qty: how many pieces, or the weight" in system
-    assert "amount: the total printed for the item, for all pieces together" in system
-    assert (
-        "Each block becomes one item: description is the product name, qty comes from its "
-        'quantity line (e.g. "3 x 1,66" gives qty 3), and amount is the total printed for the '
-        "block (4,99), not the price of one piece (1,66)."
-    ) in system
+    # item fields: name, quantity and the total for the item, no unit price (0019)
+    assert "For an item:" in system
+    assert "- description = the product name/description printed for that item;" in system
+    assert "- qty = the quantity or weight associated with that item;" in system
+    assert "- amount = the total price for that item as printed on the receipt." in system
+    assert "unit_price" not in system
     assert "amount: the price printed for the whole line" not in system
+    # receipt examples print commas; the answer uses a dot
+    assert "even where the receipt prints a comma" in system
+    assert "is the tax class, not a quantity" in system
     # Pfand charged is a cost, Leergut is money back
     assert (
         "A Pfand line printed for bottles you bought (Pfand, Einwegpfand, Mehrweg) is an extra "
