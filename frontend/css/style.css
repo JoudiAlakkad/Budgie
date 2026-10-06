@@ -454,7 +454,7 @@ select[aria-invalid="true"] {
 table.items {
   width: 100%;
   border-collapse: collapse;
-  min-width: 760px;
+  min-width: 600px;
 }
 
 table.items th,
@@ -474,21 +474,19 @@ table.items td.num input {
 }
 
 table.items col.c-desc {
-  width: 26%;
+  width: 36%;
 }
 
-table.items col.c-qty,
-table.items col.c-unit {
-  width: 8%;
+table.items col.c-qty {
+  width: 10%;
 }
 
-table.items col.c-price,
 table.items col.c-amount {
-  width: 11%;
+  width: 14%;
 }
 
 table.items col.c-cat {
-  width: 26%;
+  width: 30%;
 }
 
 tr.flagged {

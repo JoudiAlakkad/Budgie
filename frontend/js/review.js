@@ -1,5 +1,6 @@
 // Review page: the receipt photo beside the expense form (docs/wiki/frontend/pages.md).
-// Editing semantics and the client-side AI badge follow decision 0018.
+// Editing semantics and the client-side AI badge follow decision 0018; the lean field set,
+// Save & confirm and Save draft follow decision 0019.
 import { ApiError, api, clearError, formatMoney, pollReceipt, showError } from "./api.js";
 import { CATEGORIES, UNCATEGORIZED, categoryLabel } from "./categories.js";
 import { RECEIPT_STATUS_WORDS, h, icon } from "./dom.js";
@@ -29,18 +30,17 @@ const SCALARS = [
   { name: "date", label: "Date", kind: "date", required: true },
   { name: "currency", label: "Currency", kind: "currency", required: true },
   { name: "total", label: "Total", kind: "money", required: true },
-  { name: "subtotal", label: "Subtotal", kind: "money", required: false },
-  { name: "tax", label: "Tax (VAT)", kind: "money", required: false },
 ];
+// Flags on any other field (subtotal, tax, payment_method, ...) have no input and go to
+// "Other findings", so none is dropped. Fields not shown are never sent: the server keeps them.
 const SCALAR_NAMES = new Set(SCALARS.map((def) => def.name));
 // Confirm needs these; the API refuses `null` for them in a PATCH.
 const CONFIRM_REQUIRED = ["merchant", "date", "total"];
 
+// `unit` and `unit_price` are not shown and not sent (decision 0019).
 const ITEM_FIELDS = [
-  { name: "description", label: "Description", kind: "text", required: true },
-  { name: "qty", label: "Qty", kind: "qty", required: false },
-  { name: "unit", label: "Unit", kind: "text", required: false },
-  { name: "unit_price", label: "Unit price", kind: "money", required: false },
+  { name: "description", label: "Item", kind: "text", required: true },
+  { name: "qty", label: "Quantity", kind: "qty", required: false },
   { name: "amount", label: "Amount", kind: "money", required: true },
 ];
 
@@ -63,7 +63,7 @@ const state = {
   draft: null, // the form's values as typed (strings)
   edited: new Set(), // badge keys of fields the user edited in this page session
   aiTracked: false, // this session saw the expense as unconfirmed `ai`, so per-field badges are known
-  aiItemIds: new Set(), // item ids of that AI expense
+  leaving: false, // navigating away after a successful save or delete: no unsaved-changes warning
   nextKey: 1,
   fieldErrors: [], // [{path, message}] from local validation or ApiError.fields
 };
@@ -123,8 +123,6 @@ function newItem() {
     id: null,
     description: "",
     qty: "",
-    unit: "",
-    unit_price: "",
     amount: "",
     category: UNCATEGORIZED,
   };
@@ -277,14 +275,10 @@ function scalarBadgeKey(name) {
   return `scalar:${name}`;
 }
 
-function itemBadgeKey(row, field) {
-  return row.id === null ? null : `item:${row.id}:${field}`;
-}
-
-function showsBadge(key, serverValue, itemId) {
-  if (key === null || badgeMode() !== "fields") return false;
+// Only merchant, date, currency and total carry a badge; items have none (decision 0019).
+function showsBadge(key, serverValue) {
+  if (badgeMode() !== "fields") return false;
   if (serverValue === null || serverValue === undefined) return false;
-  if (itemId !== undefined && !state.aiItemIds.has(itemId)) return false;
   return !state.edited.has(key);
 }
 
@@ -310,10 +304,7 @@ function applyExpense(expense) {
   state.expense = expense;
   state.draft = draftFrom(expense);
   state.fieldErrors = [];
-  if (expense.source === "ai" && !expense.confirmed && !state.aiTracked) {
-    state.aiTracked = true;
-    state.aiItemIds = new Set(expense.line_items.map((item) => item.id));
-  }
+  if (expense.source === "ai" && !expense.confirmed) state.aiTracked = true;
   if (expense.confirmed) {
     // Confirming reviews every value; the badges don't come back after "Edit again".
     state.aiTracked = false;
@@ -383,7 +374,7 @@ async function onDelete() {
   try {
     await api.delete(`/receipts/${receiptId}`);
     state.mode = "deleted";
-    window.location.href = "index.html";
+    goHome();
   } catch (err) {
     showError(err);
   } finally {
@@ -638,10 +629,8 @@ function itemRow(row, index, readOnly, flagsByItemId) {
       unknown = h("span", { className: "unknown" }, readOnly ? "unknown" : UNKNOWN_TEXT);
       unknown.hidden = row[def.name].trim() !== "";
     }
-    const badgeKey = itemBadgeKey(row, def.name);
     input.addEventListener("input", () => {
       row[def.name] = input.value;
-      markEdited(badgeKey);
       if (unknown) unknown.hidden = input.value.trim() !== "";
       updateActions();
     });
@@ -652,7 +641,6 @@ function itemRow(row, index, readOnly, flagsByItemId) {
         h("label", { htmlFor: id, className: "visually-hidden" }, `Item ${n}: ${def.label}`),
         input,
         unknown,
-        showsBadge(badgeKey, serverValue, row.id) ? aiBadge(badgeKey) : null,
         ...extra,
       ),
     );
@@ -756,7 +744,7 @@ function itemRow(row, index, readOnly, flagsByItemId) {
 
 function itemsTable(readOnly, flagsByItemId) {
   const headers = ITEM_FIELDS.map((def) => def.label).concat(["Category", ""]);
-  const cols = ["c-desc", "c-qty", "c-unit", "c-price", "c-amount", "c-cat", "c-remove"];
+  const cols = ["c-desc", "c-qty", "c-amount", "c-cat", "c-remove"];
   return h(
     "div",
     { className: "items-wrap" },
@@ -883,7 +871,7 @@ function renderForm() {
           icon("✔"),
           readOnly
             ? " Confirmed. It counts towards budgets and insights."
-            : " Confirmed. Saving a change un-confirms it, and you'll need to confirm it again.",
+            : " Confirmed. Save draft with a change un-confirms it; Save & confirm confirms it again.",
         ),
       );
     }
@@ -905,11 +893,17 @@ function renderForm() {
   }
 
   const { byField, byItemId, listFlags, general } = sortFlags();
+  // A flag on an item removed from the form has no row left to sit on.
+  const shownIds = new Set(state.draft.items.map((row) => row.id));
+  for (const [id, flags] of byItemId) {
+    if (!shownIds.has(id)) general.push(...flags);
+  }
   if (general.length) {
     children.push(
+      h("p", { className: "hint", id: "other-findings" }, "Other findings (not a field on this form):"),
       h(
         "ul",
-        { className: "flag-list", attrs: { "aria-label": "Other findings" } },
+        { className: "flag-list", attrs: { "aria-labelledby": "other-findings" } },
         ...general.map((flag) => h("li", {}, flagNode(flag))),
       ),
     );
@@ -926,10 +920,8 @@ function renderForm() {
   }
 
   const form = h("form", { noValidate: true, attrs: { "aria-label": "Expense" } });
-  form.addEventListener("submit", (e) => {
-    e.preventDefault();
-    if (!readOnly) onSave();
-  });
+  // Both actions leave the page, so Enter in a field doesn't trigger one; the buttons do.
+  form.addEventListener("submit", (e) => e.preventDefault());
 
   form.append(
     h(
@@ -1005,12 +997,26 @@ function actionsBar(manual, readOnly) {
     );
     return bar;
   }
-  refs.save = h(
+  refs.saveConfirm = h(
     "button",
-    { type: "submit", className: manual ? "primary" : "" },
-    manual ? "Save expense" : "Save",
+    {
+      type: "button",
+      className: "primary",
+      attrs: { "aria-describedby": "action-reason" },
+      on: { click: onSaveAndConfirm },
+    },
+    "Save & confirm",
   );
-  bar.append(refs.save);
+  refs.saveDraft = h(
+    "button",
+    {
+      type: "button",
+      attrs: { "aria-describedby": "action-reason" },
+      on: { click: onSaveDraft },
+    },
+    "Save draft",
+  );
+  bar.append(refs.saveConfirm, refs.saveDraft);
   if (manual) {
     bar.append(
       h(
@@ -1031,64 +1037,52 @@ function actionsBar(manual, readOnly) {
     );
   } else {
     refs.dirty = h("span", { className: "dirty-marker" });
-    refs.confirm = h(
-      "button",
-      {
-        type: "button",
-        className: "primary",
-        attrs: { "aria-describedby": "action-reason" },
-        on: { click: onConfirm },
-      },
-      "Confirm",
-    );
-    bar.append(refs.dirty, refs.confirm);
+    bar.append(refs.dirty);
   }
   bar.append(refs.reason);
   return bar;
 }
 
-/** Updates Save/Confirm, their reasons and the item sum without rebuilding the form. */
+function labelsOf(names) {
+  return SCALARS.filter((def) => names.includes(def.name)).map((def) => def.label.toLowerCase());
+}
+
+/** Updates the two buttons, their reasons and the item sum without rebuilding the form. */
 function updateActions() {
   if (refs.sum) refs.sum.textContent = itemsSumText();
-  if (!refs.save) return;
+  if (!refs.saveConfirm) return;
+  const manual = state.mode === "manual";
   const reasons = [];
-  if (state.mode === "manual") {
-    refs.save.disabled = state.busy;
-    const missing = SCALARS.filter((def) => def.required && state.draft[def.name].trim() === "");
-    if (missing.length) {
-      reasons.push(`To save, fill in ${missing.map((def) => def.label.toLowerCase()).join(", ")}.`);
-    }
-    refs.reason.textContent = reasons.join(" ");
-    return;
-  }
-
-  const dirty = isDirty();
-  const emptied = emptiedRequired();
-  refs.save.disabled = state.busy || !dirty || emptied.length > 0;
-  refs.dirty.textContent = dirty ? "Unsaved changes" : "";
-  if (emptied.length) {
-    reasons.push(
-      `${emptied.map((def) => def.label).join(", ")} can't be emptied once set: enter a value to save.`,
-    );
-  }
-
-  const confirmReasons = [];
-  if (state.expense.confirmed) confirmReasons.push("Already confirmed.");
-  if (dirty) confirmReasons.push("Save your changes first.");
   const missing = CONFIRM_REQUIRED.filter((name) => state.draft[name].trim() === "");
-  if (missing.length) {
-    const labels = SCALARS.filter((def) => missing.includes(def.name)).map((def) => def.label.toLowerCase());
-    confirmReasons.push(`Fill in ${labels.join(", ")}.`);
+
+  // Save draft: POST needs merchant, date and total; a PATCH can't empty them once set.
+  let draftBlocked = false;
+  if (manual) {
+    if (missing.length) reasons.push(`To save, fill in ${labelsOf(missing).join(", ")}.`);
+  } else {
+    refs.dirty.textContent = isDirty() ? "Unsaved changes" : "";
+    const emptied = emptiedRequired();
+    if (emptied.length) {
+      draftBlocked = true;
+      reasons.push(
+        `${emptied.map((def) => def.label).join(", ")} can't be emptied once set: enter a value to save.`,
+      );
+    }
   }
+  refs.saveDraft.disabled = state.busy || draftBlocked;
+
+  // Save & confirm: confirming needs merchant, date, total and a category on every item.
+  const confirmReasons = [];
+  if (missing.length) confirmReasons.push(`Fill in ${labelsOf(missing).join(", ")}.`);
   const uncategorized = state.draft.items.filter((row) => row.category === UNCATEGORIZED).length;
   if (uncategorized) {
     confirmReasons.push(
       `Choose a category for every item (${uncategorized} ${uncategorized === 1 ? "item" : "items"} left).`,
     );
   }
-  refs.confirm.disabled = state.busy || confirmReasons.length > 0;
-  if (confirmReasons.length && !state.expense.confirmed) {
-    reasons.push(`Confirm is unavailable: ${confirmReasons.join(" ")}`);
+  refs.saveConfirm.disabled = state.busy || draftBlocked || confirmReasons.length > 0;
+  if (confirmReasons.length) {
+    reasons.push(`Save & confirm is unavailable: ${confirmReasons.join(" ")}`);
   }
   refs.reason.textContent = reasons.join(" ");
 }
@@ -1098,8 +1092,17 @@ function focusFirstError() {
   if (invalid) invalid.focus();
 }
 
-async function onSave() {
-  if (state.busy) return;
+/** Leaves for the upload page without the unsaved-changes warning. */
+function goHome() {
+  state.leaving = true;
+  window.location.href = "index.html";
+}
+
+/**
+ * Validates and, if anything changed, sends the POST (manual entry, with `receipt_id`) or the
+ * PATCH. Resolves to true once the server has the form's values; otherwise the page shows why.
+ */
+async function saveChanges() {
   const manual = state.mode === "manual";
   const errors = validate(manual);
   if (errors.length) {
@@ -1107,12 +1110,9 @@ async function onSave() {
     render();
     focusFirstError();
     announce("Some values need fixing before saving.");
-    return;
+    return false;
   }
-  if (!manual && !isDirty()) return;
-  state.busy = true;
-  updateActions();
-  clearError();
+  if (!manual && !isDirty()) return true;
   try {
     let expense;
     if (manual) {
@@ -1123,9 +1123,7 @@ async function onSave() {
     }
     state.unlocked = false;
     applyExpense(expense);
-    state.busy = false;
-    render();
-    announce("Saved.");
+    return true;
   } catch (err) {
     state.busy = false;
     state.fieldErrors =
@@ -1134,27 +1132,44 @@ async function onSave() {
         : [];
     render();
     showError(err);
+    return false;
   }
 }
 
-async function onConfirm() {
-  if (state.busy || !state.expense) return;
+async function runSave(confirmAfter) {
+  if (state.busy) return;
   state.busy = true;
   updateActions();
   clearError();
-  try {
-    const expense = await api.post(`/expenses/${state.expense.id}/confirm`);
-    state.unlocked = false;
-    applyExpense(expense);
-    state.busy = false;
-    render();
-    announce("Expense confirmed.");
-  } catch (err) {
-    // 422 uncategorized_items or incomplete_expense: show the server's reason.
+  const saved = await saveChanges();
+  if (!saved) {
     state.busy = false;
     updateActions();
-    showError(err);
+    return;
   }
+  if (!confirmAfter) {
+    goHome();
+    return;
+  }
+  try {
+    await api.post(`/expenses/${state.expense.id}/confirm`);
+    goHome();
+  } catch (err) {
+    // 422 uncategorized_items or incomplete_expense: stay on the saved expense with its
+    // recomputed flags, and show the server's reason.
+    state.busy = false;
+    render();
+    showError(err);
+    announce("Saved, but not confirmed.");
+  }
+}
+
+function onSaveAndConfirm() {
+  runSave(true);
+}
+
+function onSaveDraft() {
+  runSave(false);
 }
 
 // ---------------------------------------------------------------- page
@@ -1179,6 +1194,7 @@ function renderImage() {
 }
 
 window.addEventListener("beforeunload", (e) => {
+  if (state.leaving) return;
   const unsaved =
     (state.mode === "review" && state.expense && isDirty()) ||
     (state.mode === "manual" &&
