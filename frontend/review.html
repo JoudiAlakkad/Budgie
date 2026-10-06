@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Review a receipt · Budgie</title>
+    <link rel="stylesheet" href="css/style.css" />
+    <script type="module" src="js/review.js"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="index.html">Budgie</a>
+      <nav aria-label="Main">
+        <ul>
+          <li><a href="index.html">Upload</a></li>
+        </ul>
+      </nav>
+    </header>
+    <main>
+      <div id="error-banner" class="error-banner" role="alert" hidden></div>
+      <p id="live" class="visually-hidden" role="status" aria-live="polite"></p>
+      <div class="review-layout">
+        <figure id="receipt-figure" class="receipt-image"></figure>
+        <section id="panel" class="panel" aria-live="off">
+          <p>Loading…</p>
+        </section>
+      </div>
+    </main>
+  </body>
+</html>

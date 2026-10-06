@@ -371,6 +371,13 @@ select:disabled {
   font-weight: 700;
 }
 
+fieldset.fields {
+  border: 0;
+  padding: 0;
+  margin: 0 0 1.25rem;
+  min-width: 0;
+}
+
 .fields {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
