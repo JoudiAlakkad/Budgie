@@ -59,7 +59,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # /api/health reads them to report `db: error` (persistence.md).
         app.state.storage_status = prepare_storage(settings)
         # Tasks that were queued or running died with the last process (decision 0007).
-        if app.state.storage_status.ok:
+        # Only the tables are needed, so a broken upload dir doesn't skip the reset.
+        if app.state.storage_status.database_ok:
             reset_interrupted(database_for(settings.database_url))
         logger.info("Budgie started (model %s)", settings.llm_model)
         yield

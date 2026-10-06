@@ -25,6 +25,13 @@ class StorageStatus:
     def ok(self) -> bool:
         return self.prepared and not self.failures
 
+    @property
+    def database_ok(self) -> bool:
+        """The tables are ready, whatever happened to the upload dir."""
+        return self.prepared and DATABASE_STEP not in self.failures
+
+
+DATABASE_STEP = "database"
 
 # Before the lifespan has run, nothing has been created yet.
 NOT_PREPARED = StorageStatus(prepared=False)
@@ -51,7 +58,7 @@ def prepare_storage(settings: Settings) -> StorageStatus:
     failures: list[str] = []
     steps = (
         ("upload_dir", lambda: _prepare_upload_dir(settings.upload_dir)),
-        ("database", lambda: database_for(settings.database_url).init_db()),
+        (DATABASE_STEP, lambda: database_for(settings.database_url).init_db()),
     )
     for name, step in steps:
         try:

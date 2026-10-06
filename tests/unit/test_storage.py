@@ -62,3 +62,17 @@ def test_both_fail(tmp_path: Path) -> None:
 
 def test_not_prepared_is_not_ok() -> None:
     assert not NOT_PREPARED.ok
+
+
+@pytest.mark.parametrize(
+    ("status", "database_ok"),
+    [
+        (StorageStatus(prepared=True), True),
+        (StorageStatus(prepared=True, failures=("upload_dir",)), True),
+        (StorageStatus(prepared=True, failures=("database",)), False),
+        (StorageStatus(prepared=True, failures=("upload_dir", "database")), False),
+        (NOT_PREPARED, False),
+    ],
+)
+def test_database_ok_ignores_the_upload_dir(status: StorageStatus, database_ok: bool) -> None:
+    assert status.database_ok is database_ok

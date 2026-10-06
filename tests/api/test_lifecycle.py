@@ -234,6 +234,24 @@ def test_startup_reset_failure_never_stops_the_app(
     assert "Startup reset of interrupted receipts failed (RuntimeError)" in caplog.messages
 
 
+def test_startup_reset_runs_when_only_the_upload_dir_failed(settings: Settings) -> None:
+    app = create_app(settings)
+    app.dependency_overrides[get_receipt_pipeline] = NoopPipeline
+    with TestClient(app) as client:
+        receipt_id = upload(client).json()["id"]
+    dispose_databases()
+    broken = settings.model_copy(update={"upload_dir": str(Path(settings.upload_dir) / "x.jpg")})
+    Path(broken.upload_dir).write_bytes(b"a file, not a directory")
+
+    with TestClient(create_app(broken)) as client:
+        health = client.get("/api/health").json()
+        receipt = client.get(f"/api/receipts/{receipt_id}").json()
+    dispose_databases()
+
+    assert health["db"] == "error"  # the upload dir failed
+    assert (receipt["status"], receipt["error"]) == ("failed", "interrupted")
+
+
 def test_startup_reset_is_skipped_when_storage_failed(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
