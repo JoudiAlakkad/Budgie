@@ -5,7 +5,7 @@ create and edit (F07, decision 0020)."""
 import dataclasses
 import datetime as dt
 import logging
-from collections.abc import Sequence, Set
+from collections.abc import Mapping, Sequence, Set
 from decimal import Decimal
 from typing import Any, Protocol
 
@@ -155,16 +155,18 @@ class ExpenseService:
         With `receipt_id`, the receipt goes `failed` -> `extracted` in the same transaction
         (decision 0015): `NotFound` for an unknown receipt, `InvalidState` unless it is
         failed. The merchant is stored as typed; a category sent on an item is stored with
-        `category_source: user` and saved to the lookup table (decision 0020).
+        `category_source: user` and saved to the lookup table (decision 0020): every item
+        of a new expense is new, so every sent category is a choice.
         """
         with self._db.transaction() as session:
             if body.receipt_id is not None:
                 self._attach(ReceiptRepository(session), body.receipt_id)
             expenses = ExpenseRepository(session)
             categories = ItemCategoryRepository(session)
-            table = self._table(categories, body.line_items)
+            choices = [_is_choice(item, {}) for item in body.line_items]
+            table = self._table(categories, body.line_items, choices)
             items = [self._line_item(item, table) for item in body.line_items]
-            self._save_choices(categories, body.line_items, items)
+            self._save_choices(categories, body.line_items, items, choices)
             review_status, flags = self._assess(
                 merchant=body.merchant,
                 date=body.date,
@@ -208,8 +210,11 @@ class ExpenseService:
           expense's items, or is repeated, is `InvalidFields` on `line_items.<i>.id`.
         - A confirmed expense becomes unconfirmed, and its receipt goes back from
           `confirmed` to `extracted`, in the same transaction.
-        - A category sent on an item is saved to the lookup table (decision 0020), and
-          `possible_duplicate` is recomputed against every other expense.
+        - A category sent on an item is saved to the lookup table (decision 0020) when it
+          is a choice: the item is new, or its category differs from the stored one. A
+          stored category resent with a changed description stays on the item only, so a
+          corrected misread (`Milch` -> `Bier`) doesn't train the new name.
+        - `possible_duplicate` is recomputed against every other expense.
 
         A body with no fields is not an edit: it returns the expense unchanged.
         """
@@ -228,9 +233,11 @@ class ExpenseService:
             items: Sequence[LineItemChange]
             if "line_items" in sent:
                 categories = ItemCategoryRepository(session)
-                table = self._table(categories, body.line_items)
+                stored = {item.id: item for item in current.line_items}
+                choices = [_is_choice(item, stored) for item in body.line_items]
+                table = self._table(categories, body.line_items, choices)
                 items = self._edited_items(current, body.line_items, table)
-                self._save_choices(categories, body.line_items, items)
+                self._save_choices(categories, body.line_items, items, choices)
             else:
                 items = [_unchanged(item) for item in current.line_items]
             edited = sent & {*EDITABLE_SCALARS, "line_items"}
@@ -371,14 +378,17 @@ class ExpenseService:
         return LineItemChange(id=item.id, **_item_fields(new))
 
     def _table(
-        self, categories: ItemCategoryRepository, sent: Sequence[LineItemInput]
+        self,
+        categories: ItemCategoryRepository,
+        sent: Sequence[LineItemInput],
+        choices: Sequence[bool],
     ) -> CategoryTable:
-        """The lookup table with this request's sent categories laid over it, so a choice
-        applies to the rest of the request (decision 0020)."""
+        """The lookup table with this request's choices laid over it, so a choice applies
+        to the rest of the request (decision 0020)."""
         table = categories.table()
         overlay = dict(table)
-        for item in sent:
-            if item.category is not None:
+        for item, choice in zip(sent, choices, strict=True):
+            if choice and item.category is not None:
                 name = self._categorizer.categorize(item.description, table).normalized_name
                 if name:
                     overlay[name] = (item.category, "user")
@@ -389,11 +399,12 @@ class ExpenseService:
         categories: ItemCategoryRepository,
         sent: Sequence[LineItemInput],
         items: Sequence[NewLineItem],
+        choices: Sequence[bool],
     ) -> None:
-        """Save every category the request sent as the user's choice for that name
-        (decision 0020); an empty normalised name is not saved."""
-        for item, stored in zip(sent, items, strict=True):
-            if item.category is not None and stored.normalized_name:
+        """Save every choice as the user's category for its name (decision 0020); an
+        empty normalised name is not saved."""
+        for item, stored, choice in zip(sent, items, choices, strict=True):
+            if choice and item.category is not None and stored.normalized_name:
                 categories.upsert_user(stored.normalized_name, item.category)
 
     def _line_item(self, item: LineItemInput, table: CategoryTable) -> NewLineItem:
@@ -439,6 +450,20 @@ class ExpenseService:
                 f"Receipt {receipt_id} is {current.status}; an expense can be entered by hand "
                 "only for a failed receipt."
             )
+
+
+def _is_choice(item: LineItemInput, stored: Mapping[int, LineItemRecord]) -> bool:
+    """A sent category the user picked: on a new item (no id, or an id that isn't stored,
+    which the id check rejects later), or different from the stored item's category.
+
+    The review page resends a stored category when only the description changed; that
+    is not a choice for the new name (reviewer finding, F07).
+    """
+    if item.category is None:
+        return False
+    item_id = getattr(item, "id", None)
+    previous = stored.get(item_id) if item_id is not None else None
+    return previous is None or previous.category != item.category
 
 
 def _duplicate_candidates(

@@ -1029,6 +1029,54 @@ def test_a_refused_request_saves_no_choice(api: TestClient, model: ModelServer) 
     assert lookup_entry(api, "drachenfrucht") is None
 
 
+def test_a_resent_category_with_a_corrected_description_does_not_train_the_new_name(
+    api: TestClient,
+) -> None:
+    """Reviewer finding: the review page resends the stored `user` category when only the
+    description changed. Correcting a misread `Milch` to `Bier` must not save
+    bier -> groceries.fresh over the seed's alcohol."""
+    items = [{"description": "Milch", "amount": 3.68, "category": "groceries.fresh"}]
+    expense = create(api, line_items=items)
+    item_id = expense["line_items"][0]["id"]
+
+    resend = {"id": item_id, "description": "Bier", "amount": 3.68, "category": "groceries.fresh"}
+    edited = patch(api, expense["id"], {"line_items": [resend]})
+
+    assert item_of(edited) == ("bier", "groceries.fresh", "user")  # on the item (0018)
+    assert lookup_entry(api, "bier") == ("alcohol", "seed")  # the table is untouched
+    later = create(api, date="2026-10-04", line_items=[{"description": "Bier", "amount": 3.68}])
+    assert item_of(later) == ("bier", "alcohol", "seed")
+
+
+@pytest.mark.parametrize(
+    ("description", "name"), [("Milch", "milch"), ("Hafermilch", "hafermilch")]
+)
+def test_a_changed_category_on_an_existing_item_is_saved(
+    api: TestClient, description: str, name: str
+) -> None:
+    items = [{"description": "Milch", "amount": 3.68, "category": "groceries.fresh"}]
+    expense = create(api, line_items=items)
+    item_id = expense["line_items"][0]["id"]
+
+    resend = {"id": item_id, "description": description, "amount": 3.68, "category": "drinks"}
+    edited = patch(api, expense["id"], {"line_items": [resend]})
+
+    assert item_of(edited) == (name, "drinks", "user")
+    assert lookup_entry(api, name) == ("drinks", "user")
+
+
+def test_an_unchanged_resent_category_is_not_saved_again(api: TestClient) -> None:
+    expense = create(api, line_items=[{"description": "Banane", "amount": 3.68}])
+    assert item_of(expense) == ("banane", "groceries.fresh", "seed")
+    item_id = expense["line_items"][0]["id"]
+
+    resend = {"id": item_id, "description": "Banane", "amount": 3.68, "category": "groceries.fresh"}
+    edited = patch(api, expense["id"], {"line_items": [resend]})
+
+    assert item_of(edited) == ("banane", "groceries.fresh", "user")
+    assert lookup_entry(api, "banane") == ("groceries.fresh", "seed")
+
+
 def test_a_saved_choice_can_be_removed_and_the_seed_applies_again(api: TestClient) -> None:
     items = [{"description": "Banane", "amount": 3.68, "category": "other"}]
     create(api, line_items=items)
