@@ -3,9 +3,11 @@
 import datetime as dt
 
 import pytest
+import yaml
 from fastapi.testclient import TestClient
 
-from app.services.item_categories import load_seed
+from app.services import item_categories
+from app.services.item_categories import InvalidSeed, load_seed
 
 
 def entries(client: TestClient, q: str | None = None) -> list[dict]:
@@ -110,3 +112,51 @@ def test_delete_of_an_unknown_name_is_404(client: TestClient) -> None:
 
     assert response.status_code == 404
     assert response.json()["error"] == "not_found"
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        FileNotFoundError("/srv/budgie/app/domain/data/item_categories_seed.yaml"),
+        yaml.YAMLError("broken"),
+        InvalidSeed("unknown category"),
+    ],
+    ids=["missing", "broken yaml", "invalid"],
+)
+def test_delete_works_when_the_seed_cannot_be_loaded(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    error: Exception,
+) -> None:
+    """Reviewer finding: the seed is read only for a user entry, and a broken seed never
+    turns a delete into a 500."""
+    put(client, "banane", "snacks_sweets")
+    put(client, "zwiebelkuchen", "eating_out")
+
+    def broken() -> None:
+        raise error
+
+    monkeypatch.setattr(item_categories, "load_seed", broken)
+
+    assert client.delete("/api/item-categories/unbekannt").status_code == 404
+    assert client.delete("/api/item-categories/kaffee").status_code == 409
+    assert client.delete("/api/item-categories/zwiebelkuchen").status_code == 204
+    assert client.delete("/api/item-categories/banane").status_code == 204
+
+    assert entries(client, "zwiebelkuchen") == []
+    # Removed without a seed value to restore.
+    assert [e for e in entries(client, "banane") if e["normalized_name"] == "banane"] == []
+    warnings = [
+        r.getMessage()
+        for r in caplog.records
+        if r.name == "app.services.item_categories" and r.levelname == "WARNING"
+    ]
+    # Once per user entry; the 404 and 409 never read the seed.
+    assert (
+        warnings
+        == [f"Item category seed not loaded ({type(error).__name__}); nothing restored"] * 2
+    )
+    for record in caplog.records:
+        assert record.exc_info is None
+        assert "item_categories_seed.yaml" not in record.getMessage()

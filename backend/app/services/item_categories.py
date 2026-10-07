@@ -117,8 +117,17 @@ class ItemCategoryService:
         self._db = db
         self._seed = seed
 
-    def _seed_values(self) -> Mapping[str, str]:
-        return load_seed() if self._seed is None else self._seed
+    def _seed_category(self, name: str) -> str | None:
+        """The seed's category for `name`; None if it has none or can't be loaded."""
+        try:
+            seed = load_seed() if self._seed is None else self._seed
+        except (OSError, yaml.YAMLError, InvalidSeed) as exc:
+            # The type name only: a traceback or message could quote the file path.
+            logger.warning(
+                "Item category seed not loaded (%s); nothing restored", type(exc).__name__
+            )
+            return None
+        return seed.get(name)
 
     def search(self, q: str | None = None) -> list[ItemCategoryView]:
         """Entries whose name contains `q`, sorted by name."""
@@ -136,9 +145,10 @@ class ItemCategoryService:
     def delete(self, name: str) -> None:
         """Remove a `user` entry; the seed value comes back if the seed has the name.
 
-        `NotFound` for an unknown name, `InvalidState` for a seed entry.
+        `NotFound` for an unknown name, `InvalidState` for a seed entry. The seed is read
+        only for a `user` entry; if it can't be loaded, the entry is still removed, without
+        a seed value to restore, and only the error's type name is logged.
         """
-        seed_category = self._seed_values().get(name)
         with self._db.transaction() as session:
             repo = ItemCategoryRepository(session)
             current = repo.get(name)
@@ -149,6 +159,7 @@ class ItemCategoryService:
                     f'"{name}" is a seed entry; only a user entry can be removed. '
                     "Set another category instead."
                 )
+            seed_category = self._seed_category(name)
             repo.delete(name)
             if seed_category is not None:
                 repo.put_seed(name, seed_category)
