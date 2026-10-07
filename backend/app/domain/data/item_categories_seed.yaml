@@ -1,0 +1,328 @@
+# Seed for the item_categories lookup table (decisions 0013, 0020).
+#
+# Category -> normalised item names. Every name must already be what
+# app.domain.categorize.normalize returns (lowercase, umlauts folded, no qualifiers such
+# as "bio", no quantities); a test checks this, that every category is known and that no
+# name is listed twice. On startup missing names are inserted and rows still `seed` take
+# the value here; a user's choice (source `user`) is never touched.
+#
+# Loaded with yaml.safe_load only.
+
+groceries.fresh:
+  # fruit
+  - banane
+  - bananen
+  - apfel
+  - aepfel
+  - aepfel pink lady
+  - birne
+  - birnen
+  - orange
+  - orangen
+  - mandarinen
+  - clementinen
+  - zitrone
+  - zitronen
+  - limette
+  - limetten
+  - weintrauben
+  - trauben
+  - erdbeeren
+  - heidelbeeren
+  - blaubeeren
+  - himbeeren
+  - kiwi
+  - mango
+  - ananas
+  - avocado
+  - melone
+  - wassermelone
+  - pfirsich
+  - nektarinen
+  - pflaumen
+  # vegetables and salad
+  - tomaten
+  - rispentomaten
+  - cherrytomaten
+  - cocktailtomaten
+  - gurke
+  - salatgurke
+  - paprika
+  - paprika rot
+  - zwiebeln
+  - rote zwiebeln
+  - knoblauch
+  - kartoffeln
+  - suesskartoffeln
+  - karotten
+  - moehren
+  - brokkoli
+  - blumenkohl
+  - zucchini
+  - aubergine
+  - champignons
+  - pilze
+  - spinat
+  - salat
+  - eisbergsalat
+  - kopfsalat
+  - pfluecksalat
+  - rucola
+  - feldsalat
+  - lauch
+  - porree
+  - sellerie
+  - ingwer
+  - radieschen
+  - mais
+  - fruehlingszwiebeln
+  - petersilie
+  - basilikum
+  - schnittlauch
+  # dairy and eggs
+  - milch
+  - vollmilch
+  - fettarme milch
+  - buttermilch
+  - joghurt
+  - naturjoghurt
+  - joghurt nach griechisch
+  - griechischer joghurt
+  - quark
+  - magerquark
+  - skyr
+  - sahne
+  - schlagsahne
+  - schmand
+  - creme fraiche
+  - butter
+  - margarine
+  - kaese
+  - gouda
+  - emmentaler
+  - mozzarella
+  - feta
+  - frischkaese
+  - parmesan
+  - eier
+  # meat, fish, bread
+  - hackfleisch
+  - rinderhack
+  - haehnchenbrust
+  - haehnchen
+  - putenbrust
+  - schnitzel
+  - bratwurst
+  - wuerstchen
+  - salami
+  - schinken
+  - kochschinken
+  - aufschnitt
+  - leberwurst
+  - lachs
+  - thunfisch
+  - brot
+  - vollkornbrot
+  - toastbrot
+  - broetchen
+  - brezel
+  - baguette
+  - croissant
+  - tofu
+
+groceries.staples:
+  - nudeln
+  - spaghetti
+  - penne
+  - reis
+  - basmati reis
+  - mehl
+  - zucker
+  - salz
+  - pfeffer
+  - olivenoel
+  - sonnenblumenoel
+  - rapsoel
+  - essig
+  - haferflocken
+  - muesli
+  - cornflakes
+  - honig
+  - marmelade
+  - nutella
+  - erdnussbutter
+  - ketchup
+  - mayonnaise
+  - senf
+  - passierte tomaten
+  - tomatenmark
+  - linsen
+  - kichererbsen
+  - bohnen
+  - tiefkuehl erbsen
+  - tiefkuehl pizza
+  - pizza
+  - kaffee
+  - kaffee gemahlen
+  - kaffeebohnen
+  - tee
+  - kakao
+  - backpulver
+  - hefe
+  - bruehe
+  - suppe
+
+snacks_sweets:
+  - schokolade
+  - kekse
+  - chips
+  - kartoffelchips
+  - gummibaerchen
+  - bonbons
+  - kaugummi
+  - salzstangen
+  - erdnuesse
+  - nuesse
+  - studentenfutter
+  - eis
+  - kuchen
+  - muffin
+  - waffeln
+  - riegel
+  - popcorn
+
+drinks:
+  - wasser
+  - mineralwasser
+  - sprudel
+  - cola
+  - coca cola
+  - cola zero
+  - fanta
+  - sprite
+  - limonade
+  - eistee
+  - apfelsaft
+  - orangensaft
+  - saft
+  - apfelschorle
+  - schorle
+  - energy drink
+  - red bull
+  - hafermilch
+  - sojamilch
+  - mandelmilch
+
+alcohol:
+  - bier
+  - pils
+  - weizenbier
+  - radler
+  - wein
+  - rotwein
+  - weisswein
+  - rose
+  - sekt
+  - prosecco
+  - wodka
+  - gin
+  - rum
+  - whisky
+  - likoer
+
+tobacco:
+  - zigaretten
+  - tabak
+  - zigarettenpapier
+
+household:
+  - toilettenpapier
+  - klopapier
+  - kuechenrolle
+  - kuechentuecher
+  - taschentuecher
+  - taschentuecher box
+  - spuelmittel
+  - spuelmaschinentabs
+  - waschmittel
+  - weichspueler
+  - muellbeutel
+  - allzweckreiniger
+  - schwamm
+  - schwaemme
+  - alufolie
+  - frischhaltefolie
+  - backpapier
+  - gefrierbeutel
+  - batterien
+  - kerzen
+  - wasserfilterpatronen
+
+personal_care:
+  - zahnpasta
+  - zahnbuerste
+  - duschgel
+  - shampoo
+  - spuelung
+  - seife
+  - deo
+  - deodorant
+  - bodylotion
+  - handcreme
+  - sonnencreme
+  - rasierer
+  - wattepads
+  - wattestaebchen
+  - tampons
+  - binden
+
+health:
+  - pflaster
+  - ibuprofen
+  - paracetamol
+  - aspirin
+  - vitamin
+  - nasenspray
+  - halstabletten
+  - hustensaft
+
+eating_out:
+  - kaffee to go
+  - cappuccino
+  - latte macchiato
+  - doener
+  - doener kebab
+  - pommes
+  - currywurst
+  - burger
+  - menue
+
+transport:
+  - diesel
+  - super
+  - super e10
+  - benzin
+  - fahrkarte
+  - tageskarte
+  - ticket
+  - parken
+  - parkticket
+
+clothing:
+  - socken
+  - shirt
+  - strumpfhose
+
+electronics:
+  - ladekabel
+  - kopfhoerer
+  - usb kabel
+
+deposit:
+  - pfand
+  - leergut
+
+discount:
+  - rabatt
+  - preisvorteil
+  - coupon

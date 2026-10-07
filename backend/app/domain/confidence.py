@@ -5,11 +5,13 @@ flags, and every flag carries a sentence a user can read. How this answers the
 uncertainty criterion is in docs/wiki/backend/uncertainty.md.
 """
 
+from collections.abc import Sequence
 from datetime import date
 from typing import Literal
 
+from app.domain.duplicates import ExpenseKey, duplicate_flag
 from app.domain.facts import Flag, ReceiptFacts, is_blank
-from app.domain.validation import validate
+from app.domain.validation import parse_date, validate
 
 # Mirrors `app.api.schemas.ReviewStatus`; a test checks they match.
 ReviewStatus = Literal["accepted", "needs_review", "rejected"]
@@ -66,7 +68,19 @@ def is_plausible_receipt(facts: ReceiptFacts) -> bool:
     return not (is_blank(facts.merchant) and facts.total is None and len(facts.items) <= 1)
 
 
-def assess(facts: ReceiptFacts, today: date) -> tuple[ReviewStatus, list[Flag]]:
-    """The review status and every flag: validation flags first, then review flags."""
+def assess(
+    facts: ReceiptFacts, today: date, others: Sequence[ExpenseKey] = ()
+) -> tuple[ReviewStatus, list[Flag]]:
+    """The review status and every flag: validation flags, then review flags, then
+    `possible_duplicate` if `others` (every other expense) holds a match (decision 0020)."""
     flags = [*validate(facts, today), *review_flags(facts)]
+    candidate = ExpenseKey(
+        id=None,
+        merchant=facts.merchant,
+        date=parse_date(facts.date) if facts.date is not None else None,
+        total=facts.total,
+    )
+    duplicate = duplicate_flag(candidate, others)
+    if duplicate is not None:
+        flags.append(duplicate)
     return review_status(facts, flags), flags
