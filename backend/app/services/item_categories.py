@@ -13,7 +13,7 @@ import yaml
 from app.db.records import ItemCategoryRecord
 from app.db.repositories.item_categories import SEED, ItemCategoryRepository
 from app.db.session import Database
-from app.errors import InvalidState, NotFound
+from app.errors import InvalidState, NotFound, StorageError
 from app.services.views import ItemCategoryView
 
 logger = logging.getLogger(__name__)
@@ -87,9 +87,13 @@ def load_seed() -> Mapping[str, str]:
 def sync_seed(db: Database, seed: Mapping[str, str] | None = None) -> None:
     """Startup: insert missing seed names and update rows still `seed`; `user` rows stay.
 
-    Raises whatever loading or storing raises; `prepare_storage` logs it and goes on.
+    Raises `StorageError`, caused by the original error, when the seed can't be loaded
+    (OSError, YAMLError, InvalidSeed) or stored; `prepare_storage` logs it and goes on.
     """
-    values = load_seed() if seed is None else seed
+    try:
+        values = load_seed() if seed is None else seed
+    except (OSError, yaml.YAMLError, InvalidSeed) as exc:
+        raise StorageError("The item category seed could not be loaded.") from exc
     with db.transaction() as session:
         result = ItemCategoryRepository(session).sync_seed(values)
     logger.info(
@@ -160,9 +164,10 @@ class ItemCategoryService:
                     "Set another category instead."
                 )
             seed_category = self._seed_category(name)
-            repo.delete(name)
             if seed_category is not None:
-                repo.put_seed(name, seed_category)
+                repo.put_seed(name, seed_category)  # the row becomes the seed entry again
+            else:
+                repo.delete(name)
         logger.info(
             "Item category removed by the user, seed restored: %s", seed_category is not None
         )

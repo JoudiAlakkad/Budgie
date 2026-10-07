@@ -61,13 +61,14 @@ Sets the review status from the flags ([0008](../decisions/0008-rule-based-revie
 Implements [0013](../decisions/0013-deterministic-item-categorisation-by-lookup.md) and [0020](../decisions/0020-user-category-choices-and-duplicate-rule.md).
 1. **`normalize(description)`** returns `(name, qty, unit)`, in this order:
    1. cut to 1,024 characters, lowercase, fold `ä ö ü ß` to `ae oe ue ss`, strip other accents, drop the redaction placeholders `[id]`, `[card]`, `[iban]`
-   2. **per-unit prices** are dropped first (`x 2,99 eur/kg`, `1,99€/kg`, `0,89 / 100g`), so `Tomaten 0,512 kg x 2,99 EUR/kg` → tomaten (0.512, kg)
-   3. **quantity and unit:** counts win over measures; the first count in the text wins (`2x Wasser 6x1,5l` → 2), else the first measure; every quantity token is removed from the name
+   2. **per-unit prices** are dropped first (`2,99 eur/kg`, `1,99€/kg`, `0,89 / 100g`); the `x` before one isn't part of it, so a count before it survives: `Tomaten 0,512 kg x 2,99 EUR/kg` → tomaten (0.512, kg), `Banane 2 x 0,99 EUR/Stk` → banane (2, st)
+   3. **quantity and unit:** any count wins over a measure; the first count in the text wins (`2x Wasser 6x1,5l` → 2), else the first measure; counts get unit `st`; every quantity token is removed from the name
       - multipack `NxM<unit>` is a count of N, unit `st`; the pack size isn't kept (`Wasser still 6x1,5l` → wasser still (6, st))
-      - count: `(\d{1,4}) ?(x|stk|stueck|st)` → unit `st`
+      - piece count: `(\d{1,4}) ?(x|stk|stueck|st)`
+      - trailing count `x N`: `(?<![\w.,])x[ ]?(\d{1,4})(?![\w.,])`, so `Bier 0,5 l x 6` → (6, st); a price (`Cola x 2,5`) or a multipack doesn't match
       - measure: `(\d{1,6}([.,]\d{1,3})?) ?(kg|gr|g|ltr|l|ml|cl)` → `kg`, `g`, `l`, `ml` or `cl`
    4. drop pack counts (`100s`), percentages, prices and bare numbers; a number glued into a word stays (`7up`)
-   5. **deposits:** a name containing `pfand` becomes `pfand`, one containing `leergut` becomes `leergut` (0020), so the 0019 Pfand rule survives an exact lookup
+   5. **deposits:** a name with a word (split on non-alphanumerics) that starts or ends with `pfand` becomes `pfand`; otherwise likewise `leergut` (0020, shared helper `deposit_marker`), so the 0019 Pfand rule survives an exact lookup: `Pfandrückgabe`, `Einwegpfand`, `Leergut-Bon` match, `Dampfandruck` doesn't (found by `/code-review`)
    6. per word: the whole token, then the token without edge punctuation, is checked against the abbreviations and qualifiers; otherwise it is split on non-alphanumerics, each part checked again, one-letter parts dropped
    - **Qualifiers (dropped):** bio, organic, oeko, frisch, fresh, kg-ware, kgware, ware, lose, stk, stueck, fk, mk, vfk, ja!, ja, k-classic, k-bio, gut&guenstig, gut&gunstig, gut, guenstig, rewe, edeka, aldi, lidl, penny, netto, kaufland, milsani, milbona, alnatura, enerbio, naturgut, dmbio, and bare unit and currency words without a number: kg, gr, ltr, ml, cl, eur, euro (`st` stays, since it starts names like `St. Michel`)
    - **Abbreviations:** tk→tiefkuehl, h-milch/hmilch→milch, griech→griechisch, schoko→schokolade, mineralw→mineralwasser, addit→additiviert

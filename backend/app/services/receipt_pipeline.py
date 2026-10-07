@@ -20,6 +20,7 @@
   never `logger.exception`, because a traceback can quote values.
 """
 
+import dataclasses
 import json
 import logging
 import threading
@@ -43,7 +44,13 @@ from app.domain.duplicates import ExpenseKey
 from app.domain.facts import ItemFacts, ReceiptFacts
 from app.domain.redaction import clean_merchant, redact_text
 from app.domain.validation import normalize_currency, parse_date
-from app.errors import ExtractionError, ExtractionInterrupted, MalformedOutput, NotAReceipt
+from app.errors import (
+    ExtractionError,
+    ExtractionInterrupted,
+    MalformedOutput,
+    NotAReceipt,
+    StorageError,
+)
 from app.services.categorization import ItemCategorizer, paired_unit
 from app.services.receipts import MEDIA_TYPES
 from app.services.views import cents, optional_cents
@@ -212,6 +219,8 @@ class ReceiptPipeline:
                 image = self._images.read(receipt.image_path)
                 result = extractor.extract(image, MEDIA_TYPES[receipt.image_type])
                 outcome = self._extracted(receipt_id, result)
+            except ExtractionInterrupted as exc:
+                outcome = failed(exc, exc.reason)  # the reason names the cause's type
             except ExtractionError as exc:
                 outcome = failed(exc)
             except Exception as exc:
@@ -238,9 +247,6 @@ class ReceiptPipeline:
         date_text = redact_text(ex.date) if ex.date is not None else None
         currency_text = redact_text(ex.currency) if ex.currency is not None else None
         descriptions = [redact_text(item.description) for item in ex.line_items]
-        day = parse_date(date_text) if date_text else None
-        table, others = self._lookups(day, total)
-        categorized = [self._categorizer.categorize(d, table) for d in descriptions]
         facts = ReceiptFacts(
             merchant=merchant,
             date=date_text,
@@ -249,17 +255,32 @@ class ReceiptPipeline:
             tax=None,
             total=total,
             items=tuple(
-                ItemFacts(description, amount, category.category)
-                for description, amount, category in zip(
-                    descriptions, amounts, categorized, strict=True
-                )
+                ItemFacts(description, amount)
+                for description, amount in zip(descriptions, amounts, strict=True)
             ),
             unreadable_fields=tuple(ex.unreadable_fields),
         )
+        # Plausibility needs no categories (merchant, total, item count), so a non-receipt
+        # never touches the database.
         if not is_plausible_receipt(facts):
             raise NotAReceipt(
                 "plausibility rule", raw_output=result.raw_output, latency_s=result.latency_s
             )
+        day = parse_date(date_text) if date_text else None
+        try:
+            table, others = self._lookups(day, total)
+        except StorageError as exc:
+            # `interrupted`, as for any unexpected error, but the model call's latency is
+            # kept; the raw output isn't (only kept for malformed_output and not_a_receipt).
+            raise ExtractionInterrupted(type(exc).__name__, latency_s=result.latency_s) from exc
+        categorized = [self._categorizer.categorize(d, table) for d in descriptions]
+        facts = dataclasses.replace(
+            facts,
+            items=tuple(
+                dataclasses.replace(item_facts, category=category.category)
+                for item_facts, category in zip(facts.items, categorized, strict=True)
+            ),
+        )
         # Called here, inside the task: a receipt queued over midnight uses the new day.
         review_status, flags = assess(facts, self._today(), others)
 

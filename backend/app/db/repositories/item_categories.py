@@ -3,7 +3,8 @@
 import datetime as dt
 from collections.abc import Mapping
 
-from sqlalchemy import select
+from sqlalchemy import and_, case, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from app.db.models import ItemCategoryRow
@@ -59,19 +60,33 @@ class ItemCategoryRepository:
         return self._put(name, category, USER)
 
     def put_seed(self, name: str, category: str) -> ItemCategoryRecord:
-        """Insert or overwrite the row as a seed entry (restoring the seed after a delete)."""
+        """Insert or overwrite the row as a seed entry (restoring the seed over a user row)."""
         return self._put(name, category, SEED)
 
     def _put(self, name: str, category: str, source: str) -> ItemCategoryRecord:
-        row = self._session.get(ItemCategoryRow, name)
-        if row is None:
-            row = ItemCategoryRow(normalized_name=name)
-            self._session.add(row)
-        if row.category != category or row.source != source or row.updated_at is None:
-            row.category = category
-            row.source = source
-            row.updated_at = _now()
-        self._session.flush()
+        """One `INSERT ... ON CONFLICT DO UPDATE`, so two saves of the same new name can't
+        both insert it. `updated_at` changes only when the category or source does.
+
+        SQLite-specific, like the rest of the storage (decision 0006).
+        """
+        table = ItemCategoryRow.__table__
+        statement = sqlite_insert(table).values(
+            normalized_name=name, category=category, source=source, updated_at=_now()
+        )
+        excluded = statement.excluded
+        unchanged = and_(table.c.category == excluded.category, table.c.source == excluded.source)
+        statement = statement.on_conflict_do_update(
+            index_elements=[table.c.normalized_name],
+            set_={
+                "category": excluded.category,
+                "source": excluded.source,
+                "updated_at": case((unchanged, table.c.updated_at), else_=excluded.updated_at),
+            },
+        )
+        self._session.execute(statement)
+        # The statement bypasses the identity map; read the row as stored.
+        row = self._session.get(ItemCategoryRow, name, populate_existing=True)
+        assert row is not None
         return to_record(row)
 
     def delete(self, name: str) -> bool:

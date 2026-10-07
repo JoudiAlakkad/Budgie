@@ -69,9 +69,9 @@ def prepare_storage(settings: Settings) -> StorageStatus:
             continue  # no tables to seed; the database failure is already reported
         try:
             step()
-        # Any exception: the seed step can also fail on a missing or broken YAML file, and
-        # startup must never crash on storage (persistence.md, decision 0020).
-        except Exception as exc:
+        # Storage failures only; `sync_seed` wraps a missing or broken seed file in
+        # StorageError, so a bug in any step still surfaces (decision 0020).
+        except StorageError as exc:
             # Type names only: a traceback could quote a path or the database URL.
             logger.error(
                 "Storage step %s failed at startup (%s); continuing without it",

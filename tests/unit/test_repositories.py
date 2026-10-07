@@ -7,7 +7,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import event, text
 
 from app.db.models import DecimalText, MoneyCents
 from app.db.records import (
@@ -668,6 +668,68 @@ def test_upsert_user_overrides_a_seed_entry_and_stamps_it(db: Database) -> None:
     assert record.updated_at >= seeded.updated_at
     assert record.updated_at.tzinfo is None  # naive UTC
     assert table(db) == {"banane": ("snacks_sweets", "user")}
+
+
+def test_a_save_is_one_insert_on_conflict_without_a_read_first(db: Database) -> None:
+    """Race-free (review): two saves of the same new name can't both try a plain INSERT."""
+    statements: list[str] = []
+
+    def record(conn, cursor, statement, parameters, context, executemany) -> None:  # type: ignore[no-untyped-def]
+        statements.append(statement)
+
+    event.listen(db.engine, "before_cursor_execute", record)
+    try:
+        with db.transaction() as session:
+            ItemCategoryRepository(session).upsert_user("zwiebelkuchen", "eating_out")
+            ItemCategoryRepository(session).put_seed("banane", "groceries.fresh")
+    finally:
+        event.remove(db.engine, "before_cursor_execute", record)
+
+    writes = [s for s in statements if s.lstrip().upper().startswith("INSERT")]
+    assert len(writes) == 2
+    assert all("ON CONFLICT" in s.upper() for s in writes)
+    first = next(i for i, s in enumerate(statements) if s in writes)
+    assert not any(s.lstrip().upper().startswith("SELECT") for s in statements[:first])
+
+
+def test_a_save_over_a_row_written_by_someone_else_updates_it(db: Database) -> None:
+    with db.transaction() as session:
+        repo = ItemCategoryRepository(session)
+        assert repo.get("zwiebelkuchen") is None
+        # Another writer inserted the name after this session looked.
+        session.execute(
+            text(
+                "INSERT INTO item_categories (normalized_name, category, source, updated_at) "
+                "VALUES ('zwiebelkuchen', 'other', 'seed', '2026-01-01 00:00:00')"
+            )
+        )
+        record = repo.upsert_user("zwiebelkuchen", "eating_out")
+
+    assert (record.category, record.source) == ("eating_out", "user")
+    assert record.updated_at > dt.datetime(2026, 1, 1)
+    assert table(db) == {"zwiebelkuchen": ("eating_out", "user")}
+
+
+def test_saving_the_same_value_keeps_updated_at(db: Database) -> None:
+    with db.transaction() as session:
+        first = ItemCategoryRepository(session).upsert_user("banane", "other")
+    with db.transaction() as session:
+        again = ItemCategoryRepository(session).upsert_user("banane", "other")
+        changed = ItemCategoryRepository(session).upsert_user("banane", "drinks")
+
+    assert again.updated_at == first.updated_at
+    assert changed.updated_at >= first.updated_at
+    assert changed.category == "drinks"
+
+
+def test_put_seed_turns_a_user_row_back_into_the_seed_entry(db: Database) -> None:
+    with db.transaction() as session:
+        repo = ItemCategoryRepository(session)
+        repo.upsert_user("banane", "other")
+        restored = repo.put_seed("banane", "groceries.fresh")
+
+    assert (restored.category, restored.source) == ("groceries.fresh", "seed")
+    assert table(db) == {"banane": ("groceries.fresh", "seed")}
 
 
 def test_put_seed_restores_a_seed_entry(db: Database) -> None:

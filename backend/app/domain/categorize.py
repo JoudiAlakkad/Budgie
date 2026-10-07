@@ -8,15 +8,17 @@ loaded. Everything is deterministic and pure: no model, no database.
 Steps of `normalize`, in order:
 1. cut the text to `MAX_DESCRIPTION_CHARS`, lowercase it, fold `ä ö ü ß` to `ae oe ue ss`,
    drop other accents (`é` -> `e`) and redaction placeholders (`[id]`, `[card]`, `[iban]`)
-2. drop per-unit prices (`x 2,99 eur/kg`, `1,99€/kg`, `0,89/100g`)
+2. drop per-unit prices (`2,99 eur/kg`, `1,99€/kg`, `0,89/100g`), not the `x` before
+   them
 3. take out the quantity and unit: a count wins over a measure. Counts are a multipack
-   `NxM<unit>` (`6x1,5l` -> 6) and `2x`, `3 x`, `12 stk`, `2 st`; the first count in the
-   text counts, with unit `st`. Measures are `1 kg`, `500g`, `2,5kg`, `1,5l`; the first
-   one counts. Every quantity token is removed from the name
+   `NxM<unit>` (`6x1,5l` -> 6), `2x`, `3 x`, `12 stk`, `2 st`, and a trailing `x N`
+   (`0,5 l x 6` -> 6); the first count in the text counts, with unit `st`. Measures are
+   `1 kg`, `500g`, `2,5kg`, `1,5l`; the first one counts. Every quantity token is
+   removed from the name
 4. drop pack counts (`100s`), percentages (`3,5%`) and prices or other bare numbers
    (`0,99`, `1.99`, `301`)
-5. deposit canonicalisation (decision 0020): a name containing `pfand` becomes `pfand`,
-   one containing `leergut` becomes `leergut`
+5. deposit canonicalisation (decision 0020): a name with a word that starts or ends with
+   `pfand` becomes `pfand`, one with `leergut` becomes `leergut` (`pfand` first)
 6. per word: expand abbreviations (`tk` -> `tiefkuehl`, `h-milch` -> `milch`), drop
    qualifiers (`bio`, `frisch`, own brands such as `ja!`, `k-classic`, `gut&guenstig`)
    and bare unit or currency words without a number (`kg`, `eur`, `€`), split the rest
@@ -49,8 +51,9 @@ DEPOSIT_MARKERS = ("pfand", "leergut")
 _FOLD = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"})
 
 # A per-unit price: `x 2,99 eur/kg`, `1,99€/kg`, `0,89 / 100g`, `2,49 eur/l`.
+# The `x` before it is left alone: in `2 x 0,99 eur/stk` it belongs to the count.
 _UNIT_PRICE = re.compile(
-    r"(?<![\w.,])(?:x[ ]?)?\d{1,6}(?:[.,]\d{1,3})?[ ]?(?:eur|€)?[ ]?/[ ]?"
+    r"(?<![\w.,])\d{1,6}(?:[.,]\d{1,3})?[ ]?(?:eur|€)?[ ]?/[ ]?"
     r"(?:\d{1,4}[ ]?)?(?:kg|gr|g|ltr|l|ml|cl|stk|st)(?!\w)"
 )
 # A multipack: `6x1,5l`, `4 x 0,33 l`, `10x100g`; the count of packs is the qty.
@@ -59,6 +62,9 @@ _MULTIPACK = re.compile(
 )
 # A count of pieces: `2x`, `3 x`, `12 stk`, `12 stk.`, `2 st`, `1 stueck`.
 _COUNT = re.compile(r"(?<![\w.,])(\d{1,4})[ ]?(x|stk|stueck|st)(?!\w)\.?")
+# A count after the measure: `0,5 l x 6`, `125 g x 2`; not a price (`x 0.99`) or a
+# multipack (`6x1,5l`, where the `x` follows a digit).
+_TRAILING_COUNT = re.compile(r"(?<![\w.,])x[ ]?(\d{1,4})(?![\w.,])")
 # A measure: `1 kg`, `500g`, `2,5kg`, `1,5l`, `0.33 l`, `250 ml`.
 _MEASURE = re.compile(r"(?<![\w.,])(\d{1,6}(?:[.,]\d{1,3})?)[ ]?(kg|gr|g|ltr|l|ml|cl)(?!\w)\.?")
 # A pack count printed after the name, e.g. `Box 100s` (100 sheets); dropped, not a qty.
@@ -156,10 +162,20 @@ def fold(text: str) -> str:
     return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
 
 
+def deposit_marker(text: str) -> str | None:
+    """`pfand` or `leergut` if a word of the folded `text` starts or ends with it
+    (`pfandrueckgabe`, `einwegpfand`, `leergut-bon`), else None; `dampfandruck` isn't one.
+    `pfand` is checked first."""
+    words = [word for word in _NON_WORD.split(text) if word]
+    for marker in DEPOSIT_MARKERS:
+        if any(word.startswith(marker) or word.endswith(marker) for word in words):
+            return marker
+    return None
+
+
 def is_deposit(name: str) -> bool:
-    """True for a Pfand or Leergut line (decision 0019); matches on the folded text."""
-    folded = fold(name)
-    return any(marker in folded for marker in DEPOSIT_MARKERS)
+    """True for a Pfand or Leergut line (decision 0019), by `deposit_marker`."""
+    return deposit_marker(fold(name)) is not None
 
 
 def _decimal(text: str) -> Decimal:
@@ -167,9 +183,10 @@ def _decimal(text: str) -> Decimal:
 
 
 def _quantity(text: str) -> tuple[Decimal | None, str | None]:
-    """The first count (a multipack or a piece count, whichever comes first), else the
-    first measure; (None, None) if there is neither."""
-    counts = [m for m in (_MULTIPACK.search(text), _COUNT.search(text)) if m is not None]
+    """The first count (a multipack, a piece count or a trailing `x N`, whichever comes
+    first), else the first measure; (None, None) if there is neither."""
+    found = (_MULTIPACK.search(text), _COUNT.search(text), _TRAILING_COUNT.search(text))
+    counts = [m for m in found if m is not None]
     if counts:
         first = min(counts, key=lambda m: m.start())
         return Decimal(first.group(1)), COUNT_UNIT
@@ -210,13 +227,14 @@ def normalize(description: str) -> Normalized:
     qty, unit = _quantity(text)
     text = _MULTIPACK.sub(" ", text)
     text = _COUNT.sub(" ", text)
+    text = _TRAILING_COUNT.sub(" ", text)
     text = _MEASURE.sub(" ", text)
     text = _PACK.sub(" ", text)
     text = _PERCENT.sub(" ", text)
     text = _NUMBER.sub(" ", text)
-    for marker in DEPOSIT_MARKERS:
-        if marker in text:
-            return Normalized(marker, qty, unit)
+    marker = deposit_marker(text)
+    if marker is not None:
+        return Normalized(marker, qty, unit)
     words = [word for token in text.split() for word in _words(token)]
     return Normalized(" ".join(words), qty, unit)
 

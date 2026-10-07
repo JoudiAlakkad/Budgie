@@ -154,6 +154,16 @@ def test_normalize_real_receipt_strings(
         ("Joghurt 10x100g", "joghurt", "10", "st"),
         ("2x Wasser 6x1,5l", "wasser", "2", "st"),  # the first count in the text
         ("3x50 boegen", "3x50 boegen", None, None),  # no unit: not a multipack
+        # code review: the count before a per-unit price stays, a trailing `x N` counts
+        ("Banane 2 x 0,99 EUR/Stk", "banane", "2", "st"),
+        ("Bier 0,5 l x 6", "bier", "6", "st"),
+        ("Mozzarella 125 g x 2", "mozzarella", "2", "st"),
+        ("Cola x 2,5", "cola", None, None),  # a price, not a count
+        # deposits: a word that starts or ends with the marker, not any substring
+        ("Mehrwegpfand", "pfand", None, None),
+        ("Pfandflasche 0,15", "pfand", None, None),
+        ("Dampfandruck", "dampfandruck", None, None),
+        ("Leergutautomat", "leergut", None, None),
     ],
 )
 def test_normalize_rules(description: str, name: str, qty: str | None, unit: str | None) -> None:
@@ -193,6 +203,10 @@ def test_fold(text: str, folded: str) -> None:
         ("einwegpfand", True),
         ("apfel", False),
         ("pfannkuchen", False),
+        ("mehrwegpfand", True),
+        ("Leergut-Bon", True),
+        ("dampfandruck", False),
+        ("Dampfandruck", False),
         ("leer", False),
         ("", False),
     ],
@@ -382,6 +396,12 @@ HOSTILE_UNITS = [
     "/",
     "eur",
     "€",
+    "x 6",
+    "x",
+    "l x 6 ",
+    "2 x 0,99 eur/stk ",
+    "pfand",
+    "dampfandruck ",
 ]
 
 

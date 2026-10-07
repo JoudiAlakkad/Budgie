@@ -10,7 +10,7 @@ import yaml
 from app.config import Settings
 from app.db.repositories.item_categories import ItemCategoryRepository
 from app.errors import StorageError
-from app.services import storage
+from app.services import item_categories, storage
 from app.services.dependencies import database_for, dispose_databases
 from app.services.item_categories import InvalidSeed, load_seed
 from app.services.storage import NOT_PREPARED, SEED_STEP, StorageStatus, prepare_storage
@@ -124,30 +124,74 @@ def test_a_restart_keeps_user_choices_and_restores_the_seed(tmp_path: Path) -> N
         FileNotFoundError("seed missing"),
         InvalidSeed("unknown category"),
         yaml.YAMLError("broken"),
-        StorageError(),
     ],
-    ids=["missing file", "invalid seed", "broken yaml", "storage"],
+    ids=["missing file", "invalid seed", "broken yaml"],
 )
-def test_a_seed_failure_is_reported_but_never_stops_startup(
+def test_a_seed_that_cannot_be_loaded_is_reported_but_never_stops_startup(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
     error: Exception,
 ) -> None:
-    def broken(db: object) -> None:
+    def broken() -> None:
         raise error
 
-    monkeypatch.setattr(storage, "sync_seed", broken)
+    monkeypatch.setattr(item_categories, "load_seed", broken)
 
     status = prepare_storage(make_settings(tmp_path))
 
     assert status.failures == (SEED_STEP,)
     assert status.database_ok  # the tables are there; the startup reset still runs
     assert not status.ok  # health reports db: error, so the docker gate catches it
+    # sync_seed wraps it in StorageError; the log names the original type only.
     assert (
         f"Storage step {SEED_STEP} failed at startup ({type(error).__name__}); "
         "continuing without it" in caplog.messages
     )
+    assert all(record.exc_info is None for record in caplog.records)
+
+
+def test_sync_seed_wraps_load_errors_in_storage_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken() -> None:
+        raise InvalidSeed("unknown category")
+
+    monkeypatch.setattr(item_categories, "load_seed", broken)
+    db = database_for(make_settings(tmp_path).database_url)
+
+    with pytest.raises(StorageError) as caught:
+        item_categories.sync_seed(db)
+
+    assert isinstance(caught.value.__cause__, InvalidSeed)
+
+
+def test_a_storage_error_while_syncing_is_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken(db: object) -> None:
+        raise StorageError()
+
+    monkeypatch.setattr(storage, "sync_seed", broken)
+
+    status = prepare_storage(make_settings(tmp_path))
+
+    assert status.failures == (SEED_STEP,)
+
+
+@pytest.mark.parametrize("step", ["sync_seed", "_prepare_upload_dir"])
+def test_a_bug_in_a_step_is_not_swallowed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, step: str
+) -> None:
+    """Only StorageError is caught (review): a programming error surfaces."""
+
+    def bug(*args: object) -> None:
+        raise RuntimeError("bug")
+
+    monkeypatch.setattr(storage, step, bug)
+
+    with pytest.raises(RuntimeError):
+        prepare_storage(make_settings(tmp_path))
 
 
 def test_no_seed_sync_without_tables(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

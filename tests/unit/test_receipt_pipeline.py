@@ -228,7 +228,8 @@ def test_a_storage_error_on_the_lookup_read_fails_the_receipt_as_interrupted(
     db_url: str, images: ImageStore, caplog: pytest.LogCaptureFixture
 ) -> None:
     """The read of the lookup table and the duplicate candidates (decision 0020) runs
-    after the model call; if it fails, the receipt fails like any other unexpected error."""
+    after the model call; if it fails, the receipt is `interrupted`, with the model call's
+    latency kept (the raw output is kept only for malformed_output and not_a_receipt)."""
     db = FlakyDatabase(db_url, failing=set())
     receipt_id = new_receipt(db, images)  # transaction 1
     db.failing = {3}  # 2: uploaded -> extracting, 3: the lookup read, 4: the outcome
@@ -238,7 +239,25 @@ def test_a_storage_error_on_the_lookup_read_fails_the_receipt_as_interrupted(
     record = get(db, receipt_id)
     assert record is not None
     assert (record.status, record.error, record.raw_model_output) == ("failed", "interrupted", None)
+    assert record.latency_ms == 250
     assert f"Receipt {receipt_id}: failed with interrupted (StorageError)" in caplog.messages
+    db.dispose()
+
+
+def test_a_non_receipt_does_not_read_the_lookup_table(db_url: str, images: ImageStore) -> None:
+    """The plausibility rule needs no categories, so it runs before the lookup read."""
+    implausible = VALID.model_copy(update={"merchant": None, "total": None})
+    result = ExtractionResult(
+        implausible, "fake-model", "v2", 0.25, implausible.model_dump_json(), False, 10
+    )
+    db = FlakyDatabase(db_url, failing=set())
+    receipt_id = new_receipt(db, images)  # transaction 1
+
+    pipeline(db, images, FakeExtractor(result)).run(receipt_id)
+
+    assert db.count == 3  # 2: uploaded -> extracting, 3: the outcome; no lookup read
+    record = get(db, receipt_id)
+    assert record is not None and (record.status, record.error) == ("failed", "not_a_receipt")
     db.dispose()
 
 
