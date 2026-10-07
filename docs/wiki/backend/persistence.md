@@ -8,7 +8,7 @@ The data is stored in SQLite through SQLAlchemy, and only `app/db/` touches it (
 - Both live on the Docker volume `budgie-data`.
 
 ## Schema
-`receipts`, `expenses` and `line_items` are fixed in F05; the other tables are drafts until their feature.
+`receipts`, `expenses` and `line_items` are fixed in F05, `item_categories` in F07; the other tables are drafts until their feature.
 
 | Table | Columns |
 |---|---|
@@ -33,7 +33,9 @@ The data is stored in SQLite through SQLAlchemy, and only `app/db/` touches it (
 - **The engine is built with `hide_parameters=True`,** so a logged `StorageError` traceback never shows SQL parameters such as merchants or descriptions ([0017](../decisions/0017-personal-data-is-redacted-by-code.md)).
 - Tables are created on startup with `metadata.create_all`. There is no migration tool, which is fine for the scope of this project.
 - F1 builds only the engine, the session factory and `Base` (`db/session.py`, `db/models.py`). Each table arrives with the feature that first uses it.
-- The seed rows for `item_categories` are inserted when the table is empty.
+- **Seed sync (F07, [0020](../decisions/0020-user-category-choices-and-duplicate-rule.md)):** on startup, `prepare_storage` syncs `app/domain/data/item_categories_seed.yaml` once the tables exist: missing names are inserted, rows still `seed` take the YAML value, `user` rows and names no longer in the YAML stay. A failure is step `item_categories_seed` in `StorageStatus` (health `db: error`, so the docker gate catches a missing YAML) and never stops startup.
+- `ExpenseRepository.duplicate_candidates(date, total, exclude_id)` returns same-date expenses whose total is within a cent of the cent-rounded total; the merchant is compared in the domain.
+- **Known limit:** two concurrent requests saving the same new name can both insert it; one gets a one-off `500 storage_error`.
 - Deleting a receipt removes its image file, its expense and its line items. `item_categories` stays. `DELETE /expenses/{id}` with a receipt deletes through `ReceiptRepository.delete` (cascade), then the file; without a receipt only the expense rows go.
   - The rows go first (ORM cascade), then the file. If removing the file fails, that is logged and the answer is still `204`; an orphan file is harmless.
   - Images are written to a temp file, then moved in with `os.replace`. If the receipt row can't be created, the file is removed again.
