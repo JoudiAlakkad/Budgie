@@ -1,13 +1,19 @@
-"""`prepare_storage` runs every step and reports failures instead of raising."""
+"""`prepare_storage` runs every step and reports failures instead of raising; it syncs the
+item category seed once the tables exist (F07, decision 0020)."""
 
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+import yaml
 
 from app.config import Settings
-from app.services.dependencies import dispose_databases
-from app.services.storage import NOT_PREPARED, StorageStatus, prepare_storage
+from app.db.repositories.item_categories import ItemCategoryRepository
+from app.errors import StorageError
+from app.services import storage
+from app.services.dependencies import database_for, dispose_databases
+from app.services.item_categories import InvalidSeed, load_seed
+from app.services.storage import NOT_PREPARED, SEED_STEP, StorageStatus, prepare_storage
 
 
 @pytest.fixture(autouse=True)
@@ -76,3 +82,79 @@ def test_not_prepared_is_not_ok() -> None:
 )
 def test_database_ok_ignores_the_upload_dir(status: StorageStatus, database_ok: bool) -> None:
     assert status.database_ok is database_ok
+
+
+# ---------------------------------------------------------------- item category seed (F07)
+
+
+def lookup_table(settings: Settings) -> dict[str, tuple[str, str]]:
+    with database_for(settings.database_url).transaction() as session:
+        return ItemCategoryRepository(session).table()
+
+
+def test_startup_syncs_the_seed(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+
+    assert prepare_storage(settings) == StorageStatus(prepared=True)
+
+    table = lookup_table(settings)
+    assert table == {name: (category, "seed") for name, category in load_seed().items()}
+
+
+def test_a_restart_keeps_user_choices_and_restores_the_seed(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    prepare_storage(settings)
+    with database_for(settings.database_url).transaction() as session:
+        repo = ItemCategoryRepository(session)
+        repo.upsert_user("banane", "snacks_sweets")
+        repo.put_seed("kaffee", "other")  # a seed row with an old value
+        repo.delete("pfand")
+
+    assert prepare_storage(settings) == StorageStatus(prepared=True)
+
+    table = lookup_table(settings)
+    assert table["banane"] == ("snacks_sweets", "user")
+    assert table["kaffee"] == (load_seed()["kaffee"], "seed")
+    assert table["pfand"] == ("deposit", "seed")
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        FileNotFoundError("seed missing"),
+        InvalidSeed("unknown category"),
+        yaml.YAMLError("broken"),
+        StorageError(),
+    ],
+    ids=["missing file", "invalid seed", "broken yaml", "storage"],
+)
+def test_a_seed_failure_is_reported_but_never_stops_startup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    error: Exception,
+) -> None:
+    def broken(db: object) -> None:
+        raise error
+
+    monkeypatch.setattr(storage, "sync_seed", broken)
+
+    status = prepare_storage(make_settings(tmp_path))
+
+    assert status.failures == (SEED_STEP,)
+    assert status.database_ok  # the tables are there; the startup reset still runs
+    assert not status.ok  # health reports db: error, so the docker gate catches it
+    assert (
+        f"Storage step {SEED_STEP} failed at startup ({type(error).__name__}); "
+        "continuing without it" in caplog.messages
+    )
+
+
+def test_no_seed_sync_without_tables(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[object] = []
+    monkeypatch.setattr(storage, "sync_seed", calls.append)
+
+    status = prepare_storage(make_settings(tmp_path, database_url="not a url"))
+
+    assert status.failures == ("database",)
+    assert calls == []

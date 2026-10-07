@@ -10,6 +10,7 @@ from fastapi import Request
 from app.config import Settings
 from app.errors import StorageError
 from app.services.dependencies import database_for, dispose_databases
+from app.services.item_categories import sync_seed
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ class StorageStatus:
 
 
 DATABASE_STEP = "database"
+SEED_STEP = "item_categories_seed"
 
 # Before the lifespan has run, nothing has been created yet.
 NOT_PREPARED = StorageStatus(prepared=False)
@@ -49,9 +51,10 @@ def _prepare_upload_dir(upload_dir: str) -> None:
 
 
 def prepare_storage(settings: Settings) -> StorageStatus:
-    """Create the upload directory and the database tables.
+    """Create the upload directory and the database tables, then sync the item seed.
 
-    Both steps always run, so a broken upload dir does not skip table creation. Failures
+    The first two steps always run, so a broken upload dir does not skip table creation;
+    the seed sync runs once the tables exist (decision 0020). Failures
     are logged and returned, never raised: the app keeps serving so /api/health can report
     `db: error` (persistence.md).
     """
@@ -59,11 +62,16 @@ def prepare_storage(settings: Settings) -> StorageStatus:
     steps = (
         ("upload_dir", lambda: _prepare_upload_dir(settings.upload_dir)),
         (DATABASE_STEP, lambda: database_for(settings.database_url).init_db()),
+        (SEED_STEP, lambda: sync_seed(database_for(settings.database_url))),
     )
     for name, step in steps:
+        if name == SEED_STEP and DATABASE_STEP in failures:
+            continue  # no tables to seed; the database failure is already reported
         try:
             step()
-        except StorageError as exc:
+        # Any exception: the seed step can also fail on a missing or broken YAML file, and
+        # startup must never crash on storage (persistence.md, decision 0020).
+        except Exception as exc:
             # Type names only: a traceback could quote a path or the database URL.
             logger.error(
                 "Storage step %s failed at startup (%s); continuing without it",

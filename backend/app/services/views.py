@@ -70,6 +70,14 @@ class ReceiptView:
 
 
 @dataclass(frozen=True)
+class ItemCategoryView:
+    normalized_name: str
+    category: str
+    source: str
+    updated_at: dt.datetime
+
+
+@dataclass(frozen=True)
 class ImageView:
     data: bytes
     media_type: str

@@ -1,5 +1,6 @@
 """Expense use cases (contracts/api-endpoints.md#expenses): list, get and manual create
-(F05); edit, confirm and delete (F06, decision 0018)."""
+(F05); edit, confirm and delete (F06, decision 0018); the lookup table and duplicates on
+create and edit (F07, decision 0020)."""
 
 import dataclasses
 import datetime as dt
@@ -20,9 +21,12 @@ from app.db.records import (
     NewLineItem,
 )
 from app.db.repositories.expenses import ExpenseRepository
+from app.db.repositories.item_categories import ItemCategoryRepository
 from app.db.repositories.receipts import ReceiptRepository
 from app.db.session import Database
+from app.domain.categorize import CategoryTable
 from app.domain.confidence import assess
+from app.domain.duplicates import ExpenseKey
 from app.domain.facts import ItemFacts, ReceiptFacts, is_blank
 from app.errors import (
     IncompleteExpense,
@@ -31,7 +35,7 @@ from app.errors import (
     NotFound,
     UncategorizedItems,
 )
-from app.services.categorization import ItemCategorizer
+from app.services.categorization import ItemCategorizer, paired_unit
 from app.services.receipt_pipeline import Today
 from app.services.receipts import remove_image
 from app.services.views import ExpenseView, cents, expense_view, optional_cents
@@ -151,37 +155,42 @@ class ExpenseService:
         With `receipt_id`, the receipt goes `failed` -> `extracted` in the same transaction
         (decision 0015): `NotFound` for an unknown receipt, `InvalidState` unless it is
         failed. The merchant is stored as typed; a category sent on an item is stored with
-        `category_source: user`.
+        `category_source: user` and saved to the lookup table (decision 0020).
         """
-        items = [self._line_item(item) for item in body.line_items]
-        review_status, flags = self._assess(
-            merchant=body.merchant,
-            date=body.date,
-            currency=body.currency,
-            subtotal=body.subtotal,
-            tax=body.tax,
-            total=body.total,
-            items=items,
-            unreadable_fields=(),
-        )
-        new = NewExpense(
-            receipt_id=body.receipt_id,
-            merchant=body.merchant,
-            date=body.date,
-            currency=body.currency,
-            subtotal=optional_cents(body.subtotal),
-            tax=optional_cents(body.tax),
-            total=cents(body.total),
-            source="manual",
-            review_status=review_status,
-            flags=flags,
-            unreadable_fields=(),
-            line_items=tuple(items),
-        )
         with self._db.transaction() as session:
             if body.receipt_id is not None:
                 self._attach(ReceiptRepository(session), body.receipt_id)
-            expense = ExpenseRepository(session).insert(new)
+            expenses = ExpenseRepository(session)
+            categories = ItemCategoryRepository(session)
+            table = self._table(categories, body.line_items)
+            items = [self._line_item(item, table) for item in body.line_items]
+            self._save_choices(categories, body.line_items, items)
+            review_status, flags = self._assess(
+                merchant=body.merchant,
+                date=body.date,
+                currency=body.currency,
+                subtotal=body.subtotal,
+                tax=body.tax,
+                total=body.total,
+                items=items,
+                unreadable_fields=(),
+                others=_duplicate_candidates(expenses, body.date, body.total, None),
+            )
+            new = NewExpense(
+                receipt_id=body.receipt_id,
+                merchant=body.merchant,
+                date=body.date,
+                currency=body.currency,
+                subtotal=optional_cents(body.subtotal),
+                tax=optional_cents(body.tax),
+                total=cents(body.total),
+                source="manual",
+                review_status=review_status,
+                flags=flags,
+                unreadable_fields=(),
+                line_items=tuple(items),
+            )
+            expense = expenses.insert(new)
         logger.info(
             "Expense %d created by hand, %d items, receipt %s",
             expense.id,
@@ -199,6 +208,8 @@ class ExpenseService:
           expense's items, or is repeated, is `InvalidFields` on `line_items.<i>.id`.
         - A confirmed expense becomes unconfirmed, and its receipt goes back from
           `confirmed` to `extracted`, in the same transaction.
+        - A category sent on an item is saved to the lookup table (decision 0020), and
+          `possible_duplicate` is recomputed against every other expense.
 
         A body with no fields is not an edit: it returns the expense unchanged.
         """
@@ -214,13 +225,20 @@ class ExpenseService:
                 name: getattr(body, name) if name in sent else getattr(current, name)
                 for name in EDITABLE_SCALARS
             }
+            items: Sequence[LineItemChange]
             if "line_items" in sent:
-                items = self._edited_items(current, body.line_items)
+                categories = ItemCategoryRepository(session)
+                table = self._table(categories, body.line_items)
+                items = self._edited_items(current, body.line_items, table)
+                self._save_choices(categories, body.line_items, items)
             else:
                 items = [_unchanged(item) for item in current.line_items]
             edited = sent & {*EDITABLE_SCALARS, "line_items"}
             unreadable = tuple(key for key in current.unreadable_fields if key not in edited)
-            review_status, flags = self._assess(**values, items=items, unreadable_fields=unreadable)
+            others = _duplicate_candidates(expenses, values["date"], values["total"], expense_id)
+            review_status, flags = self._assess(
+                **values, items=items, unreadable_fields=unreadable, others=others
+            )
             changes = ExpenseChanges(
                 merchant=values["merchant"],
                 date=values["date"],
@@ -301,6 +319,7 @@ class ExpenseService:
         total: Decimal | None,
         items: Sequence[NewLineItem],
         unreadable_fields: tuple[str, ...],
+        others: Sequence[ExpenseKey],
     ) -> tuple[str, tuple[FlagRecord, ...]]:
         """The review status and flags from the rules; run on every create and edit."""
         facts = ReceiptFacts(
@@ -313,11 +332,11 @@ class ExpenseService:
             items=tuple(ItemFacts(item.description, item.amount, item.category) for item in items),
             unreadable_fields=unreadable_fields,
         )
-        review_status, flags = assess(facts, self._today())
+        review_status, flags = assess(facts, self._today(), others)
         return review_status, tuple(FlagRecord(f.field, f.code, f.message) for f in flags)
 
     def _edited_items(
-        self, current: ExpenseRecord, sent: Sequence[EditedLineItem]
+        self, current: ExpenseRecord, sent: Sequence[EditedLineItem], table: CategoryTable
     ) -> tuple[LineItemChange, ...]:
         """The sent items, categorised per decision 0018, after checking their ids."""
         stored = {item.id: item for item in current.line_items}
@@ -335,31 +354,61 @@ class ExpenseService:
         if problems:
             raise InvalidFields(problems)
         return tuple(
-            self._edited_item(item, stored[item.id] if item.id is not None else None)
+            self._edited_item(item, stored[item.id] if item.id is not None else None, table)
             for item in sent
         )
 
-    def _edited_item(self, item: EditedLineItem, stored: LineItemRecord | None) -> LineItemChange:
+    def _edited_item(
+        self, item: EditedLineItem, stored: LineItemRecord | None, table: CategoryTable
+    ) -> LineItemChange:
         """`category` sent: the user's. An existing item with an unchanged description and
         no `category` keeps its stored one. Otherwise the categorizer decides, as on create."""
-        new = self._line_item(item)
+        new = self._line_item(item, table)
         if item.category is None and stored is not None and item.description == stored.description:
             new = dataclasses.replace(
                 new, category=stored.category, category_source=stored.category_source
             )
         return LineItemChange(id=item.id, **_item_fields(new))
 
-    def _line_item(self, item: LineItemInput) -> NewLineItem:
-        categorized = self._categorizer.categorize(item.description)
+    def _table(
+        self, categories: ItemCategoryRepository, sent: Sequence[LineItemInput]
+    ) -> CategoryTable:
+        """The lookup table with this request's sent categories laid over it, so a choice
+        applies to the rest of the request (decision 0020)."""
+        table = categories.table()
+        overlay = dict(table)
+        for item in sent:
+            if item.category is not None:
+                name = self._categorizer.categorize(item.description, table).normalized_name
+                if name:
+                    overlay[name] = (item.category, "user")
+        return overlay
+
+    @staticmethod
+    def _save_choices(
+        categories: ItemCategoryRepository,
+        sent: Sequence[LineItemInput],
+        items: Sequence[NewLineItem],
+    ) -> None:
+        """Save every category the request sent as the user's choice for that name
+        (decision 0020); an empty normalised name is not saved."""
+        for item, stored in zip(sent, items, strict=True):
+            if item.category is not None and stored.normalized_name:
+                categories.upsert_user(stored.normalized_name, item.category)
+
+    def _line_item(self, item: LineItemInput, table: CategoryTable) -> NewLineItem:
+        categorized = self._categorizer.categorize(item.description, table)
         if item.category is not None:
             category, source = item.category, "user"
         else:
             category, source = categorized.category, categorized.category_source
+        qty = item.qty if item.qty is not None else categorized.qty
         return NewLineItem(
             description=item.description,
             normalized_name=categorized.normalized_name,
-            qty=item.qty if item.qty is not None else categorized.qty,
-            unit=item.unit if item.unit is not None else categorized.unit,
+            qty=qty,
+            # The normaliser's unit only goes with its own qty.
+            unit=item.unit if item.unit is not None else paired_unit(qty, categorized),
             unit_price=optional_cents(item.unit_price),
             amount=cents(item.amount),
             category=category,
@@ -390,6 +439,16 @@ class ExpenseService:
                 f"Receipt {receipt_id} is {current.status}; an expense can be entered by hand "
                 "only for a failed receipt."
             )
+
+
+def _duplicate_candidates(
+    expenses: ExpenseRepository, day: dt.date | None, total: Decimal | None, exclude_id: int | None
+) -> list[ExpenseKey]:
+    """The other expenses the duplicate rule compares with (decision 0020)."""
+    if day is None or total is None:
+        return []
+    candidates = expenses.duplicate_candidates(day, total, exclude_id)
+    return [ExpenseKey(c.id, c.merchant, c.date, c.total) for c in candidates]
 
 
 def _item_fields(item: NewLineItem) -> dict[str, Any]:

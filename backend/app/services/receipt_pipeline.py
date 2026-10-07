@@ -11,6 +11,9 @@
 - **Lean extraction** (decision 0019): the model gives each item's name, qty and line
   total; subtotal, tax and unit price are stored as null. The date comes as printed and
   goes through `redact_text`, then `parse_date`.
+- **Lookup and duplicates** (decision 0020): after the model call, a short read
+  transaction loads the item lookup table and the expenses that could be duplicates;
+  the categorizer and the rules get them as plain values.
 - **Redaction** (decision 0017): `clean_merchant` on the merchant and `redact_text` on
   every description before the facts are built, and on the stored raw output.
 - **Logs** use fixed templates with ids, codes, counts and exception type names only;
@@ -31,14 +34,17 @@ from app.ai.schema import ReceiptExtraction
 from app.db.images import ImageStore
 from app.db.records import FlagRecord, NewExpense, NewLineItem
 from app.db.repositories.expenses import ExpenseRepository
+from app.db.repositories.item_categories import ItemCategoryRepository
 from app.db.repositories.receipts import ReceiptRepository
 from app.db.session import Database
+from app.domain.categorize import CategoryTable
 from app.domain.confidence import assess, is_plausible_receipt
+from app.domain.duplicates import ExpenseKey
 from app.domain.facts import ItemFacts, ReceiptFacts
 from app.domain.redaction import clean_merchant, redact_text
 from app.domain.validation import normalize_currency, parse_date
 from app.errors import ExtractionError, ExtractionInterrupted, MalformedOutput, NotAReceipt
-from app.services.categorization import ItemCategorizer
+from app.services.categorization import ItemCategorizer, paired_unit
 from app.services.receipts import MEDIA_TYPES
 from app.services.views import cents, optional_cents
 
@@ -232,7 +238,9 @@ class ReceiptPipeline:
         date_text = redact_text(ex.date) if ex.date is not None else None
         currency_text = redact_text(ex.currency) if ex.currency is not None else None
         descriptions = [redact_text(item.description) for item in ex.line_items]
-        categorized = [self._categorizer.categorize(d) for d in descriptions]
+        day = parse_date(date_text) if date_text else None
+        table, others = self._lookups(day, total)
+        categorized = [self._categorizer.categorize(d, table) for d in descriptions]
         facts = ReceiptFacts(
             merchant=merchant,
             date=date_text,
@@ -253,19 +261,21 @@ class ReceiptPipeline:
                 "plausibility rule", raw_output=result.raw_output, latency_s=result.latency_s
             )
         # Called here, inside the task: a receipt queued over midnight uses the new day.
-        review_status, flags = assess(facts, self._today())
+        review_status, flags = assess(facts, self._today(), others)
 
         items = []
         for item, description, amount, category in zip(
             ex.line_items, descriptions, amounts, categorized, strict=True
         ):
+            # The model's qty wins over the normaliser's; it is stored unrounded. The
+            # normaliser's unit stays only with its own qty.
+            qty = Decimal(str(item.qty)) if item.qty is not None else category.qty
             items.append(
                 NewLineItem(
                     description=description,
                     normalized_name=category.normalized_name,
-                    # The model's qty wins over the normaliser's; it is stored unrounded.
-                    qty=Decimal(str(item.qty)) if item.qty is not None else category.qty,
-                    unit=category.unit,
+                    qty=qty,
+                    unit=paired_unit(qty, category),
                     unit_price=None,
                     amount=cents(amount),
                     category=category.category,
@@ -277,7 +287,7 @@ class ReceiptPipeline:
             merchant=merchant,
             # An unparseable date is stored as null, an unknown currency as EUR; their
             # flags stay (domain-logic.md).
-            date=parse_date(date_text) if date_text else None,
+            date=day,
             currency=(normalize_currency(currency_text) if currency_text else None)
             or DEFAULT_CURRENCY,
             subtotal=None,
@@ -291,6 +301,21 @@ class ReceiptPipeline:
         )
         latency_ms = round(result.latency_s * 1000)
         return Extracted(expense, latency_ms, redact_raw_output(result.raw_output))
+
+    def _lookups(
+        self, day: date | None, total: Decimal | None
+    ) -> tuple[CategoryTable, list[ExpenseKey]]:
+        """The lookup table and the duplicate candidates, in one short read transaction.
+
+        The receipt has no expense yet, so nothing needs excluding.
+        """
+        with self._db.transaction() as session:
+            table = ItemCategoryRepository(session).table()
+            candidates = []
+            if day is not None and total is not None:
+                candidates = ExpenseRepository(session).duplicate_candidates(day, total)
+        others = [ExpenseKey(c.id, c.merchant, c.date, c.total) for c in candidates]
+        return table, others
 
     def _store(self, receipt_id: int, outcome: Outcome) -> None:
         try:

@@ -18,8 +18,9 @@ from app.ai.prompts import load_prompts
 from app.config import Settings, get_settings
 from app.db.images import ImageStore
 from app.db.session import Database
-from app.services.categorization import ItemCategorizer, PlaceholderCategorizer
+from app.services.categorization import ItemCategorizer, LookupCategorizer
 from app.services.expenses import ExpenseService
+from app.services.item_categories import ItemCategoryService
 from app.services.receipt_pipeline import ExtractorFactory, ReceiptPipeline, Today
 from app.services.receipts import ReceiptService
 
@@ -112,8 +113,8 @@ def get_today() -> Today:
 
 
 def get_item_categorizer() -> ItemCategorizer:
-    """The F05 placeholder; F07 replaces only this provider (decision 0013)."""
-    return PlaceholderCategorizer()
+    """Normaliser plus exact-match lookup in a table the caller passes (0013, 0020)."""
+    return LookupCategorizer()
 
 
 def get_receipt_pipeline(
@@ -133,3 +134,7 @@ def get_expense_service(
     images: ImageStore = Depends(get_image_store),
 ) -> ExpenseService:
     return ExpenseService(db, categorizer, today, images)
+
+
+def get_item_category_service(db: Database = Depends(get_database)) -> ItemCategoryService:
+    return ItemCategoryService(db)
