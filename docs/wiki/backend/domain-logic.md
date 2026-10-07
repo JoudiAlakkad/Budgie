@@ -61,19 +61,21 @@ Sets the review status from the flags ([0008](../decisions/0008-rule-based-revie
 Implements [0013](../decisions/0013-deterministic-item-categorisation-by-lookup.md) and [0020](../decisions/0020-user-category-choices-and-duplicate-rule.md).
 1. **`normalize(description)`** returns `(name, qty, unit)`, in this order:
    1. cut to 1,024 characters, lowercase, fold `ä ö ü ß` to `ae oe ue ss`, strip other accents, drop the redaction placeholders `[id]`, `[card]`, `[iban]`
-   2. **quantity and unit:** a count wins over a measure; the first match of the winning kind counts, and every quantity token is removed from the name
+   2. **per-unit prices** are dropped first (`x 2,99 eur/kg`, `1,99€/kg`, `0,89 / 100g`), so `Tomaten 0,512 kg x 2,99 EUR/kg` → tomaten (0.512, kg)
+   3. **quantity and unit:** counts win over measures; the first count in the text wins (`2x Wasser 6x1,5l` → 2), else the first measure; every quantity token is removed from the name
+      - multipack `NxM<unit>` is a count of N, unit `st`; the pack size isn't kept (`Wasser still 6x1,5l` → wasser still (6, st))
       - count: `(\d{1,4}) ?(x|stk|stueck|st)` → unit `st`
       - measure: `(\d{1,6}([.,]\d{1,3})?) ?(kg|gr|g|ltr|l|ml|cl)` → `kg`, `g`, `l`, `ml` or `cl`
-   3. drop pack counts (`100s`), percentages, prices and bare numbers; a number glued into a word stays (`7up`)
-   4. **deposits:** a name containing `pfand` becomes `pfand`, one containing `leergut` becomes `leergut` (0020), so the 0019 Pfand rule survives an exact lookup
-   5. per word: the whole token, then the token without edge punctuation, is checked against the abbreviations and qualifiers; otherwise it is split on non-alphanumerics, each part checked again, one-letter parts dropped
-   - **Qualifiers (dropped):** bio, organic, oeko, frisch, fresh, kg-ware, kgware, ware, lose, stk, stueck, fk, mk, vfk, ja!, ja, k-classic, k-bio, gut&guenstig, gut&gunstig, gut, guenstig, rewe, edeka, aldi, lidl, penny, netto, kaufland, milsani, milbona, alnatura, enerbio, naturgut, dmbio
+   4. drop pack counts (`100s`), percentages, prices and bare numbers; a number glued into a word stays (`7up`)
+   5. **deposits:** a name containing `pfand` becomes `pfand`, one containing `leergut` becomes `leergut` (0020), so the 0019 Pfand rule survives an exact lookup
+   6. per word: the whole token, then the token without edge punctuation, is checked against the abbreviations and qualifiers; otherwise it is split on non-alphanumerics, each part checked again, one-letter parts dropped
+   - **Qualifiers (dropped):** bio, organic, oeko, frisch, fresh, kg-ware, kgware, ware, lose, stk, stueck, fk, mk, vfk, ja!, ja, k-classic, k-bio, gut&guenstig, gut&gunstig, gut, guenstig, rewe, edeka, aldi, lidl, penny, netto, kaufland, milsani, milbona, alnatura, enerbio, naturgut, dmbio, and bare unit and currency words without a number: kg, gr, ltr, ml, cl, eur, euro (`st` stays, since it starts names like `St. Michel`)
    - **Abbreviations:** tk→tiefkuehl, h-milch/hmilch→milch, griech→griechisch, schoko→schokolade, mineralw→mineralwasser, addit→additiviert
    - **Examples:** `BIO BANANE 1 KG` → banane (1, kg); `KARTOFFELN FK 2,5KG` → kartoffeln (2.5, kg); `RISPENTOMATEN KG-WARE` → rispentomaten; `JOGHURT NACH GRIECH. A` → joghurt nach griechisch; `Pfandrückgabe` → pfand
    - **Slow-regex guard:** fixed-size hostile inputs at 1,024 and 65,536 characters under `SLOW_S`; real runs take about 10 ms.
 2. **`lookup(name, table)`** returns `(category, source)`, exact match only; a miss or an empty name is `("uncategorized", "none")`.
 3. **Unit only with its own quantity:** the services keep the normaliser's unit only when the stored qty is the normaliser's too, so `takimeki 90g` with the model's qty 1 isn't stored as "1 g".
-4. **Saved choices** (0020): a `category` sent on an item in `POST`/`PATCH /expenses` is upserted as `item_categories[normalized_name]` with source `user`, overriding the seed, in the same transaction; the request's choices also apply to its other items.
+4. **Saved choices** (0020): a `category` sent on an item in `POST`/`PATCH /expenses` that is the user's **choice** (a new item, or a category different from the stored item's) is upserted as `item_categories[normalized_name]` with source `user`, overriding the seed, in the same transaction; the request's choices also apply to its other items. A stored category resent only because the description changed stays on the item with source `user` (0018) but doesn't train the new name: correcting `Milch` to `Bier` must not teach bier → groceries (found in F07 review).
 5. **Seed:** `app/domain/data/item_categories_seed.yaml`, about 285 names grouped by category (`pfand`, `leergut` → `deposit`; `rabatt`, `preisvorteil` → `discount`). A test checks every key is already normalised and every value is a known category.
 - **Known limits:** a misread name (`BIO ELITER`) or an unknown token (`BIO EIER OKT 12 STK.` → `eier okt`) misses the seed and the user is asked; a saved choice doesn't recategorise other open drafts.
 

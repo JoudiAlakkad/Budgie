@@ -54,7 +54,7 @@ All bodies are JSON unless stated otherwise. Errors use the [error format](error
 
 `{normalized_name}` is the value from `LineItem.normalized_name`; the server doesn't normalise it again.
 
-A `category` sent on an item in `POST /expenses` or `PATCH /expenses/{id}` is also saved to this table with source `user` ([0020](../decisions/0020-user-category-choices-and-duplicate-rule.md)). Deleting a `user` entry restores the seed value if the seed file has that name.
+A `category` sent on an item in `POST /expenses` or `PATCH /expenses/{id}` is also saved to this table with source `user` when it is the user's choice (a new item or a changed category) ([0020](../decisions/0020-user-category-choices-and-duplicate-rule.md)). Deleting a `user` entry restores the seed value if the seed file has that name (if the seed can't be read, the entry is just removed, still `204`).
 
 ## Budgets, goal, insights, health
 | Method | Path | Request | Response |

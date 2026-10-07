@@ -34,7 +34,7 @@ The data is stored in SQLite through SQLAlchemy, and only `app/db/` touches it (
 - Tables are created on startup with `metadata.create_all`. There is no migration tool, which is fine for the scope of this project.
 - F1 builds only the engine, the session factory and `Base` (`db/session.py`, `db/models.py`). Each table arrives with the feature that first uses it.
 - **Seed sync (F07, [0020](../decisions/0020-user-category-choices-and-duplicate-rule.md)):** on startup, `prepare_storage` syncs `app/domain/data/item_categories_seed.yaml` once the tables exist: missing names are inserted, rows still `seed` take the YAML value, `user` rows and names no longer in the YAML stay. A failure is step `item_categories_seed` in `StorageStatus` (health `db: error`, so the docker gate catches a missing YAML) and never stops startup.
-- `ExpenseRepository.duplicate_candidates(date, total, exclude_id)` returns same-date expenses whose total is within a cent of the cent-rounded total; the merchant is compared in the domain.
+- `ExpenseRepository.duplicate_candidates(date, total, exclude_id)` returns a tuple of same-date expenses whose total is within a cent of the cent-rounded total; the merchant is compared in the domain.
 - **Known limit:** two concurrent requests saving the same new name can both insert it; one gets a one-off `500 storage_error`.
 - Deleting a receipt removes its image file, its expense and its line items. `item_categories` stays. `DELETE /expenses/{id}` with a receipt deletes through `ReceiptRepository.delete` (cascade), then the file; without a receipt only the expense rows go.
   - The rows go first (ORM cascade), then the file. If removing the file fails, that is logged and the answer is still `204`; an orphan file is harmless.
