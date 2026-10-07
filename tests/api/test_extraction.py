@@ -16,8 +16,10 @@ from sqlalchemy import text
 from app.ai.schema import EXAMPLE_JSON_V1, OUTPUT_SPECS, RESPONSE_FORMAT_V1
 from app.config import Settings
 from app.db.images import ImageStore
+from app.domain.categorize import CategoryTable, normalize
 from app.services.categorization import CategorizedItem
 from app.services.dependencies import database_for, get_image_store, get_item_categorizer
+from app.services.item_categories import load_seed
 from app.services.receipt_pipeline import redact_raw_output
 from tests.api.helpers import (
     JPEG,
@@ -86,12 +88,15 @@ def test_extracted_receipt_has_an_unconfirmed_ai_expense(
     expense = receipt["expense"]
     assert expense["receipt_id"] == receipt["id"]
     assert (expense["source"], expense["confirmed"]) == ("ai", False)
-    # Until F07 every item is uncategorized, so every receipt with items needs review.
-    assert expense["review_status"] == "needs_review"
     assert expense["line_items"]
+    # F07: every item is looked up in the seeded table by its normalised name (0013).
+    seed = load_seed()
     for item in expense["line_items"]:
-        assert (item["category"], item["category_source"]) == ("uncategorized", "none")
-        assert item["normalized_name"] == " ".join(item["description"].lower().split())
+        name = normalize(item["description"]).name
+        assert item["normalized_name"] == name
+        expected = (seed[name], "seed") if name in seed else ("uncategorized", "none")
+        assert (item["category"], item["category_source"]) == expected
+    assert expense["review_status"] == ("needs_review" if expense["flags"] else "accepted")
     row = stored(settings, receipt["id"])
     assert (row.model_name, row.prompt_version) == ("gemma3:4b", "v2")
     assert row.latency_ms is not None and row.latency_ms >= 0
@@ -115,13 +120,13 @@ def test_valid_receipt_is_converted_and_assessed(
     assert items[0] == {
         "id": items[0]["id"],
         "description": "RISPENTOMATEN KG-WARE",
-        "normalized_name": "rispentomaten kg-ware",
+        "normalized_name": "rispentomaten",
         "qty": 1.0,
         "unit": None,
         "unit_price": None,
         "amount": 1.51,
-        "category": "uncategorized",
-        "category_source": "none",
+        "category": "groceries.fresh",
+        "category_source": "seed",
     }
     assert items[1]["qty"] == 2.0
     assert [item["description"] for item in items[-3:]] == ["ZU ZAHLEN", "BAR", "ZURÜCK"]
@@ -133,7 +138,8 @@ def test_valid_receipt_is_converted_and_assessed(
         ("date", "unreadable"),
         ("total", "unreadable"),
         ("currency", "unreadable"),
-        *[(f"line_items[{i}]", "uncategorized_item") for i in range(11)],
+        # Not in the seed: a misread name, `eier okt`, and the three payment lines.
+        *[(f"line_items[{i}]", "uncategorized_item") for i in (1, 2, 8, 9, 10)],
     ]
     assert expense["flags"][0]["message"] == "Items sum to 54.89 but total is 15.15."
 
@@ -150,8 +156,7 @@ def test_missing_fields_are_null_and_flagged(
         "missing_merchant",
         "missing_date",
         "missing_total",
-        "uncategorized_item",
-        "uncategorized_item",
+        # VOLLMILCH and BROT are in the seed (F07).
     ]
 
 
@@ -164,6 +169,37 @@ def test_invented_receipt_passes_plausibility_but_is_flagged(
     codes = [(f["field"], f["code"]) for f in expense["flags"]]
     assert ("total", "sum_mismatch") in codes
     assert ("date", "date_too_old") in codes
+
+
+def test_the_same_receipt_uploaded_twice_is_flagged_as_a_duplicate(
+    api: TestClient, settings: Settings, model: ModelServer
+) -> None:
+    """Decision 0020: the second upload is compared with every other expense."""
+    first = extract(api, settings, model, load_case("valid_receipt"))["expense"]
+    second = extract(api, settings, model, load_case("valid_receipt"))["expense"]
+
+    assert [f for f in first["flags"] if f["code"] == "possible_duplicate"] == []
+    assert second["flags"][-1] == {
+        "field": None,
+        "code": "possible_duplicate",
+        "message": f"Looks like a duplicate of expense {first['id']} (ALDI, 2026-09-17, 15.15).",
+    }
+    assert second["flags"][:-1] == first["flags"]
+    # Both stay; nothing is deleted.
+    assert {e["id"] for e in api.get("/api/expenses").json()} == {first["id"], second["id"]}
+
+
+def test_a_retried_receipt_is_not_a_duplicate_of_its_old_expense(
+    api: TestClient, settings: Settings, model: ModelServer
+) -> None:
+    receipt = extract(api, settings, model, load_case("valid_receipt"))
+    model.serve(load_case("valid_receipt"))
+
+    assert api.post(f"/api/receipts/{receipt['id']}/extract").status_code == 202
+
+    again = api.get(f"/api/receipts/{receipt['id']}").json()["expense"]
+    assert again["id"] != receipt["expense"]["id"]
+    assert [f for f in again["flags"] if f["code"] == "possible_duplicate"] == []
 
 
 def test_injected_text_stays_an_item(
@@ -418,13 +454,17 @@ def test_pfand_and_leergut_lines_are_deposits(
         (i["description"], i["amount"], i["category"], i["category_source"])
         for i in expense["line_items"]
     ] == [
-        ("MINERALWASSER", 0.49, "uncategorized", "none"),
+        ("MINERALWASSER", 0.49, "drinks", "seed"),
         ("PFAND 0,25", 0.25, "deposit", "seed"),
         ("Pfandrückgabe", -0.75, "deposit", "seed"),
     ]
-    assert [(f["field"], f["code"]) for f in expense["flags"]] == [
-        ("line_items[0]", "uncategorized_item")
+    # Deposit canonicalisation (decision 0020): both lines are `pfand` in the table.
+    assert [i["normalized_name"] for i in expense["line_items"]] == [
+        "mineralwasser",
+        "pfand",
+        "pfand",
     ]
+    assert expense["flags"] == []
 
 
 @pytest.mark.parametrize("name", ["not_a_receipt", "not_a_receipt_loose"])
@@ -548,7 +588,7 @@ class VanishedImages(ImageStore):
 
 
 class BrokenCategorizer:
-    def categorize(self, description: str) -> CategorizedItem:
+    def categorize(self, description: str, table: CategoryTable) -> CategorizedItem:
         raise RuntimeError(f"bug while categorising {description}")
 
 
@@ -646,7 +686,8 @@ def test_merchant_descriptions_and_raw_output_are_stored_redacted(
         "IBAN [iban]",
         "Bon-Nr: [id] Müsli",
     ]
-    assert expense["line_items"][3]["normalized_name"] == "bon-nr: [id] müsli"
+    # The normaliser drops the redaction placeholders (F07).
+    assert expense["line_items"][3]["normalized_name"] == "bon nr muesli"
     # Flag messages quote descriptions, so they are built from the redacted ones.
     messages = " ".join(f["message"] for f in expense["flags"])
     assert "KARTE [card]" in messages

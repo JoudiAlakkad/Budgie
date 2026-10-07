@@ -23,6 +23,9 @@ dependencies = [
     # IANA time zones for zoneinfo (today is the Europe/Berlin date); the slim Docker image
     # has no system zoneinfo. Calendar-versioned data only, so no upper cap.
     "tzdata>=2026.5",
+    # The item category seed (app/domain/data/item_categories_seed.yaml, decision 0020);
+    # read with yaml.safe_load only.
+    "pyyaml>=6.0.3,<7",
 ]
 
 [project.optional-dependencies]
@@ -38,9 +41,10 @@ dev = [
 where = ["."]
 include = ["app*"]
 
-# The Dockerfile runs a non-editable `pip install ./backend`; the prompts must ship with it.
+# The Dockerfile runs a non-editable `pip install ./backend`; the prompts and the item
+# category seed must ship with it.
 [tool.setuptools.package-data]
-app = ["ai/prompts/*/*.txt"]
+app = ["ai/prompts/*/*.txt", "domain/data/*.yaml"]
 
 # ---------------------------------------------------------------- ruff
 [tool.ruff]

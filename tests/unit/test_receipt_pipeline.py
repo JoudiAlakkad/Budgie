@@ -16,7 +16,7 @@ from app.db.repositories.receipts import ReceiptRepository
 from app.db.session import Database
 from app.errors import LLMTimeout, StorageError
 from app.services import receipt_pipeline
-from app.services.categorization import PlaceholderCategorizer
+from app.services.categorization import LookupCategorizer
 from app.services.receipt_pipeline import ReceiptPipeline
 
 TODAY = dt.date(2026, 10, 5)
@@ -109,7 +109,7 @@ def get(db: Database, receipt_id: int) -> ReceiptRecord | None:
 
 
 def pipeline(db: Database, images: ImageStore, extractor: FakeExtractor) -> ReceiptPipeline:
-    return ReceiptPipeline(db, images, lambda: extractor, PlaceholderCategorizer(), lambda: TODAY)
+    return ReceiptPipeline(db, images, lambda: extractor, LookupCategorizer(), lambda: TODAY)
 
 
 def test_the_lock_is_taken_before_uploaded_to_extracting(db_url: str, images: ImageStore) -> None:
@@ -173,8 +173,13 @@ def test_a_receipt_that_is_not_uploaded_is_left_alone(db_url: str, images: Image
 
 
 @pytest.mark.parametrize(
-    ("outcome", "code"),
-    [(ok_result(), "interrupted"), (LLMTimeout("slow", latency_s=1.0), "llm_timeout")],
+    ("outcome", "code", "outcome_write"),
+    [
+        # 2: uploaded -> extracting, 3: the lookup read (F07), 4: the outcome
+        (ok_result(), "interrupted", 4),
+        # 2: uploaded -> extracting, 3: the outcome (a failure needs no lookup)
+        (LLMTimeout("slow", latency_s=1.0), "llm_timeout", 3),
+    ],
     ids=["success", "failure"],
 )
 def test_a_storage_error_on_the_outcome_write_marks_the_receipt_failed(
@@ -183,10 +188,11 @@ def test_a_storage_error_on_the_outcome_write_marks_the_receipt_failed(
     caplog: pytest.LogCaptureFixture,
     outcome: ExtractionResult | Exception,
     code: str,
+    outcome_write: int,
 ) -> None:
     db = FlakyDatabase(db_url, failing=set())
     receipt_id = new_receipt(db, images)  # transaction 1
-    db.failing = {3}  # 2: uploaded -> extracting, 3: the outcome, 4: the second try
+    db.failing = {outcome_write}  # the next one is the second try
 
     pipeline(db, images, FakeExtractor(outcome)).run(receipt_id)
 
@@ -205,7 +211,7 @@ def test_when_the_second_try_fails_too_the_receipt_stays_extracting(
 ) -> None:
     db = FlakyDatabase(db_url, failing=set())
     receipt_id = new_receipt(db, images)
-    db.failing = {3, 4}
+    db.failing = {4, 5}  # 3 is the lookup read, 4 the outcome, 5 the second try
 
     pipeline(db, images, FakeExtractor(ok_result())).run(receipt_id)  # never raises
 
@@ -215,6 +221,43 @@ def test_when_the_second_try_fails_too_the_receipt_stays_extracting(
         f"Receipt {receipt_id}: not marked failed (StorageError); the startup reset will"
         in caplog.messages
     )
+    db.dispose()
+
+
+def test_a_storage_error_on_the_lookup_read_fails_the_receipt_as_interrupted(
+    db_url: str, images: ImageStore, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The read of the lookup table and the duplicate candidates (decision 0020) runs
+    after the model call; if it fails, the receipt is `interrupted`, with the model call's
+    latency kept (the raw output is kept only for malformed_output and not_a_receipt)."""
+    db = FlakyDatabase(db_url, failing=set())
+    receipt_id = new_receipt(db, images)  # transaction 1
+    db.failing = {3}  # 2: uploaded -> extracting, 3: the lookup read, 4: the outcome
+
+    pipeline(db, images, FakeExtractor(ok_result())).run(receipt_id)
+
+    record = get(db, receipt_id)
+    assert record is not None
+    assert (record.status, record.error, record.raw_model_output) == ("failed", "interrupted", None)
+    assert record.latency_ms == 250
+    assert f"Receipt {receipt_id}: failed with interrupted (StorageError)" in caplog.messages
+    db.dispose()
+
+
+def test_a_non_receipt_does_not_read_the_lookup_table(db_url: str, images: ImageStore) -> None:
+    """The plausibility rule needs no categories, so it runs before the lookup read."""
+    implausible = VALID.model_copy(update={"merchant": None, "total": None})
+    result = ExtractionResult(
+        implausible, "fake-model", "v2", 0.25, implausible.model_dump_json(), False, 10
+    )
+    db = FlakyDatabase(db_url, failing=set())
+    receipt_id = new_receipt(db, images)  # transaction 1
+
+    pipeline(db, images, FakeExtractor(result)).run(receipt_id)
+
+    assert db.count == 3  # 2: uploaded -> extracting, 3: the outcome; no lookup read
+    record = get(db, receipt_id)
+    assert record is not None and (record.status, record.error) == ("failed", "not_a_receipt")
     db.dispose()
 
 
@@ -291,7 +334,7 @@ def test_today_is_read_inside_the_task_when_the_rules_run(db_url: str, images: I
         return TODAY
 
     extractor.extract = extract  # type: ignore[method-assign]
-    task = ReceiptPipeline(db, images, lambda: extractor, PlaceholderCategorizer(), today)
+    task = ReceiptPipeline(db, images, lambda: extractor, LookupCategorizer(), today)
     assert events == []  # building the task (at request time) doesn't read the clock
 
     task.run(receipt_id)

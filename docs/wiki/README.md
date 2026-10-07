@@ -38,6 +38,7 @@ back; the parent records them.
 - [0017 — Personal data is kept out by the schema and redacted by code](decisions/0017-personal-data-is-redacted-by-code.md)
 - [0018 — Review form editing semantics](decisions/0018-review-form-editing-semantics.md)
 - [0019 — Lean extraction: line totals, date as printed, Pfand](decisions/0019-lean-extraction-line-totals-date-as-printed.md)
+- [0020 — Saving user category choices and the duplicate rule](decisions/0020-user-category-choices-and-duplicate-rule.md)
 
 ## Areas
 

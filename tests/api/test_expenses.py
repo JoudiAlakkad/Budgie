@@ -13,19 +13,21 @@ from app.config import Settings
 from app.db.images import ImageStore
 from app.db.repositories.expenses import ExpenseRepository
 from app.db.repositories.receipts import ReceiptRepository
+from app.domain.categorize import CategoryTable, normalize
 from app.errors import StorageError
 from app.services.categorization import CategorizedItem
 from app.services.dependencies import database_for, get_item_categorizer, get_receipt_pipeline
 from tests.api.helpers import ModelServer, NoopPipeline, answer, inline_case, stored, upload
 from tests.recorded import load_case
 
+# Neither name is in the item category seed, so the first item stays uncategorised.
 MANUAL: dict[str, Any] = {
     "merchant": "REWE",
     "date": "2026-10-03",
     "total": 3.68,
     "line_items": [
-        {"description": "BIO  BANANE 1 KG", "amount": 1.99, "qty": 1.234, "unit": "kg"},
-        {"description": "Cola", "amount": 1.69, "category": "drinks"},
+        {"description": "BIO  DRACHENFRUCHT 1 KG", "amount": 1.99, "qty": 1.234, "unit": "kg"},
+        {"description": "Club-Mate", "amount": 1.69, "category": "drinks"},
     ],
 }
 
@@ -70,14 +72,14 @@ def test_manual_expense_is_created_assessed_and_returned(api: TestClient) -> Non
             {
                 "field": "line_items[0]",
                 "code": "uncategorized_item",
-                "message": 'The item "BIO  BANANE 1 KG" has no category yet.',
+                "message": 'The item "BIO  DRACHENFRUCHT 1 KG" has no category yet.',
             }
         ],
         "line_items": [
             {
                 "id": expense["line_items"][0]["id"],
-                "description": "BIO  BANANE 1 KG",
-                "normalized_name": "bio banane 1 kg",
+                "description": "BIO  DRACHENFRUCHT 1 KG",
+                "normalized_name": "drachenfrucht",
                 "qty": 1.234,  # unrounded
                 "unit": "kg",
                 "unit_price": None,
@@ -87,8 +89,8 @@ def test_manual_expense_is_created_assessed_and_returned(api: TestClient) -> Non
             },
             {
                 "id": expense["line_items"][1]["id"],
-                "description": "Cola",
-                "normalized_name": "cola",
+                "description": "Club-Mate",
+                "normalized_name": "club mate",
                 "qty": None,
                 "unit": None,
                 "unit_price": None,
@@ -318,12 +320,13 @@ def test_list_rejects_invalid_filters(api: TestClient, params: dict, field: str)
 
 
 class LookupCategorizer:
-    """Knows `cola` (drinks) and `brot` (groceries.staples) as seed entries."""
+    """Knows `cola` and `club mate` (drinks) and `brot` (groceries.staples) as seed
+    entries; ignores the table it is given, so the 0018 rules are tested on their own."""
 
-    TABLE = {"cola": "drinks", "brot": "groceries.staples"}
+    TABLE = {"cola": "drinks", "club mate": "drinks", "brot": "groceries.staples"}
 
-    def categorize(self, description: str) -> CategorizedItem:
-        name = " ".join(description.lower().split())
+    def categorize(self, description: str, table: CategoryTable) -> CategorizedItem:
+        name = normalize(description).name
         category = self.TABLE.get(name)
         return CategorizedItem(
             normalized_name=name,
@@ -423,9 +426,9 @@ def test_fixing_a_field_clears_its_flag(
 
     edited = patch(api, expense["id"], fix)
 
-    # Only the uncategorised items are left.
-    assert {code for _, code in codes(edited)} == {"uncategorized_item"}
-    assert edited["review_status"] == "needs_review"
+    # BROT is in the item category seed (F07), so nothing is left.
+    assert codes(edited) == []
+    assert edited["review_status"] == "accepted"
 
 
 def test_an_edit_can_raise_a_flag(api: TestClient) -> None:
@@ -502,7 +505,7 @@ def test_line_items_are_updated_created_and_deleted(api: TestClient) -> None:
         {
             "line_items": [
                 {"description": "Wasser", "amount": 0.49},
-                {"id": cola["id"], "description": "Cola", "amount": 1.79, "qty": 2},
+                {"id": cola["id"], "description": "Club-Mate", "amount": 1.79, "qty": 2},
             ]
         },
     )
@@ -571,7 +574,7 @@ def test_item_category_on_patch(
 
 
 def test_an_uncategorised_item_resent_unchanged_stays_uncategorised(api: TestClient) -> None:
-    expense = create(api, line_items=[{"description": "Cola", "amount": 3.68}])
+    expense = create(api, line_items=[{"description": "Club-Mate", "amount": 3.68}])
     api.app.dependency_overrides[get_item_categorizer] = LookupCategorizer  # type: ignore[attr-defined]
 
     edited = patch(api, expense["id"], {"line_items": resent(expense, amount=4.00)})
@@ -914,3 +917,235 @@ def test_delete_of_an_unknown_expense_is_404(api: TestClient) -> None:
         "detail": "Expense 999 does not exist.",
         "fields": None,
     }
+
+
+# ---------------------------------------------------------------- the lookup table (F07, 0020)
+
+
+def lookup_entry(api: TestClient, name: str) -> tuple[str, str] | None:
+    """The table's (category, source) for `name`, or None."""
+    listed = api.get("/api/item-categories", params={"q": name}).json()
+    found = [(e["category"], e["source"]) for e in listed if e["normalized_name"] == name]
+    return found[0] if found else None
+
+
+def item_of(expense: dict, index: int = 0) -> tuple[str, str, str]:
+    item = expense["line_items"][index]
+    return item["normalized_name"], item["category"], item["category_source"]
+
+
+def test_a_choice_made_on_one_receipt_categorises_the_next(
+    api: TestClient, model: ModelServer
+) -> None:
+    """Acceptance (F07): the user picks a category for an unknown item on receipt 1; on
+    receipt 2 the same item arrives with it, source `user`, without any extra request."""
+    _, first = extracted(
+        api,
+        model,
+        line_items=[
+            {"description": "BIO DRACHENFRUCHT 1 KG", "qty": 1, "amount": 2.49},
+            {"description": "BANANE", "qty": 1, "amount": 1.00},
+        ],
+        total=3.49,
+    )
+    assert item_of(first, 0) == ("drachenfrucht", "uncategorized", "none")
+    assert item_of(first, 1) == ("banane", "groceries.fresh", "seed")  # a seed hit
+    assert lookup_entry(api, "drachenfrucht") is None
+
+    # The review page sends the changed item with its category, then confirms.
+    items = resent(first)
+    items[0]["category"] = "groceries.fresh"
+    edited = patch(api, first["id"], {"line_items": items})
+    assert item_of(edited, 0) == ("drachenfrucht", "groceries.fresh", "user")
+    assert item_of(edited, 1) == ("banane", "groceries.fresh", "seed")  # not sent: kept
+    confirm(api, first["id"])
+
+    _, second = extracted(
+        api,
+        model,
+        merchant="Wochenmarkt",
+        date="2026-10-04",
+        line_items=[{"description": "Drachenfrucht 500g", "qty": 1, "amount": 1.75}],
+        total=1.75,
+    )
+
+    assert item_of(second, 0) == ("drachenfrucht", "groceries.fresh", "user")
+    assert (second["review_status"], second["flags"]) == ("accepted", [])
+    assert lookup_entry(api, "drachenfrucht") == ("groceries.fresh", "user")
+    # Only the category sent was saved; the unchanged seed entry kept its source.
+    assert lookup_entry(api, "banane") == ("groceries.fresh", "seed")
+
+
+def test_a_manual_expense_saves_its_categories(api: TestClient) -> None:
+    create(api)
+
+    assert lookup_entry(api, "club mate") == ("drinks", "user")
+    assert lookup_entry(api, "drachenfrucht") is None  # sent without a category
+
+
+def test_a_choice_overrides_a_seed_entry_for_the_next_expense(api: TestClient) -> None:
+    items = [{"description": "BIO BANANE 1 KG", "amount": 3.68, "category": "snacks_sweets"}]
+    create(api, line_items=items)
+
+    later = create(api, date="2026-10-04", line_items=[{"description": "Banane", "amount": 3.68}])
+
+    assert item_of(later) == ("banane", "snacks_sweets", "user")
+    assert lookup_entry(api, "banane") == ("snacks_sweets", "user")
+
+
+def test_a_choice_applies_to_the_rest_of_the_same_request(api: TestClient) -> None:
+    items = [
+        {"description": "Drachenfrucht", "amount": 1.00},
+        {"description": "BIO DRACHENFRUCHT 1 KG", "amount": 1.00, "category": "other"},
+        {"description": "drachenfrucht", "amount": 1.68},
+    ]
+
+    expense = create(api, line_items=items)
+
+    assert [item_of(expense, i) for i in range(3)] == [("drachenfrucht", "other", "user")] * 3
+    assert expense["flags"] == []
+
+
+def test_an_item_with_an_empty_name_is_not_saved(api: TestClient) -> None:
+    items = [{"description": "*** 1,99", "amount": 3.68, "category": "other"}]
+
+    expense = create(api, line_items=items)
+
+    assert item_of(expense) == ("", "other", "user")
+    assert lookup_entry(api, "") is None
+    names = [e["normalized_name"] for e in api.get("/api/item-categories").json()]
+    assert "" not in names
+
+
+def test_a_refused_request_saves_no_choice(api: TestClient, model: ModelServer) -> None:
+    receipt_id, _ = extracted(api, model)  # extracted, not failed: manual entry is 409
+    items = [{"description": "Drachenfrucht", "amount": 3.68, "category": "other"}]
+
+    response = api.post(
+        "/api/expenses", json=MANUAL | {"receipt_id": receipt_id, "line_items": items}
+    )
+
+    assert response.status_code == 409
+    assert lookup_entry(api, "drachenfrucht") is None
+
+
+def test_a_resent_category_with_a_corrected_description_does_not_train_the_new_name(
+    api: TestClient,
+) -> None:
+    """Reviewer finding: the review page resends the stored `user` category when only the
+    description changed. Correcting a misread `Milch` to `Bier` must not save
+    bier -> groceries.fresh over the seed's alcohol."""
+    items = [{"description": "Milch", "amount": 3.68, "category": "groceries.fresh"}]
+    expense = create(api, line_items=items)
+    item_id = expense["line_items"][0]["id"]
+
+    resend = {"id": item_id, "description": "Bier", "amount": 3.68, "category": "groceries.fresh"}
+    edited = patch(api, expense["id"], {"line_items": [resend]})
+
+    assert item_of(edited) == ("bier", "groceries.fresh", "user")  # on the item (0018)
+    assert lookup_entry(api, "bier") == ("alcohol", "seed")  # the table is untouched
+    later = create(api, date="2026-10-04", line_items=[{"description": "Bier", "amount": 3.68}])
+    assert item_of(later) == ("bier", "alcohol", "seed")
+
+
+@pytest.mark.parametrize(
+    ("description", "name"), [("Milch", "milch"), ("Hafermilch", "hafermilch")]
+)
+def test_a_changed_category_on_an_existing_item_is_saved(
+    api: TestClient, description: str, name: str
+) -> None:
+    items = [{"description": "Milch", "amount": 3.68, "category": "groceries.fresh"}]
+    expense = create(api, line_items=items)
+    item_id = expense["line_items"][0]["id"]
+
+    resend = {"id": item_id, "description": description, "amount": 3.68, "category": "drinks"}
+    edited = patch(api, expense["id"], {"line_items": [resend]})
+
+    assert item_of(edited) == (name, "drinks", "user")
+    assert lookup_entry(api, name) == ("drinks", "user")
+
+
+def test_an_unchanged_resent_category_is_not_saved_again(api: TestClient) -> None:
+    expense = create(api, line_items=[{"description": "Banane", "amount": 3.68}])
+    assert item_of(expense) == ("banane", "groceries.fresh", "seed")
+    item_id = expense["line_items"][0]["id"]
+
+    resend = {"id": item_id, "description": "Banane", "amount": 3.68, "category": "groceries.fresh"}
+    edited = patch(api, expense["id"], {"line_items": [resend]})
+
+    assert item_of(edited) == ("banane", "groceries.fresh", "user")
+    assert lookup_entry(api, "banane") == ("groceries.fresh", "seed")
+
+
+def test_a_saved_choice_can_be_removed_and_the_seed_applies_again(api: TestClient) -> None:
+    items = [{"description": "Banane", "amount": 3.68, "category": "other"}]
+    create(api, line_items=items)
+
+    assert api.delete("/api/item-categories/banane").status_code == 204
+
+    later = create(api, date="2026-10-04", line_items=[{"description": "Banane", "amount": 3.68}])
+    assert item_of(later) == ("banane", "groceries.fresh", "seed")
+
+
+# ---------------------------------------------------------------- duplicates (F07, 0020)
+
+
+def duplicate_flags(expense: dict) -> list[dict]:
+    return [f for f in expense["flags"] if f["code"] == "possible_duplicate"]
+
+
+def test_a_manual_duplicate_is_flagged_and_the_first_is_not(api: TestClient) -> None:
+    first = create(api)
+
+    second = create(api, merchant="Rewe GmbH")
+
+    assert duplicate_flags(first) == []
+    assert duplicate_flags(second) == [
+        {
+            "field": None,
+            "code": "possible_duplicate",
+            "message": f"Looks like a duplicate of expense {first['id']} (REWE, 2026-10-03, 3.68).",
+        }
+    ]
+    assert second["review_status"] == "needs_review"
+    # Nothing is deleted.
+    assert [e["id"] for e in api.get("/api/expenses").json()] == [second["id"], first["id"]]
+
+
+def test_editing_the_total_away_clears_the_duplicate_flag(api: TestClient) -> None:
+    first = create(api)
+    second = create(api)
+    assert duplicate_flags(second)
+
+    edited = patch(api, second["id"], {"total": 3.70})
+
+    assert duplicate_flags(edited) == []
+    # One cent off is still a duplicate.
+    assert duplicate_flags(patch(api, second["id"], {"total": 3.69}))
+    # Editing the first never matches itself, but does match the second.
+    again = patch(api, first["id"], {"merchant": "REWE"})
+    assert [f["message"] for f in duplicate_flags(again)] == [
+        f"Looks like a duplicate of expense {second['id']} (REWE, 2026-10-03, 3.69)."
+    ]
+
+
+def test_an_edit_can_raise_the_duplicate_flag(api: TestClient) -> None:
+    first = create(api)
+    second = create(api, date="2026-10-02")
+    assert duplicate_flags(second) == []
+
+    edited = patch(api, second["id"], {"date": "2026-10-03"})
+
+    assert [f["message"] for f in duplicate_flags(edited)] == [
+        f"Looks like a duplicate of expense {first['id']} (REWE, 2026-10-03, 3.68)."
+    ]
+
+
+def test_a_confirmed_expense_counts_as_another_expense(api: TestClient) -> None:
+    items = [{**item, "category": "other"} for item in MANUAL["line_items"]]
+    first = create(api, line_items=items)
+    confirm(api, first["id"])
+
+    second = create(api, line_items=items)
+
+    assert len(duplicate_flags(second)) == 1

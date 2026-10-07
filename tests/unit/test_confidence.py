@@ -15,12 +15,12 @@ from app.ai.schema import ReceiptExtraction
 from app.api import schemas
 from app.domain import confidence
 from app.domain.confidence import assess, is_plausible_receipt, review_flags, review_status
+from app.domain.duplicates import ExpenseKey
 from app.domain.facts import FlagCode, ItemFacts, ReceiptFacts
 from tests.recorded import load_case
 
 DOMAIN_LOGIC_MD = Path(__file__).resolve().parents[2] / "docs/wiki/backend/domain-logic.md"
 TODAY = date(2026, 10, 5)
-LATER_FEATURE_CODES = {"possible_duplicate"}  # F7
 
 
 def item(description: str = "MILCH", amount: str = "1.00", category: str | None = "other"):
@@ -423,21 +423,27 @@ def wiki_flag_codes() -> set[str]:
 
 
 def test_flag_code_literal_matches_the_wiki_table() -> None:
-    assert set(get_args(FlagCode)) == wiki_flag_codes() - LATER_FEATURE_CODES
+    assert set(get_args(FlagCode)) == wiki_flag_codes()
 
 
-# Facts that together raise every code the rules know.
-EVERY_FLAG = [
-    facts(items=(item(amount="1.00", category=None),), total=Decimal("9.00")),
-    facts(date="2030-01-01"),
-    facts(date="2020-01-01"),
-    facts(date="soon", currency="$"),
-    facts(merchant=None, date=None, total=None, unreadable_fields=("tax",)),
+# The same merchant, date and total as `facts()`: a duplicate of it (F07).
+TWIN = ExpenseKey(7, "REWE", date(2026, 10, 1), Decimal("3.00"))
+
+# Facts (and other expenses) that together raise every code the rules know.
+EVERY_FLAG: list[tuple[ReceiptFacts, tuple[ExpenseKey, ...]]] = [
+    (facts(items=(item(amount="1.00", category=None),), total=Decimal("9.00")), ()),
+    (facts(date="2030-01-01"), ()),
+    (facts(date="2020-01-01"), ()),
+    (facts(date="soon", currency="$"), ()),
+    (facts(merchant=None, date=None, total=None, unreadable_fields=("tax",)), ()),
+    (facts(), (TWIN,)),
 ]
 
 
 def test_every_produced_code_is_in_the_wiki_table() -> None:
-    produced = {flag.code for receipt in EVERY_FLAG for flag in assess(receipt, TODAY)[1]}
+    produced = {
+        flag.code for receipt, others in EVERY_FLAG for flag in assess(receipt, TODAY, others)[1]
+    }
 
     assert produced == set(get_args(FlagCode))
     assert produced <= wiki_flag_codes()
@@ -465,3 +471,46 @@ def test_finite_and_missing_money_is_accepted() -> None:
     receipt = facts(subtotal=None, tax=Decimal("-0.49"), total=Decimal("0"))
 
     assert receipt.total == Decimal("0")
+
+
+# --- possible_duplicate (F07, decision 0020) ------------------------------------------
+
+
+def test_a_duplicate_flag_comes_last_and_needs_review() -> None:
+    receipt = facts(items=(item("MILCH", "1.00"), item("BROT", "2.00", category=None)))
+
+    status, flags = assess(receipt, TODAY, (TWIN,))
+
+    assert pairs(flags) == [("line_items[1]", "uncategorized_item"), (None, "possible_duplicate")]
+    assert flags[-1].message == "Looks like a duplicate of expense 7 (REWE, 2026-10-01, 3.00)."
+    assert status == "needs_review"
+
+
+def test_a_duplicate_alone_makes_a_clean_receipt_need_review() -> None:
+    assert assess(facts(), TODAY, ()) == ("accepted", [])
+
+    status, flags = assess(facts(), TODAY, (TWIN,))
+
+    assert (status, pairs(flags)) == ("needs_review", [(None, "possible_duplicate")])
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        facts(date="14.10.2025"),  # another day
+        facts(date="kein Datum"),  # unparseable: no date to compare
+        facts(merchant=None),
+        facts(total=None),
+    ],
+)
+def test_no_duplicate_flag_without_a_full_match(receipt: ReceiptFacts) -> None:
+    codes = [flag.code for flag in assess(receipt, TODAY, (TWIN,))[1]]
+
+    assert "possible_duplicate" not in codes
+
+
+def test_the_date_as_printed_is_compared_as_a_date() -> None:
+    """The pipeline passes the model's date as printed (decision 0019)."""
+    codes = [flag.code for flag in assess(facts(date="01.10.26"), TODAY, (TWIN,))[1]]
+
+    assert codes == ["possible_duplicate"]

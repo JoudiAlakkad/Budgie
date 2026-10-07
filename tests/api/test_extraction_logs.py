@@ -36,6 +36,10 @@ ALLOWED_TEMPLATES = {
     "Receipt %d: failed with %s (%s)",
     "Receipt %d: not marked failed (%s); the startup reset will",
     "Storage step %s failed at startup (%s); continuing without it",
+    "Item category seed synced: %d names, %d inserted, %d updated",
+    "Item category set by the user",
+    "Item category removed by the user, seed restored: %s",
+    "Item category seed not loaded (%s); nothing restored",
 }
 # Tracebacks can quote values, so these are never used in services.
 FORBIDDEN_METHODS = {"exception"}
