@@ -32,7 +32,7 @@ from typing import Protocol
 from app.ai.extractor import ExtractionResult, InvalidOutput, load_json
 from app.ai.schema import ReceiptExtraction
 from app.db.images import ImageStore
-from app.db.records import FlagRecord, NewExpense, NewLineItem
+from app.db.records import DuplicateCandidate, FlagRecord, NewExpense, NewLineItem
 from app.db.repositories.expenses import ExpenseRepository
 from app.db.repositories.item_categories import ItemCategoryRepository
 from app.db.repositories.receipts import ReceiptRepository
@@ -311,7 +311,7 @@ class ReceiptPipeline:
         """
         with self._db.transaction() as session:
             table = ItemCategoryRepository(session).table()
-            candidates = []
+            candidates: tuple[DuplicateCandidate, ...] = ()
             if day is not None and total is not None:
                 candidates = ExpenseRepository(session).duplicate_candidates(day, total)
         others = [ExpenseKey(c.id, c.merchant, c.date, c.total) for c in candidates]

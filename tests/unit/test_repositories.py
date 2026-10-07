@@ -588,12 +588,12 @@ def test_duplicate_candidates_match_date_and_total_within_a_cent(db: Database) -
             dt.date(2026, 10, 1), Decimal("15.154"), exclude_id=same
         )
 
-    assert found == [
+    assert found == (
         DuplicateCandidate(same, "REWE Markt GmbH", dt.date(2026, 10, 1), Decimal("15.15")),
         DuplicateCandidate(cent_below, "Aldi", dt.date(2026, 10, 1), Decimal("15.14")),
         DuplicateCandidate(cent_above, None, dt.date(2026, 10, 1), Decimal("15.16")),
         DuplicateCandidate(confirmed, "REWE", dt.date(2026, 10, 1), Decimal("15.15")),
-    ]
+    )
     # An unrounded total is compared as stored (15.154 -> 15.15).
     assert [c.id for c in without] == [cent_below, cent_above, confirmed]
 

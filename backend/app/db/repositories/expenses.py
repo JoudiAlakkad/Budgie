@@ -206,9 +206,13 @@ class ExpenseRepository:
 
     def duplicate_candidates(
         self, date: dt.date, total: Decimal, exclude_id: int | None = None
-    ) -> list[DuplicateCandidate]:
+    ) -> tuple[DuplicateCandidate, ...]:
         """Expenses on `date` whose total is within a cent of `total`, by id, without
-        `exclude_id`; confirmed and drafts alike. The merchant is compared by the domain."""
+        `exclude_id`; confirmed and drafts alike. The merchant is compared by the domain.
+
+        A tuple, not `list[...]`: this class has a method named `list`, and Python 3.12
+        evaluates annotations eagerly, so the result type mustn't depend on method order.
+        """
         total = total.quantize(_CENT, rounding=ROUND_HALF_UP)  # as stored
         query = (
             select(ExpenseRow.id, ExpenseRow.merchant, ExpenseRow.date, ExpenseRow.total)
@@ -220,10 +224,10 @@ class ExpenseRepository:
         )
         if exclude_id is not None:
             query = query.where(ExpenseRow.id != exclude_id)
-        return [
+        return tuple(
             DuplicateCandidate(id=id_, merchant=merchant, date=day, total=amount)
             for id_, merchant, day, amount in self._session.execute(query)
-        ]
+        )
 
     def list(self, filters: ExpenseFilter | None = None) -> list[ExpenseRecord]:
         """Newest date first, expenses without a date last, ties by id descending."""
