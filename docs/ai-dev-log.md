@@ -221,3 +221,36 @@ Risk: the dev container ran Python 3.14 while the image runs 3.12, so all 1766 t
 - A `-> list[...]` hint that pointed to the `ExpenseService.list` method crashed the 3.12 image, while the 3.14 tests passed → the student's `docker run` → a tuple return plus ruff A003 (`dccb2bf`)
 - Reloading the manual form created a duplicate expense → `/code-review` → `?expense=<id>` set via `replaceState` (`e511596`)
 - The shared schema left v1 incoherent after 0019 → `/code-review` → a frozen v1 output spec (`1478a04`)
+
+## Episode 8 — F07: lookup categorisation, and the review that caught category training
+- **Date:** 2026-10-07 · **Feature:** F07 · **Commits:** `474a35e..d657124` · **Outcome:** success
+
+**1. Development task given to the agent**
+The student's prompt: *"You are software engineer with focus on AI. You want to continue developing Budgie. Plan on how to implement F07. Check the wiki for information."* After the plan was approved, the main session built it: normalising item names, looking them up in a seeded `item_categories` table, saving the user's choice for the next receipt, and flagging possible duplicates ([0013](wiki/decisions/0013-deterministic-item-categorisation-by-lookup.md)).
+
+**2. Relevant context and instructions**
+The issue, decision [0020](wiki/decisions/0020-user-category-choices-and-duplicate-rule.md) (written before the agent started, from three choices the student made), and the wiki pages it lists. The brief named the base commit.
+
+**3. Agent's proposed contribution**
+`backend-dev` wrote:
+- pure `categorize.py` and `duplicates.py`
+- a seed YAML with 285 items, synced into `item_categories` on startup
+- `LookupCategorizer`, and saving the user's category choices
+- the `/item-categories` endpoints, with tests (`5420e79..8c3d6f5`)
+
+**4. Tools or permissions used by the agent**
+- Main session: the plan and the wiki.
+- `backend-dev`: in a worktree, with Read, Edit, Write, Bash, Grep and Glob.
+- `reviewer`: read-only.
+- `make check` was allowed, and `git commit` and `git reset` asked for approval. Nothing was pushed.
+
+**5. How the result was verified**
+- `make check`: 2086 passed, later 2127. The OpenAPI file was unchanged.
+- The `reviewer` agent and one `/code-review` run.
+- On the host, `make docker-check` passed (Python 3.12 image), along with the student's tests.
+
+**6. What was accepted, modified or rejected**
+The student accepted the plan, decision 0020 and the agents' design: pure domain modules, the table passed as a parameter, seed sync, and health reporting `db: error` for a broken seed. Every fix from the reviewer and `/code-review` was taken: the training rule, delete robustness, normaliser counts, word-level Pfand and race-free saves. Rejected: `/code-review`'s performance and type-duplication nits, and keeping raw output after a failed lookup read.
+
+**7. Observed benefit, limitation or risk**
+Risk: the Milch→Bier bug came from a gap in the main session's own decision 0020, which assumed the page resends a category only when the user changes it. All 2086 tests passed because they shared that assumption. Only a reviewer reading the frontend and backend together found it.
