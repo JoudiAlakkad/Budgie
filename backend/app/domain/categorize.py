@@ -8,18 +8,21 @@ loaded. Everything is deterministic and pure: no model, no database.
 Steps of `normalize`, in order:
 1. cut the text to `MAX_DESCRIPTION_CHARS`, lowercase it, fold `ä ö ü ß` to `ae oe ue ss`,
    drop other accents (`é` -> `e`) and redaction placeholders (`[id]`, `[card]`, `[iban]`)
-2. take out the quantity and unit: a count (`2x`, `3 x`, `12 stk`, `2 st`) wins over a
-   measure (`1 kg`, `500g`, `2,5kg`, `1,5l`); the first match of the winning kind counts,
-   and every quantity token is removed from the name
-3. drop pack counts (`100s`), percentages (`3,5%`) and prices or other bare numbers
+2. drop per-unit prices (`x 2,99 eur/kg`, `1,99€/kg`, `0,89/100g`)
+3. take out the quantity and unit: a count wins over a measure. Counts are a multipack
+   `NxM<unit>` (`6x1,5l` -> 6) and `2x`, `3 x`, `12 stk`, `2 st`; the first count in the
+   text counts, with unit `st`. Measures are `1 kg`, `500g`, `2,5kg`, `1,5l`; the first
+   one counts. Every quantity token is removed from the name
+4. drop pack counts (`100s`), percentages (`3,5%`) and prices or other bare numbers
    (`0,99`, `1.99`, `301`)
-4. deposit canonicalisation (decision 0020): a name containing `pfand` becomes `pfand`,
+5. deposit canonicalisation (decision 0020): a name containing `pfand` becomes `pfand`,
    one containing `leergut` becomes `leergut`
-5. per word: expand abbreviations (`tk` -> `tiefkuehl`, `h-milch` -> `milch`), drop
-   qualifiers (`bio`, `frisch`, own brands such as `ja!`, `k-classic`, `gut&guenstig`),
-   split the rest on punctuation (`coca-cola` -> `coca cola`) and check the parts again;
-   one-letter parts are dropped
-6. join with single spaces
+6. per word: expand abbreviations (`tk` -> `tiefkuehl`, `h-milch` -> `milch`), drop
+   qualifiers (`bio`, `frisch`, own brands such as `ja!`, `k-classic`, `gut&guenstig`)
+   and bare unit or currency words without a number (`kg`, `eur`, `€`), split the rest
+   on punctuation (`coca-cola` -> `coca cola`) and check the parts again; one-letter
+   parts are dropped
+7. join with single spaces
 
 All regexes are linear (no nested or adjacent unbounded quantifiers over the same
 characters), and the input is cut first, so a hostile line can't stall a request; a
@@ -45,6 +48,15 @@ DEPOSIT_MARKERS = ("pfand", "leergut")
 
 _FOLD = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"})
 
+# A per-unit price: `x 2,99 eur/kg`, `1,99€/kg`, `0,89 / 100g`, `2,49 eur/l`.
+_UNIT_PRICE = re.compile(
+    r"(?<![\w.,])(?:x[ ]?)?\d{1,6}(?:[.,]\d{1,3})?[ ]?(?:eur|€)?[ ]?/[ ]?"
+    r"(?:\d{1,4}[ ]?)?(?:kg|gr|g|ltr|l|ml|cl|stk|st)(?!\w)"
+)
+# A multipack: `6x1,5l`, `4 x 0,33 l`, `10x100g`; the count of packs is the qty.
+_MULTIPACK = re.compile(
+    r"(?<![\w.,])(\d{1,4})[ ]?x[ ]?\d{1,6}(?:[.,]\d{1,3})?[ ]?(?:kg|gr|g|ltr|l|ml|cl)(?!\w)\.?"
+)
 # A count of pieces: `2x`, `3 x`, `12 stk`, `12 stk.`, `2 st`, `1 stueck`.
 _COUNT = re.compile(r"(?<![\w.,])(\d{1,4})[ ]?(x|stk|stueck|st)(?!\w)\.?")
 # A measure: `1 kg`, `500g`, `2,5kg`, `1,5l`, `0.33 l`, `250 ml`.
@@ -78,6 +90,15 @@ QUALIFIERS = frozenset(
         "lose",
         "stk",
         "stueck",
+        # bare unit and currency words with no number (`Bananen kg`, `EUR`); not `st`,
+        # which starts names (`St. Michel`); `stk`/`stueck` are above
+        "kg",
+        "gr",
+        "ltr",
+        "ml",
+        "cl",
+        "eur",
+        "euro",
         # potato varieties (festkochend, mehligkochend, vorwiegend festkochend)
         "fk",
         "mk",
@@ -146,10 +167,12 @@ def _decimal(text: str) -> Decimal:
 
 
 def _quantity(text: str) -> tuple[Decimal | None, str | None]:
-    """The first count, else the first measure; (None, None) if there is neither."""
-    count = _COUNT.search(text)
-    if count is not None:
-        return Decimal(count.group(1)), COUNT_UNIT
+    """The first count (a multipack or a piece count, whichever comes first), else the
+    first measure; (None, None) if there is neither."""
+    counts = [m for m in (_MULTIPACK.search(text), _COUNT.search(text)) if m is not None]
+    if counts:
+        first = min(counts, key=lambda m: m.start())
+        return Decimal(first.group(1)), COUNT_UNIT
     measure = _MEASURE.search(text)
     if measure is not None:
         return _decimal(measure.group(1)), _UNITS[measure.group(2)]
@@ -183,7 +206,9 @@ def _words(token: str) -> list[str]:
 def normalize(description: str) -> Normalized:
     """The lookup key of a receipt line, e.g. `BIO BANANE 1 KG` -> `banane` (1, kg)."""
     text = _PLACEHOLDER.sub(" ", fold(description[:MAX_DESCRIPTION_CHARS]))
+    text = _UNIT_PRICE.sub(" ", text)
     qty, unit = _quantity(text)
+    text = _MULTIPACK.sub(" ", text)
     text = _COUNT.sub(" ", text)
     text = _MEASURE.sub(" ", text)
     text = _PACK.sub(" ", text)

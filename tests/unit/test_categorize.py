@@ -139,6 +139,21 @@ def test_normalize_real_receipt_strings(
         ("Leergut-Bon", "leergut", None, None),
         ("2x Pfand 0,25", "pfand", "2", "st"),
         ("Pfannkuchen", "pfannkuchen", None, None),
+        # bare unit and currency words without a number (reviewer finding)
+        ("Bananen kg", "bananen", None, None),
+        ("Preis EUR 3,49 €", "preis", None, None),
+        ("St. Michel Kekse", "st michel kekse", None, None),  # `st` alone stays
+        # per-unit prices go; the measure before them is the qty
+        ("Tomaten 0,512 kg x 2,99 EUR/kg", "tomaten", "0.512", "kg"),
+        ("Hackfleisch 1,99€/kg", "hackfleisch", None, None),
+        ("Kaese 0,89 / 100g 200g", "kaese", "200", "g"),
+        ("Saft 2,49 eur/l", "saft", None, None),
+        # a multipack NxM<unit> is a count of N packs (count wins over a measure)
+        ("Wasser still 6x1,5l", "wasser still", "6", "st"),
+        ("Cola 4 x 0,33 l", "cola", "4", "st"),
+        ("Joghurt 10x100g", "joghurt", "10", "st"),
+        ("2x Wasser 6x1,5l", "wasser", "2", "st"),  # the first count in the text
+        ("3x50 boegen", "3x50 boegen", None, None),  # no unit: not a multipack
     ],
 )
 def test_normalize_rules(description: str, name: str, qty: str | None, unit: str | None) -> None:
@@ -360,6 +375,13 @@ HOSTILE_UNITS = [
     "\t",
     ".",
     "*",
+    "6x1,5l",
+    "6x",
+    "x 2,99 eur/kg",
+    "1,99/",
+    "/",
+    "eur",
+    "€",
 ]
 
 
