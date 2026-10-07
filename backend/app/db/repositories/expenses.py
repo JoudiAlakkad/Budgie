@@ -2,12 +2,14 @@
 
 import datetime as dt
 from collections.abc import Iterable
+from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import Select, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.db.models import ExpenseRow, LineItemRow
 from app.db.records import (
+    DuplicateCandidate,
     ExpenseChanges,
     ExpenseFilter,
     ExpenseRecord,
@@ -18,6 +20,9 @@ from app.db.records import (
     NewLineItem,
 )
 from app.errors import NotFound
+
+# The duplicate rule's tolerance on the total (decision 0020); the domain decides the rest.
+_CENT = Decimal("0.01")
 
 
 def _now() -> dt.datetime:
@@ -198,6 +203,27 @@ class ExpenseRepository:
             return {}
         rows = self._session.scalars(_with_items().where(ExpenseRow.receipt_id.in_(ids)))
         return {row.receipt_id: to_record(row) for row in rows if row.receipt_id is not None}
+
+    def duplicate_candidates(
+        self, date: dt.date, total: Decimal, exclude_id: int | None = None
+    ) -> list[DuplicateCandidate]:
+        """Expenses on `date` whose total is within a cent of `total`, by id, without
+        `exclude_id`; confirmed and drafts alike. The merchant is compared by the domain."""
+        total = total.quantize(_CENT, rounding=ROUND_HALF_UP)  # as stored
+        query = (
+            select(ExpenseRow.id, ExpenseRow.merchant, ExpenseRow.date, ExpenseRow.total)
+            .where(
+                ExpenseRow.date == date,
+                ExpenseRow.total.between(total - _CENT, total + _CENT),
+            )
+            .order_by(ExpenseRow.id)
+        )
+        if exclude_id is not None:
+            query = query.where(ExpenseRow.id != exclude_id)
+        return [
+            DuplicateCandidate(id=id_, merchant=merchant, date=day, total=amount)
+            for id_, merchant, day, amount in self._session.execute(query)
+        ]
 
     def list(self, filters: ExpenseFilter | None = None) -> list[ExpenseRecord]:
         """Newest date first, expenses without a date last, ties by id descending."""

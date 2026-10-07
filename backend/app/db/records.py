@@ -131,3 +131,31 @@ class ExpenseFilter:
     date_from: dt.date | None = None
     date_to: dt.date | None = None
     category: str | None = None
+
+
+@dataclass(frozen=True)
+class ItemCategoryRecord:
+    """One row of the item lookup table; `source` is `seed` or `user`."""
+
+    normalized_name: str
+    category: str
+    source: str
+    updated_at: dt.datetime
+
+
+@dataclass(frozen=True)
+class SeedSync:
+    """What `ItemCategoryRepository.sync_seed` changed."""
+
+    inserted: int
+    updated: int
+
+
+@dataclass(frozen=True)
+class DuplicateCandidate:
+    """An expense with the same date and a total within a cent (the duplicate rule)."""
+
+    id: int
+    merchant: str | None
+    date: dt.date | None
+    total: Decimal | None

@@ -1,4 +1,5 @@
-"""The F05 tables, the column types and the repositories (persistence.md)."""
+"""The F05 tables, `item_categories` (F07), the column types and the repositories
+(persistence.md)."""
 
 import datetime as dt
 from collections.abc import Iterator
@@ -10,6 +11,7 @@ from sqlalchemy import text
 
 from app.db.models import DecimalText, MoneyCents
 from app.db.records import (
+    DuplicateCandidate,
     ExpenseChanges,
     ExpenseFilter,
     ExpenseRecord,
@@ -19,6 +21,7 @@ from app.db.records import (
     NewLineItem,
 )
 from app.db.repositories.expenses import ExpenseRepository
+from app.db.repositories.item_categories import ItemCategoryRepository
 from app.db.repositories.receipts import ReceiptRepository
 from app.db.session import Database
 from app.errors import NotFound, StorageError
@@ -560,3 +563,141 @@ def test_ids_of_deleted_rows_are_never_reused(db: Database) -> None:
 
     assert again > receipt_id
     assert again_expense > expense_id
+
+
+# ---------------------------------------------------------------- duplicate candidates (F07)
+
+
+def test_duplicate_candidates_match_date_and_total_within_a_cent(db: Database) -> None:
+    with db.transaction() as session:
+        repo = ExpenseRepository(session)
+        same = repo.insert(expense(merchant="REWE Markt GmbH", total=Decimal("15.15"))).id
+        cent_below = repo.insert(expense(merchant="Aldi", total=Decimal("15.14"))).id
+        cent_above = repo.insert(expense(merchant=None, total=Decimal("15.16"))).id
+        repo.insert(expense(total=Decimal("15.17")))
+        repo.insert(expense(total=Decimal("15.13")))
+        repo.insert(expense(total=Decimal("15.15"), date=dt.date(2026, 10, 2)))
+        repo.insert(expense(total=None))
+        confirmed = repo.insert(expense(total=Decimal("15.15"), confirmed=True)).id
+
+    with db.transaction() as session:
+        found = ExpenseRepository(session).duplicate_candidates(
+            dt.date(2026, 10, 1), Decimal("15.15")
+        )
+        without = ExpenseRepository(session).duplicate_candidates(
+            dt.date(2026, 10, 1), Decimal("15.154"), exclude_id=same
+        )
+
+    assert found == [
+        DuplicateCandidate(same, "REWE Markt GmbH", dt.date(2026, 10, 1), Decimal("15.15")),
+        DuplicateCandidate(cent_below, "Aldi", dt.date(2026, 10, 1), Decimal("15.14")),
+        DuplicateCandidate(cent_above, None, dt.date(2026, 10, 1), Decimal("15.16")),
+        DuplicateCandidate(confirmed, "REWE", dt.date(2026, 10, 1), Decimal("15.15")),
+    ]
+    # An unrounded total is compared as stored (15.154 -> 15.15).
+    assert [c.id for c in without] == [cent_below, cent_above, confirmed]
+
+
+# ---------------------------------------------------------------- item_categories (F07)
+
+
+def table(db: Database) -> dict[str, tuple[str, str]]:
+    with db.transaction() as session:
+        return ItemCategoryRepository(session).table()
+
+
+def test_sync_seed_inserts_missing_names_and_is_idempotent(db: Database) -> None:
+    seed = {"banane": "groceries.fresh", "pfand": "deposit"}
+
+    with db.transaction() as session:
+        first = ItemCategoryRepository(session).sync_seed(seed)
+    with db.transaction() as session:
+        repo = ItemCategoryRepository(session)
+        stamp = repo.get("banane")
+        second = repo.sync_seed(seed)
+
+    assert (first.inserted, first.updated) == (2, 0)
+    assert (second.inserted, second.updated) == (0, 0)
+    assert table(db) == {"banane": ("groceries.fresh", "seed"), "pfand": ("deposit", "seed")}
+    with db.transaction() as session:
+        assert ItemCategoryRepository(session).get("banane") == stamp  # untouched
+
+
+def test_sync_seed_updates_seed_rows_and_never_touches_user_rows(db: Database) -> None:
+    with db.transaction() as session:
+        repo = ItemCategoryRepository(session)
+        repo.sync_seed({"kaffee": "drinks", "cola": "drinks"})
+        repo.upsert_user("cola", "alcohol")
+        repo.upsert_user("zwiebeln", "groceries.fresh")
+
+    with db.transaction() as session:
+        result = ItemCategoryRepository(session).sync_seed(
+            {"kaffee": "groceries.staples", "cola": "drinks", "zwiebeln": "other"}
+        )
+
+    assert (result.inserted, result.updated) == (0, 1)
+    assert table(db) == {
+        "kaffee": ("groceries.staples", "seed"),  # the seed's new value
+        "cola": ("alcohol", "user"),
+        "zwiebeln": ("groceries.fresh", "user"),
+    }
+
+
+def test_sync_seed_keeps_names_the_seed_no_longer_has(db: Database) -> None:
+    with db.transaction() as session:
+        ItemCategoryRepository(session).sync_seed({"alt": "other"})
+    with db.transaction() as session:
+        ItemCategoryRepository(session).sync_seed({})
+
+    assert table(db) == {"alt": ("other", "seed")}
+
+
+def test_upsert_user_overrides_a_seed_entry_and_stamps_it(db: Database) -> None:
+    with db.transaction() as session:
+        repo = ItemCategoryRepository(session)
+        repo.sync_seed({"banane": "groceries.fresh"})
+        seeded = repo.get("banane")
+        record = repo.upsert_user("banane", "snacks_sweets")
+
+    assert seeded is not None
+    assert (record.normalized_name, record.category, record.source) == (
+        "banane",
+        "snacks_sweets",
+        "user",
+    )
+    assert record.updated_at >= seeded.updated_at
+    assert record.updated_at.tzinfo is None  # naive UTC
+    assert table(db) == {"banane": ("snacks_sweets", "user")}
+
+
+def test_put_seed_restores_a_seed_entry(db: Database) -> None:
+    with db.transaction() as session:
+        repo = ItemCategoryRepository(session)
+        repo.upsert_user("banane", "other")
+        assert repo.delete("banane") is True
+        assert repo.delete("banane") is False
+        repo.put_seed("banane", "groceries.fresh")
+
+    assert table(db) == {"banane": ("groceries.fresh", "seed")}
+
+
+def test_search_is_a_substring_match_sorted_by_name(db: Database) -> None:
+    with db.transaction() as session:
+        repo = ItemCategoryRepository(session)
+        repo.sync_seed(
+            {"bananen": "groceries.fresh", "banane": "groceries.fresh", "milch": "groceries.fresh"}
+        )
+        repo.upsert_user("100%_saft", "drinks")
+
+    with db.transaction() as session:
+        repo = ItemCategoryRepository(session)
+        names = [r.normalized_name for r in repo.search("anan")]
+        everything = [r.normalized_name for r in repo.search(None)]
+        literal = [r.normalized_name for r in repo.search("%_")]
+        wildcard = [r.normalized_name for r in repo.search("_")]
+
+    assert names == ["banane", "bananen"]
+    assert everything == ["100%_saft", "banane", "bananen", "milch"]
+    # `%` and `_` match themselves, not any text.
+    assert literal == ["100%_saft"]
+    assert wildcard == ["100%_saft"]

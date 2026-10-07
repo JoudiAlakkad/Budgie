@@ -1,9 +1,9 @@
 """SQLAlchemy ORM models (docs/wiki/backend/persistence.md).
 
-`receipts`, `expenses` and `line_items` are fixed in F05. Money is stored as integer
-cents (`MoneyCents`), because SQLite has no decimal type and `Numeric` goes through
-float; `qty` is stored as decimal text (`DecimalText`), because it is unrounded.
-Timestamps are naive UTC.
+`receipts`, `expenses` and `line_items` are fixed in F05, `item_categories` in F07.
+Money is stored as integer cents (`MoneyCents`), because SQLite has no decimal type and
+`Numeric` goes through float; `qty` is stored as decimal text (`DecimalText`), because it
+is unrounded. Timestamps are naive UTC.
 """
 
 import datetime as dt
@@ -136,3 +136,14 @@ class LineItemRow(Base):
     category_source: Mapped[str] = mapped_column(String(8))
 
     expense: Mapped[ExpenseRow] = relationship(back_populates="line_items")
+
+
+class ItemCategoryRow(Base):
+    """The item lookup table (decision 0013): normalised name -> category."""
+
+    __tablename__ = "item_categories"
+
+    normalized_name: Mapped[str] = mapped_column(Text, primary_key=True)
+    category: Mapped[str] = mapped_column(String(32))
+    source: Mapped[str] = mapped_column(String(8))  # seed | user
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime)
