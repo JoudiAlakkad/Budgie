@@ -18,8 +18,10 @@ from app.ai.prompts import load_prompts
 from app.config import Settings, get_settings
 from app.db.images import ImageStore
 from app.db.session import Database
+from app.services.budgets import BudgetService
 from app.services.categorization import ItemCategorizer, LookupCategorizer
 from app.services.expenses import ExpenseService
+from app.services.insights import InsightsService
 from app.services.item_categories import ItemCategoryService
 from app.services.receipt_pipeline import ExtractorFactory, ReceiptPipeline, Today
 from app.services.receipts import ReceiptService
@@ -138,3 +140,15 @@ def get_expense_service(
 
 def get_item_category_service(db: Database = Depends(get_database)) -> ItemCategoryService:
     return ItemCategoryService(db)
+
+
+def get_budget_service(
+    db: Database = Depends(get_database), today: Today = Depends(get_today)
+) -> BudgetService:
+    return BudgetService(db, today)
+
+
+def get_insights_service(
+    db: Database = Depends(get_database), today: Today = Depends(get_today)
+) -> InsightsService:
+    return InsightsService(db, today)

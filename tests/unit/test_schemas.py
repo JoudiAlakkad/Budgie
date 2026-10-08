@@ -67,6 +67,7 @@ def _expense(**overrides: object) -> Expense:
         "confirmed": False,
         "flags": [],
         "line_items": [],
+        "created_at": dt.datetime(2026, 10, 3, 12, 0),
     }
     values.update(overrides)
     return Expense.model_validate(values)
@@ -237,3 +238,10 @@ def test_not_a_receipt_is_a_receipt_error_code() -> None:
 
 def test_expense_create_can_attach_to_a_receipt() -> None:
     assert ExpenseCreate.model_validate({**EXPENSE, "receipt_id": 7}).receipt_id == 7
+
+
+def test_expense_created_at_is_utc_with_z() -> None:
+    """Stored naive (UTC), dumped with `Z` like `uploaded_at` (F08)."""
+    dumped = json.loads(_expense().model_dump_json())
+
+    assert dumped["created_at"] == "2026-10-03T12:00:00Z"

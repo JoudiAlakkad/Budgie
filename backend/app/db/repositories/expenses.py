@@ -4,7 +4,7 @@ import datetime as dt
 from collections.abc import Iterable
 from decimal import ROUND_HALF_UP, Decimal
 
-from sqlalchemy import Select, select, update
+from sqlalchemy import Select, func, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.db.models import ExpenseRow, LineItemRow
@@ -229,6 +229,31 @@ class ExpenseRepository:
             for id_, merchant, day, amount in self._session.execute(query)
         )
 
+    def confirmed_spend_by_category(
+        self, date_from: dt.date, date_to: dt.date
+    ) -> dict[str, Decimal]:
+        """The line-item amounts of confirmed expenses dated `date_from`..`date_to`
+        (inclusive), summed per item category in one `SUM ... GROUP BY` query.
+
+        Every category is returned, `deposit`, `discount` and `uncategorized` too; the
+        domain decides what counts as spend (decision 0021).
+        """
+        total = func.sum(LineItemRow.amount).label("total")  # MoneyCents: a Decimal sum
+        query = (
+            select(LineItemRow.category, total)
+            .join(ExpenseRow, LineItemRow.expense_id == ExpenseRow.id)
+            .where(
+                ExpenseRow.confirmed.is_(True),
+                ExpenseRow.date >= date_from,
+                ExpenseRow.date <= date_to,
+            )
+            .group_by(LineItemRow.category)
+        )
+        return {category: amount for category, amount in self._session.execute(query)}
+
+    def count(self) -> int:
+        return self._session.scalar(select(func.count()).select_from(ExpenseRow)) or 0
+
     def list(self, filters: ExpenseFilter | None = None) -> list[ExpenseRecord]:
         """Newest date first, expenses without a date last, ties by id descending."""
         filters = filters or ExpenseFilter()
@@ -246,6 +271,12 @@ class ExpenseRepository:
                 LineItemRow.category == filters.category
             )
             query = query.where(ExpenseRow.id.in_(with_category))
+        if filters.has_receipt is not None:
+            query = query.where(
+                ExpenseRow.receipt_id.is_not(None)
+                if filters.has_receipt
+                else ExpenseRow.receipt_id.is_(None)
+            )
         return [to_record(row) for row in self._session.scalars(query)]
 
     def delete_unconfirmed_for_receipt(self, receipt_id: int) -> int:

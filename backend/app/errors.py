@@ -76,10 +76,14 @@ class UncategorizedItems(BudgieError):
 
 
 class IncompleteExpense(BudgieError):
-    """Confirm was called while merchant, date or total is missing."""
+    """Confirm was called while merchant, date or total is missing, or the expense has no
+    line items (F08)."""
 
     code = "incomplete_expense"
-    detail = "Merchant, date and total are required before the expense can be confirmed."
+    detail = (
+        "Merchant, date, total and at least one line item are required before the expense "
+        "can be confirmed."
+    )
 
 
 class InvalidFields(BudgieError):

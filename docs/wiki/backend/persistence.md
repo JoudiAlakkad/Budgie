@@ -8,7 +8,7 @@ The data is stored in SQLite through SQLAlchemy, and only `app/db/` touches it (
 - Both live on the Docker volume `budgie-data`.
 
 ## Schema
-`receipts`, `expenses` and `line_items` are fixed in F05, `item_categories` in F07; the other tables are drafts until their feature.
+`receipts`, `expenses` and `line_items` are fixed in F05, `item_categories` in F07, `budgets` and `savings_goal` in F08.
 
 | Table | Columns |
 |---|---|
@@ -17,7 +17,7 @@ The data is stored in SQLite through SQLAlchemy, and only `app/db/` touches it (
 | `line_items` | id, expense_id, position, description, normalized_name, qty?, unit?, unit_price?, amount, category, category_source |
 | `item_categories` | normalized_name (PK), category, source (`seed`/`user`), updated_at |
 | `budgets` | category (PK), monthly_limit |
-| `savings_goal` | id=1, target_amount, target_date, monthly_income? |
+| `savings_goal` | id (`CHECK (id = 1)`, named `single_goal`), target_amount, target_date, monthly_income? |
 
 - **Types:**
   - Money is stored as integer cents (a `MoneyCents` type decorator), because SQLite has no decimal type and `Numeric` goes through float.
@@ -35,7 +35,10 @@ The data is stored in SQLite through SQLAlchemy, and only `app/db/` touches it (
 - F1 builds only the engine, the session factory and `Base` (`db/session.py`, `db/models.py`). Each table arrives with the feature that first uses it.
 - **Seed sync (F07, [0020](../decisions/0020-user-category-choices-and-duplicate-rule.md)):** on startup, `prepare_storage` syncs `app/domain/data/item_categories_seed.yaml` once the tables exist: missing names are inserted, rows still `seed` take the YAML value, `user` rows and names no longer in the YAML stay. A missing or broken seed (OSError, YAMLError, `InvalidSeed`) is wrapped in `StorageError`; it is step `item_categories_seed` in `StorageStatus` (health `db: error`, so the docker gate catches a missing YAML) and never stops startup.
 - **Saving a category** (`upsert_user`, `put_seed`) is one SQLite `INSERT … ON CONFLICT(normalized_name) DO UPDATE` with no read first, so two concurrent saves of the same new name can't collide; `updated_at` changes only when the category or source does. `DELETE` of a `user` entry with a seed value updates the row back to the seed entry. The statement is SQLite-specific ([0006](../decisions/0006-sqlite-behind-repository-layer.md)).
+- **Budgets and goal (F08):** `BudgetRepository.replace` deletes and inserts inside the caller's transaction, so a failure (e.g. a repeated primary key) leaves the old list; `all()` is sorted by category. `GoalRepository.put` is one SQLite `INSERT … ON CONFLICT(id) DO UPDATE` without a read first.
+- **Spend query (F08):** `ExpenseRepository.confirmed_spend_by_category(date_from, date_to)` is one `SUM … GROUP BY` over `line_items` joined to `expenses`: confirmed expenses with a date in the inclusive range, every item category, values as `Decimal` (the `MoneyCents` sum). The domain drops the non-spending categories ([0021](../decisions/0021-dashboard-and-goal-semantics.md)). `count()` on the expense, receipt and budget repositories serves the demo seed's emptiness check.
 - `ExpenseRepository.duplicate_candidates(date, total, exclude_id)` returns a tuple of same-date expenses whose total is within a cent of the cent-rounded total; the merchant is compared in the domain.
+- `ExpenseFilter.has_receipt` (F08): `False` adds `receipt_id IS NULL`, `True` adds `receipt_id IS NOT NULL` to the list query; it combines with the other filters. A manual entry attached to a failed receipt has a receipt. `Expense.created_at` in the API is the stored `expenses.created_at` (naive UTC, read as UTC).
 - Deleting a receipt removes its image file, its expense and its line items. `item_categories` stays. `DELETE /expenses/{id}` with a receipt deletes through `ReceiptRepository.delete` (cascade), then the file; without a receipt only the expense rows go.
   - The rows go first (ORM cascade), then the file. If removing the file fails, that is logged and the answer is still `204`; an orphan file is harmless.
   - Images are written to a temp file, then moved in with `os.replace`. If the receipt row can't be created, the file is removed again.

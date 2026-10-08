@@ -85,6 +85,11 @@ Implements [0013](../decisions/0013-deterministic-item-categorisation-by-lookup.
 
 The API mirrors this list as Literals in `app/api/schemas.py` (`SpendingCategory`, `Category`), because `api` doesn't import `domain`. A test parses this section and checks that the Literals match it.
 
+The backend's own copy is `app/domain/categories.py`: `CATEGORIES` (this order), `SPECIAL_CATEGORIES` (`deposit`, `discount`) and `SPENDING_CATEGORIES` (the rest). `domain/budget.py` and `services/item_categories.py` (`KNOWN_CATEGORIES`) import it; a test checks it equals `get_args(Category)` and `get_args(SpendingCategory)` (F08, found by `/code-review`: it was three hand-typed copies).
+
+## `money.py` (F08)
+`CENT` and `cents(value)`, rounding half up to 0.01, the one helper for `budget.py`, `validation.py`, `duplicates.py` and `services/views.py`. It uses the caller's decimal context: the sum check wraps it in `localcontext(prec=SUM_PRECISION)` for float-born amounts like `1e30`, which the default 28 digits can't quantize. `db/` keeps its own `CENT` for the `MoneyCents` column, because `db` can't import `domain`.
+
 ## `duplicates.py` (F07)
 - A receipt is a likely duplicate if the normalised merchant, the date and the total (±0.01) match **any other** expense, confirmed or draft ([0020](../decisions/0020-user-category-choices-and-duplicate-rule.md)).
 - Merchants are folded like item names, with punctuation and the legal words gmbh, mbh, ag, kg, kgaa, ohg, ug, se, co, ek and `e.K.`/`e.Kfm.` dropped. Totals are rounded to cents before the comparison. A missing merchant, date or total never matches.
@@ -92,9 +97,17 @@ The API mirrors this list as Literals in `app/api/schemas.py` (`SpendingCategory
 - **Known limit:** deleting the earlier expense leaves a stale flag on the newer one until it is edited.
 
 ## `budget.py` (F8)
-- Monthly spend per category counts confirmed expenses only, and excludes `deposit` and `discount`.
-- It compares the spend to the budget and gives a linear projection for the whole month: `spend / day_of_month × days_in_month`.
-- Savings-goal progress: `(income − spend)` per month, against the target.
+Implements [0021](../decisions/0021-dashboard-and-goal-semantics.md). Pure: `today` is a parameter.
+- `Month` (`parse("YYYY-MM")`, `of(date)`, `first`, `last`, `days`), `project`, `spend_state`, `goal_progress`, `summarize(month, today, spend, budgets, goal) -> Summary`.
+- **Spend:** confirmed expenses dated in the month, line-item amounts summed per category; `deposit`, `discount` and `uncategorized` are dropped here.
+- **Projection:** current month `spent / today.day × days_in_month`; past or future month `spent`.
+- **State:** `over` if `spent > budget`, `on_pace_to_overrun` if `projected > budget`, else `under` (also without a budget, and at exactly the budget).
+- **Rows:** categories with spend ≠ 0 or a budget, by spend descending, then name. `total_spent` = sum of rows; `projected_total` = sum of rounded row projections; `total_budget` = sum of all budgets or `null`.
+- **Goal:** `months_left = max(1, summary month → target month, inclusive)`; `required_per_month = target / months_left`; `saved_this_month = income − projected_total`; `on_track = saved ≥ required`; without income both are `null`, and so they are for a month after today's (it hasn't started).
+- Money: `Decimal`, rounded half up to cents. Every returned amount is clamped to ±`MONEY_LIMIT` (9,999,999,999.99, the response `Money` limit); states, ordering and the goal are judged on the real amounts.
+- Also `Month.shifted(n)` and `months_inclusive(start, end)`; the domain `GoalProgress` carries `months_left`, which the DTO doesn't. Anything that isn't a spending category is dropped, so the result always fits the `SpendingCategory` Literal.
+- **Demo seed** (`services/demo_seed.py`, [0022](../decisions/0022-demo-data-by-explicit-command.md)): 47 expenses and 9 budgets. `electronics` (59.99 against 25, bought on day 1) is `over` on every day; `health` (9.80 on day 1 against 10.00) is `on_pace_to_overrun` on every day except the month's last, where projected = spent makes it impossible (found in review: before, the demo showed no on-pace row on 11 of 31 October days). The goal card says "Behind" on days 1–2, when a day or two of spend is extrapolated over the month, and "On track" afterwards. A test checks every day of several months.
+- **Known limit:** a very distant target date makes `required_per_month` round to 0.00, so the goal always counts as on track (pinned by a test).
 
 ## `leaks.py` (F9)
 Each detector returns `Leak {type, category?, merchant?, amount, explanation}`.

@@ -4,7 +4,7 @@ import datetime as dt
 from collections.abc import Collection
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.db.models import ReceiptRow
@@ -51,6 +51,9 @@ class ReceiptRepository:
     def get(self, receipt_id: int) -> ReceiptRecord | None:
         row = self._session.get(ReceiptRow, receipt_id)
         return to_record(row) if row is not None else None
+
+    def count(self) -> int:
+        return self._session.scalar(select(func.count()).select_from(ReceiptRow)) or 0
 
     def list(self, status: str | None = None) -> list[ReceiptRecord]:
         """Newest first (upload time, then id)."""

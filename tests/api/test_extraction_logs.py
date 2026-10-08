@@ -40,6 +40,9 @@ ALLOWED_TEMPLATES = {
     "Item category set by the user",
     "Item category removed by the user, seed restored: %s",
     "Item category seed not loaded (%s); nothing restored",
+    "Budgets replaced: %d categories",
+    "Savings goal set",
+    "Demo data loaded: %d expenses, %d budgets and a goal",
 }
 # Tracebacks can quote values, so these are never used in services.
 FORBIDDEN_METHODS = {"exception"}

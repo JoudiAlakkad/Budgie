@@ -1,6 +1,6 @@
 # API client
 
-The file is `frontend/js/api.js`, and it's the only module that calls `fetch`. Built in F06, with `js/dom.js` (text-only DOM helpers and the receipt status words) and `js/categories.js` (`CATEGORIES` in the contract's order; `tests/unit/test_frontend_static.py` checks it against `api/schemas.py`).
+The file is `frontend/js/api.js`, and it's the only module that calls `fetch`. Built in F06, with `js/dom.js` (text-only DOM helpers, the receipt status words, `formatTimestamp` and, since F08, `formatDate` for a `YYYY-MM-DD` date as de-DE, using UTC) and `js/categories.js` (`CATEGORIES` in the contract's order, and since F08 `SPENDING_CATEGORIES` without `deposit` and `discount`; `tests/unit/test_frontend_static.py` checks it against `api/schemas.py`).
 
 - `api.get/post/patch/put/delete(path, body?)`:
   - prefixes `/api`

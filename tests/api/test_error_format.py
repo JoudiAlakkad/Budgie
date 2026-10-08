@@ -275,9 +275,17 @@ def test_impossible_month_is_422(client: TestClient, route: str, month: str) -> 
     assert body["fields"][0]["field"] == "query.month"
 
 
+def test_year_zero_passes_the_pattern_but_is_422_on_the_same_field(client: TestClient) -> None:
+    body = _assert_error(client.get("/api/insights/summary?month=0000-01"), 422, "validation_error")
+
+    assert [f["field"] for f in body["fields"]] == ["query.month"]
+
+
 @pytest.mark.parametrize("month", ["2026-01", "2026-12"])
-def test_valid_month_reaches_the_stub(client: TestClient, month: str) -> None:
-    assert client.get(f"/api/insights/summary?month={month}").status_code == 501
+def test_valid_month_reaches_the_route(client: TestClient, month: str) -> None:
+    """The summary is built (F08); leaks are still a stub (F09)."""
+    assert client.get(f"/api/insights/summary?month={month}").status_code == 200
+    assert client.get(f"/api/insights/leaks?month={month}").status_code == 501
 
 
 def test_malformed_json_is_422_validation_error(client: TestClient) -> None:

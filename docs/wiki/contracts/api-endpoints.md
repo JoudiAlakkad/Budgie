@@ -4,7 +4,7 @@
 - **Interactive docs:** `http://localhost:8000/docs`
 - **Spec file:** `docs/openapi.json`, generated from `backend/app/api/schemas.py` and checked for drift in CI.
 
-All bodies are JSON unless stated otherwise. Errors use the [error format](error-format.md). Final since F2 ([0016](../decisions/0016-api-representation-and-stub-convention.md)).
+All bodies are JSON unless stated otherwise. Errors use the [error format](error-format.md). Final since F2 ([0016](../decisions/0016-api-representation-and-stub-convention.md)); F08 added `Expense.created_at` and the `has_receipt` filter, both additive.
 
 ## Conventions
 - **Money** is a JSON number with at most 2 decimals (`1.99`). The server computes with `Decimal` and rounds to 0.01 before building a response; a value with more decimals is a server error. **Quantities** (`qty`) are JSON numbers without the 2-decimal limit (`1.234` kg) and may be negative (deposit returns).
@@ -29,7 +29,7 @@ All bodies are JSON unless stated otherwise. Errors use the [error format](error
 ## Expenses
 | Method | Path | Request | Response |
 |---|---|---|---|
-| GET | `/expenses` | `?review_status=&confirmed=&from=&to=&category=` (all optional) | `200` `Expense[]`, newest date first, expenses without a date last, ties by id descending |
+| GET | `/expenses` | `?review_status=&confirmed=&from=&to=&category=&has_receipt=` (all optional) | `200` `Expense[]`, newest date first, expenses without a date last, ties by id descending |
 | POST | `/expenses` | `ExpenseCreate` | `201` `Expense`; `409` `invalid_state` if `receipt_id` is set and that receipt isn't `failed`; `404` for an unknown `receipt_id` |
 | GET | `/expenses/export.csv` | `?from=&to=` | `200` `text/csv` ([csv-export](csv-export.md)) |
 | GET | `/expenses/{id}` | – | `200` `Expense`; `404` |
@@ -37,11 +37,11 @@ All bodies are JSON unless stated otherwise. Errors use the [error format](error
 | POST | `/expenses/{id}/confirm` | – | `200` `Expense`; `422` `uncategorized_items` or `incomplete_expense`; confirming twice is a no-op; `404` |
 | DELETE | `/expenses/{id}` | – | `204`, also deletes its receipt and image; `404` |
 
-- **Filters:** `category` (`Category` or `uncategorized`) matches expenses with at least one item in that category. `from` and `to` are inclusive dates. There is no pagination; the data is one user's.
+- **Filters:** `category` (`Category` or `uncategorized`) matches expenses with at least one item in that category. `has_receipt=false` returns only expenses without a photo (manual entries; F08, for the home page's Recent list), `true` only those with one. `from` and `to` are inclusive dates. There is no pagination; the data is one user's.
 - **Rules rerun on every write:** `POST /expenses` and `PATCH /expenses/{id}` recompute `flags` and `review_status` from the rules ([domain-logic](../backend/domain-logic.md#confidencepy-f4)), so a fixed field clears its flag. Every field stays editable whatever the review status.
 - **Manual entry for a failed receipt:** `POST /expenses` with `receipt_id` attaches a hand-typed expense to the photo. The expense gets `source: manual`, and the receipt becomes `extracted` ([0015](../decisions/0015-non-receipt-is-a-failure-with-retry-or-manual-entry.md)). The merchant is stored as typed. A `category` sent on an item is stored with `category_source: user`. The failed attempt's `error` and model data are cleared, as on retry.
 - **Editing (PATCH)** ([0018](../decisions/0018-review-form-editing-semantics.md)): `source` `ai` becomes `ai_corrected`; `ai_corrected` and `manual` stay. Each field sent is dropped from the model's `unreadable_fields` (`line_items` when items are sent). An item's `category`, if sent, is stored with `category_source: user`; an existing item sent without `category` and with an unchanged description keeps its category; a new item or a changed description is categorised again. An item `id` that isn't one of this expense's items, or that is listed twice, is `422 validation_error` (`fields`: `line_items.<i>.id`). An empty body `{}` changes nothing: no source change, no un-confirm, no reassessment. Editing a confirmed expense un-confirms it and its receipt goes back to `extracted`, in one transaction.
-- **Confirm** answers `404` if a retry deletes the expense between its read and its write. It checks merchant, date and total first (the `incomplete_expense` detail names the missing ones), then the categories (the `uncategorized_items` detail gives the count). It doesn't look at flags: a `needs_review` expense can be confirmed once merchant, date and total are set and every item is categorised.
+- **Confirm** answers `404` if a retry deletes the expense between its read and its write. It checks merchant, date, total and at least one line item first (the `incomplete_expense` detail names the missing ones, e.g. `missing: date, line items.`), then the categories (the `uncategorized_items` detail gives the count). It doesn't look at flags: a `needs_review` expense can be confirmed once merchant, date and total are set and it has categorised items. The line-item rule came in F08: an AI expense with a total but no items used to be confirmable and counted as 0 € on the dashboard (found by `/code-review`; the student's decision).
 - **Delete** of an expense with a receipt removes the receipt and its image as `DELETE /receipts/{id}` does; a manual expense without a receipt removes only the expense.
 - **Upload size:** Starlette reads the whole multipart body before the `413 file_too_large` check runs, so an oversized upload still costs its transfer.
 
@@ -67,12 +67,16 @@ A `category` sent on an item in `POST /expenses` or `PATCH /expenses/{id}` is al
 | GET | `/insights/leaks` | `?month=YYYY-MM` (default: current month) | `200` `Leak[]` |
 | GET | `/health` | – | `200` `{status, db: ok\|error, llm: ok\|down, model}`, always `200` while the app runs |
 
+- **Budgets (F08):** `PUT /budgets` replaces the list in one transaction; an empty list clears it. A repeated category is `422 validation_error` with `<i>.category` on every repeat after the first. `GET /budgets` is sorted by category.
+- **Goal (F08):** `PUT /goal` answers `422` for `target_amount` ≤ 0, a `target_date` before the first day of the current Europe/Berlin month, or `monthly_income` < 0, all reported together. `GET /goal` is `404` until a goal is set. There is no way to delete a goal.
+- **Summary (F08, [0021](../decisions/0021-dashboard-and-goal-semantics.md)):** without `?month=`, today's Europe/Berlin month. `0001-01` to `9999-12` are valid; `0000-MM` passes the pattern but answers `422` on `query.month`. Only confirmed expenses count; deposits, discounts and uncategorised items don't. Rows are categories with spend ≠ 0 or a budget, by spend descending, then name. A past or future month has `projected = spent`. `total_budget` is `null` without budgets, `goal` is `null` without a goal, and a passed target date counts as 1 month left. `saved_this_month` is `monthly_income − projected_total`; for a month after the current one, `saved_this_month` and `on_track` are `null`. Every amount is clamped to ±9,999,999,999.99, the `Money` limit, so a huge mistyped amount ×31 can't make the summary a `500`.
+
 ## DTOs
 `?` marks a nullable value in a response, and an optional field in a request.
 
 ### Receipts and expenses
 - **`Receipt`:** `{id, status: uploaded|extracting|extracted|failed|confirmed, uploaded_at, error?: ReceiptErrorCode, error_detail?: string, expense?: Expense}`. `error_detail` is a fixed, readable message per code ([error-format](error-format.md#receipt-error-codes)).
-- **`Expense`:** `{id, receipt_id?, merchant?, date?, currency, total?, subtotal?, tax?, source: ai|ai_corrected|manual, review_status: accepted|needs_review|rejected, confirmed: bool, flags: Flag[], line_items: LineItem[]}`. `merchant`, `date` and `total` can be null after extraction; confirming requires them.
+- **`Expense`:** `{id, receipt_id?, merchant?, date?, currency, total?, subtotal?, tax?, source: ai|ai_corrected|manual, review_status: accepted|needs_review|rejected, confirmed: bool, flags: Flag[], line_items: LineItem[], created_at}`. `created_at` (F08) is when the expense was created, a UTC timestamp like `uploaded_at`; the home page sorts manual entries by it. `merchant`, `date` and `total` can be null after extraction; confirming requires them.
 - **`LineItem`:** `{id, description, normalized_name, qty?, unit?, unit_price?, amount, category: Category|uncategorized, category_source: seed|user|none}`
 - **`Flag`:** `{field?, code, message}`, e.g. `{field: "total", code: "sum_mismatch", message: "Items sum to 12.40 but total is 14.40"}`. `code` is a string; the known codes are listed in [domain-logic](../backend/domain-logic.md), so new rules don't change the contract.
 - **`LineItemInput`:** `{id?, description, qty?, unit?, unit_price?, amount, category?: Category}`. The server derives `normalized_name` and `category_source`.

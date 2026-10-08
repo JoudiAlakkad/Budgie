@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dashboard · Budgie</title>
+    <link rel="stylesheet" href="css/style.css" />
+    <script type="module" src="js/dashboard.js"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="index.html">Budgie</a>
+      <nav aria-label="Main">
+        <ul>
+          <li><a href="index.html">Upload</a></li>
+          <li><a href="dashboard.html" aria-current="page">Dashboard</a></li>
+          <li><a href="settings.html">Settings</a></li>
+        </ul>
+      </nav>
+    </header>
+    <main>
+      <div id="error-banner" class="error-banner" role="alert" hidden></div>
+      <h1>Dashboard</h1>
+      <div class="month-picker">
+        <button type="button" id="month-prev">
+          <span class="icon" aria-hidden="true">‹ </span>Previous<span class="visually-hidden"> month</span>
+        </button>
+        <label for="month-input">Month</label>
+        <input id="month-input" type="month" />
+        <button type="button" id="month-next">
+          Next<span class="visually-hidden"> month</span><span class="icon" aria-hidden="true"> ›</span>
+        </button>
+      </div>
+      <p id="dashboard-status" class="visually-hidden" role="status" aria-live="polite"></p>
+      <div id="dashboard" aria-busy="true">
+        <p>Loading…</p>
+      </div>
+    </main>
+  </body>
+</html>

@@ -1,12 +1,14 @@
 """App factory: routers, static frontend mount, startup."""
 
 import logging
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from starlette.responses import Response
 from starlette.routing import Match, Mount
 from starlette.types import Scope
 
@@ -40,6 +42,29 @@ class FrontendMount(Mount):
         if path == API_PREFIX or path.startswith(API_PREFIX + "/"):
             return Match.NONE, {}
         return super().matches(scope)
+
+
+class NoCacheStaticFiles(StaticFiles):
+    """The frontend's files with `Cache-Control: no-cache`: the browser must revalidate
+    every file before using it, and the ETag/Last-Modified answer an unchanged one with a
+    cheap 304 (which keeps the header too).
+
+    Without it, browsers guess a freshness from Last-Modified, so an old cached module
+    (`js/dom.js`) could be paired with new modules that import a name it lacks; the ES
+    module link then fails and the page stops working (F08, found by hand). API
+    responses don't pass through here.
+    """
+
+    def file_response(
+        self,
+        full_path: str | os.PathLike[str],
+        stat_result: os.stat_result,
+        scope: Scope,
+        status_code: int = 200,
+    ) -> Response:
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
 
 def _configure_logging(level_name: str) -> None:
@@ -90,7 +115,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     frontend_dir = Path(settings.frontend_dir)
     if frontend_dir.is_dir():
         app.router.routes.append(
-            FrontendMount("/", app=StaticFiles(directory=frontend_dir, html=True), name="frontend")
+            FrontendMount(
+                "/", app=NoCacheStaticFiles(directory=frontend_dir, html=True), name="frontend"
+            )
         )
     else:
         logger.warning("FRONTEND_DIR %s not found; serving the API only", frontend_dir)

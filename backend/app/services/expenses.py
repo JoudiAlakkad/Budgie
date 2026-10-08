@@ -132,12 +132,14 @@ class ExpenseService:
         date_from: dt.date | None = None,
         date_to: dt.date | None = None,
         category: str | None = None,
+        has_receipt: bool | None = None,
     ) -> list[ExpenseView]:
         """Newest date first, expenses without a date last, ties by id descending.
 
-        `category` matches expenses with at least one item in it; the dates are inclusive.
+        `category` matches expenses with at least one item in it; the dates are inclusive;
+        `has_receipt` False keeps only expenses without a receipt, True only those with one.
         """
-        filters = ExpenseFilter(review_status, confirmed, date_from, date_to, category)
+        filters = ExpenseFilter(review_status, confirmed, date_from, date_to, category, has_receipt)
         with self._db.transaction() as session:
             expenses = ExpenseRepository(session).list(filters)
         return [expense_view(expense) for expense in expenses]
@@ -277,7 +279,8 @@ class ExpenseService:
 
         Flags don't block it. Confirming twice returns the expense unchanged. Raises
         `IncompleteExpense` while merchant (blank counts as missing), date or total is
-        missing, then `UncategorizedItems` while any item is uncategorised.
+        missing or there are no line items (F08; the detail names each missing part), then
+        `UncategorizedItems` while any item is uncategorised.
         """
         with self._db.transaction() as session:
             expenses = ExpenseRepository(session)
@@ -510,20 +513,22 @@ def _move_receipt(receipts: ReceiptRepository, expense: ExpenseRecord, from_: st
 
 
 def _check_confirmable(expense: ExpenseRecord) -> None:
-    """Merchant, date and total set, then every item categorised (receipt-lifecycle.md)."""
+    """Merchant, date, total and at least one line item set, then every item categorised
+    (receipt-lifecycle.md). An expense without items would count nothing as spend."""
     missing = [
         name
         for name, absent in (
             ("merchant", is_blank(expense.merchant)),
             ("date", expense.date is None),
             ("total", expense.total is None),
+            ("line items", not expense.line_items),
         )
         if absent
     ]
     if missing:
         raise IncompleteExpense(
-            "Merchant, date and total are required before the expense can be confirmed; "
-            f"missing: {', '.join(missing)}."
+            "Merchant, date, total and at least one line item are required before the "
+            f"expense can be confirmed; missing: {', '.join(missing)}."
         )
     uncategorized = sum(
         not ItemFacts(item.description, item.amount, item.category).is_categorized

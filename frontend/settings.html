@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Settings · Budgie</title>
+    <link rel="stylesheet" href="css/style.css" />
+    <script type="module" src="js/settings.js"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="index.html">Budgie</a>
+      <nav aria-label="Main">
+        <ul>
+          <li><a href="index.html">Upload</a></li>
+          <li><a href="dashboard.html">Dashboard</a></li>
+          <li><a href="settings.html" aria-current="page">Settings</a></li>
+        </ul>
+      </nav>
+    </header>
+    <main>
+      <div id="error-banner" class="error-banner" role="alert" hidden></div>
+      <h1>Settings</h1>
+
+      <section class="settings-card" aria-labelledby="budgets-heading">
+        <h2 id="budgets-heading">Monthly budgets</h2>
+        <p id="budgets-hint" class="hint">
+          A monthly limit per category, in euros. Leave a field empty for no budget.
+        </p>
+        <form id="budgets-form" class="settings-form" novalidate>
+          <div id="budget-rows" class="budget-rows" aria-busy="true">
+            <p>Loading…</p>
+          </div>
+          <div class="actions">
+            <button type="submit" class="primary" id="budgets-save" disabled>Save budgets</button>
+            <p id="budgets-status" class="form-status" role="status" aria-live="polite"></p>
+          </div>
+        </form>
+      </section>
+
+      <section class="settings-card" aria-labelledby="goal-heading">
+        <h2 id="goal-heading">Savings goal</h2>
+        <p id="goal-empty" class="note" hidden>No goal set yet.</p>
+        <form id="goal-form" class="settings-form" novalidate>
+          <div class="fields goal-fields">
+            <div class="field">
+              <label for="goal-target-amount">Target amount (€)</label>
+              <input id="goal-target-amount" name="target_amount" type="number" inputmode="decimal"
+                min="0.01" step="0.01" required disabled />
+            </div>
+            <div class="field">
+              <label for="goal-target-date">Target date</label>
+              <input id="goal-target-date" name="target_date" type="date" required disabled />
+            </div>
+            <div class="field">
+              <label for="goal-monthly-income">Monthly income (€, optional)</label>
+              <input id="goal-monthly-income" name="monthly_income" type="number" inputmode="decimal"
+                min="0" step="0.01" aria-describedby="goal-income-hint" disabled />
+              <span id="goal-income-hint" class="hint">Needed to tell whether you are on track.</span>
+            </div>
+          </div>
+          <div class="actions">
+            <button type="submit" class="primary" id="goal-save" disabled>Save goal</button>
+            <p id="goal-status" class="form-status" role="status" aria-live="polite"></p>
+          </div>
+        </form>
+      </section>
+    </main>
+  </body>
+</html>

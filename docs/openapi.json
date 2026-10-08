@@ -536,6 +536,24 @@
               "title": "Category"
             },
             "description": "expenses with at least one item in this category"
+          },
+          {
+            "name": "has_receipt",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "false: only expenses without a receipt (manual); true: with one",
+              "title": "Has Receipt"
+            },
+            "description": "false: only expenses without a receipt (manual); true: with one"
           }
         ],
         "responses": {
@@ -1757,6 +1775,11 @@
             },
             "type": "array",
             "title": "Line Items"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
           }
         },
         "type": "object",
@@ -1773,7 +1796,8 @@
           "review_status",
           "confirmed",
           "flags",
-          "line_items"
+          "line_items",
+          "created_at"
         ],
         "title": "Expense"
       },

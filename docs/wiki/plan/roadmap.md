@@ -27,8 +27,8 @@ Each feature is one issue, one branch (`feat/F<NN>-<slug>`) and one PR. The proc
 | F5 | Receipt pipeline: upload → background extraction → persist, failure handling | F3, F4 | `backend-dev` |
 | F6 | Upload + review/correct UI, corrections, confirm | F5 | `backend-dev` ∥ `frontend-dev` |
 | F7 | Name normalisation, category lookup table + seed, duplicates | F2 | `backend-dev` (parallel with F3, F4) |
-| F8 | Budgets, savings goal, dashboard | F6, F7 | `backend-dev` ∥ `frontend-dev` |
-| F9 | Leak detection + insight cards, demo seed data | F8 | `backend-dev` ∥ `frontend-dev` |
+| F8 | Budgets, savings goal, dashboard, demo seed data ([0022](../decisions/0022-demo-data-by-explicit-command.md)) | F6, F7 | `backend-dev` ∥ `frontend-dev` |
+| F9 | Leak detection + insight cards, leak patterns in the demo seed | F8 | `backend-dev` ∥ `frontend-dev` |
 | F10 | CSV export + OpenAPI export, Expenses page (list, filter, delete, export) | F5, F6 | `backend-dev` ∥ `frontend-dev` |
 | F11 | Evaluation dataset, runner, comparisons, report | F5 | `backend-dev` + `eval-runner`; the student labels the ground truth and interprets the results |
 | F12 | README, responsible design, compose file, slides | all | main session |

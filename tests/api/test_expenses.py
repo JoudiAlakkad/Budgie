@@ -2,6 +2,7 @@
 `PATCH /expenses/{id}`, `POST /expenses/{id}/confirm` and `DELETE /expenses/{id}` (F06,
 decision 0018)."""
 
+import datetime as dt
 import os
 from typing import Any
 
@@ -99,6 +100,7 @@ def test_manual_expense_is_created_assessed_and_returned(api: TestClient) -> Non
                 "category_source": "user",
             },
         ],
+        "created_at": expense["created_at"],
     }
     assert api.get(f"/api/expenses/{expense['id']}").json() == expense
 
@@ -301,12 +303,52 @@ def test_list_filters(api: TestClient) -> None:
     assert ids(category="alcohol") == []
 
 
+def test_has_receipt_filter(api: TestClient, model: ModelServer) -> None:
+    """F08: `false` lists manual entries (no photo), `true` only expenses with one."""
+    manual = create(api, date="2026-10-02")["id"]
+    receipt_id, from_photo = extracted(api, model)
+    attached_receipt = failed_receipt(api, model)
+    attached = create(api, receipt_id=attached_receipt, date="2026-09-01")["id"]
+
+    def ids(**params: str) -> list[int]:
+        response = api.get("/api/expenses", params=params)
+        assert response.status_code == 200, response.text
+        return [e["id"] for e in response.json()]
+
+    assert ids(has_receipt="false") == [manual]
+    assert ids(has_receipt="true") == [from_photo["id"], attached]
+    assert set(ids()) == {manual, from_photo["id"], attached}
+    # combines with the other filters
+    assert ids(has_receipt="true", **{"from": "2026-10-01"}) == [from_photo["id"]]
+    assert ids(has_receipt="false", confirmed="true") == []
+    assert receipt_id != attached_receipt
+
+
+def test_created_at_is_utc_and_kept_through_edits(api: TestClient, model: ModelServer) -> None:
+    before = dt.datetime.now(dt.UTC).replace(microsecond=0)
+    expense = create(api)
+    stamp = expense["created_at"]
+
+    assert stamp.endswith("Z")
+    created = dt.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    assert before <= created <= dt.datetime.now(dt.UTC)
+    assert patch(api, expense["id"], {"merchant": "Edeka"})["created_at"] == stamp
+    # A receipt embeds its expense with the same value.
+    receipt_id, extracted_expense = extracted(api, model)
+    embedded = api.get(f"/api/receipts/{receipt_id}").json()["expense"]
+    assert embedded["created_at"] == extracted_expense["created_at"]
+    assert embedded["created_at"].endswith("Z")
+    listed = {e["id"]: e for e in api.get("/api/expenses").json()}
+    assert listed[expense["id"]]["created_at"] == stamp
+
+
 @pytest.mark.parametrize(
     ("params", "field"),
     [
         ({"review_status": "maybe"}, "query.review_status"),
         ({"category": "food"}, "query.category"),
         ({"from": "03.10.2026"}, "query.from"),
+        ({"has_receipt": "maybe"}, "query.has_receipt"),
     ],
 )
 def test_list_rejects_invalid_filters(api: TestClient, params: dict, field: str) -> None:
@@ -780,12 +822,36 @@ def test_confirm_of_an_incomplete_expense_is_422(
     assert response.json() == {
         "error": "incomplete_expense",
         "detail": (
-            "Merchant, date and total are required before the expense can be confirmed; "
-            f"missing: {missing}."
+            "Merchant, date, total and at least one line item are required before the "
+            f"expense can be confirmed; missing: {missing}."
         ),
         "fields": None,
     }
     assert api.get(f"/api/expenses/{expense['id']}").json() == ready
+    assert receipt_status(api, receipt_id) == "extracted"
+
+
+@pytest.mark.parametrize(
+    ("answer_fields", "missing"),
+    [
+        ({"line_items": []}, "line items"),
+        ({"line_items": [], "date": None}, "date, line items"),
+    ],
+)
+def test_confirm_of_an_expense_without_items_is_422(
+    api: TestClient, model: ModelServer, answer_fields: dict, missing: str
+) -> None:
+    """An AI expense with a total but no items would count nothing as spend (F08)."""
+    receipt_id, expense = extracted(api, model, **answer_fields)
+    assert expense["line_items"] == [] and expense["total"] is not None
+
+    response = api.post(f"/api/expenses/{expense['id']}/confirm")
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error"] == "incomplete_expense"
+    assert body["detail"].endswith(f"missing: {missing}.")
+    assert api.get(f"/api/expenses/{expense['id']}").json()["confirmed"] is False
     assert receipt_status(api, receipt_id) == "extracted"
 
 

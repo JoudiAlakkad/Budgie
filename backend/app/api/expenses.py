@@ -28,6 +28,9 @@ def list_expenses(
     category: LineItemCategory | None = Query(
         None, description="expenses with at least one item in this category"
     ),
+    has_receipt: bool | None = Query(
+        None, description="false: only expenses without a receipt (manual); true: with one"
+    ),
     service: ExpenseService = Depends(get_expense_service),
 ) -> list[Expense]:
     views = service.list(
@@ -36,6 +39,7 @@ def list_expenses(
         date_from=from_,
         date_to=to,
         category=category,
+        has_receipt=has_receipt,
     )
     return [Expense.model_validate(view, from_attributes=True) for view in views]
 

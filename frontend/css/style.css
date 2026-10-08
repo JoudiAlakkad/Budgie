@@ -584,3 +584,250 @@ tr.needs-category select {
 input::placeholder {
   color: var(--muted);
 }
+
+/* ---------------------------------------------------------------- dashboard */
+
+.month-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.month-picker label {
+  font-weight: 600;
+}
+
+.month-picker input[type="month"] {
+  width: auto;
+  min-width: 11rem;
+}
+
+.month-heading {
+  margin-top: 0;
+}
+
+#dashboard > section {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+
+#dashboard > section h2 {
+  margin-top: 0;
+}
+
+.totals-list,
+.goal-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 2rem;
+  margin: 0;
+}
+
+.totals-list dt,
+.goal-list dt {
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.totals-list dd,
+.goal-list dd {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.totals-list dd a {
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+.spend-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.spend-row {
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.spend-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.spend-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+}
+
+.spend-name {
+  font-weight: 600;
+}
+
+.spend-amount {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The bar repeats the text for sighted users; it's aria-hidden. */
+.bar {
+  position: relative;
+  height: 0.75rem;
+  margin: 0.35rem 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--ok-border);
+}
+
+.state-on_pace_to_overrun .bar-fill {
+  background: var(--warn-border);
+}
+
+.state-over .bar-fill {
+  background: var(--error-border);
+}
+
+/* Projection for the month end: a dark tick, distinguishable from the fill without colour. */
+.bar-projection {
+  position: absolute;
+  top: -0.3rem;
+  bottom: -0.3rem;
+  width: 3px;
+  margin-left: -1.5px;
+  background: var(--fg);
+  border-radius: 1px;
+}
+
+.spend-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+  margin: 0.25rem 0 0;
+}
+
+.state-text {
+  font-weight: 600;
+}
+
+.state-over .state-text {
+  color: var(--error-border);
+}
+
+.state-on_pace_to_overrun .state-text {
+  color: #8a5d00;
+}
+
+.state-under .state-text {
+  color: var(--ok-border);
+}
+
+.state-none .state-text {
+  color: var(--muted);
+}
+
+.goal-target {
+  margin-top: 0;
+}
+
+.goal-state {
+  margin: 0.75rem 0 0;
+  font-weight: 700;
+}
+
+.goal-state.on-track {
+  color: var(--ok-border);
+}
+
+.goal-state.behind {
+  color: var(--error-border);
+}
+
+.empty-state {
+  margin: 0;
+}
+
+/* ---------------------------------------------------------------- settings */
+
+.settings-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.settings-card h2 {
+  margin-top: 0;
+}
+
+.budget-rows {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.9rem 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.budget-input {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.budget-input input,
+.goal-fields input[type="number"] {
+  text-align: right;
+}
+
+.budget-input .unit {
+  color: var(--muted);
+}
+
+.form-status {
+  margin: 0;
+  min-height: 1.5rem;
+}
+
+.form-errors {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+@media (max-width: 480px) {
+  main {
+    padding: 0.75rem;
+  }
+
+  .site-header {
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+  }
+
+  .month-picker input[type="month"] {
+    min-width: 0;
+    flex: 1 1 8rem;
+  }
+
+  .budget-rows {
+    grid-template-columns: 1fr;
+  }
+}

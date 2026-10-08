@@ -5,7 +5,7 @@ VENV   ?= .venv
 PY     := $(VENV)/bin/python
 CONFIG := backend/pyproject.toml
 
-.PHONY: install lint format test imports openapi openapi-check secrets check run docker-check
+.PHONY: install lint format test imports openapi openapi-check secrets check run seed-demo docker-check
 
 install:
 	python3 -m venv $(VENV)
@@ -41,6 +41,10 @@ check: lint test imports openapi-check secrets
 
 run:
 	$(VENV)/bin/uvicorn app.main:app --reload --port 8000
+
+# Demo data (decision 0022): only loads into an empty database. TODAY=YYYY-MM-DD pins the date.
+seed-demo:
+	$(PY) -m app.demo_seed $(if $(TODAY),--today $(TODAY))
 
 # Needs docker, so run it on the host (the dev container has none).
 docker-check:

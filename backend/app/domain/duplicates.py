@@ -10,15 +10,15 @@ import datetime as dt
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 
 from app.domain.categorize import fold
 from app.domain.facts import Flag, is_blank
+from app.domain.money import cents
 
 # Merchant lines are short; anything after this is ignored (bounds the work).
 MAX_MERCHANT_CHARS = 1024
 TOTAL_TOLERANCE = Decimal("0.01")
-CENT = Decimal("0.01")
 
 # Legal-form words dropped from a merchant: `REWE Markt GmbH` == `rewe markt`.
 LEGAL_SUFFIXES = frozenset({"gmbh", "mbh", "ag", "kg", "kgaa", "ohg", "ug", "se", "co", "ek"})
@@ -46,10 +46,6 @@ def normalize_merchant(text: str | None) -> str:
     return " ".join(words)
 
 
-def _cents(value: Decimal) -> Decimal:
-    return value.quantize(CENT, rounding=ROUND_HALF_UP)
-
-
 def is_duplicate(candidate: ExpenseKey, other: ExpenseKey) -> bool:
     """Same normalised merchant, same date, totals within 0.01 (both rounded to cents).
 
@@ -61,7 +57,7 @@ def is_duplicate(candidate: ExpenseKey, other: ExpenseKey) -> bool:
         return False
     if candidate.total is None or other.total is None:
         return False
-    if abs(_cents(candidate.total) - _cents(other.total)) > TOTAL_TOLERANCE:
+    if abs(cents(candidate.total) - cents(other.total)) > TOTAL_TOLERANCE:
         return False
     if is_blank(candidate.merchant) or is_blank(other.merchant):
         return False
@@ -76,7 +72,7 @@ def duplicate_flag(candidate: ExpenseKey, others: Sequence[ExpenseKey]) -> Flag 
             assert other.date is not None and other.total is not None
             message = (
                 f"Looks like a duplicate of expense {other.id} "
-                f"({other.merchant}, {other.date.isoformat()}, {_cents(other.total)})."
+                f"({other.merchant}, {other.date.isoformat()}, {cents(other.total)})."
             )
             return Flag(None, "possible_duplicate", message)
     return None

@@ -237,6 +237,8 @@ class Expense(BaseModel):
     confirmed: bool
     flags: list[Flag]
     line_items: list[LineItem]
+    created_at: Timestamp
+    """When the expense was created (F08); the home page sorts manual entries by it."""
 
 
 class Receipt(BaseModel):

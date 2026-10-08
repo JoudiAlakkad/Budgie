@@ -13,6 +13,8 @@
       <nav aria-label="Main">
         <ul>
           <li><a href="index.html" aria-current="page">Upload</a></li>
+          <li><a href="dashboard.html">Dashboard</a></li>
+          <li><a href="settings.html">Settings</a></li>
         </ul>
       </nav>
     </header>
@@ -30,14 +32,15 @@
           <div class="manual-entry">
             <h3>No photo?</h3>
             <a class="button" href="review.html?manual=1" aria-describedby="manual-hint">Add expense manually</a>
-            <p id="manual-hint" class="hint">Type in merchant, date, total and items yourself. Manual expenses appear in the expense list (coming soon).</p>
+            <p id="manual-hint" class="hint">Type in merchant, date, total and items yourself. Manual expenses appear under Recent below.</p>
           </div>
         </div>
         <p id="upload-status" class="upload-status" role="status" aria-live="polite"></p>
       </section>
       <section aria-labelledby="recent-heading">
-        <h2 id="recent-heading">Recent receipts</h2>
-        <p id="recent-empty" class="hint" hidden>No receipts yet.</p>
+        <h2 id="recent-heading">Recent</h2>
+        <p class="hint">Uploaded receipts and expenses entered by hand, most recently added first.</p>
+        <p id="recent-empty" class="hint" hidden>No receipts or expenses yet.</p>
         <ul id="recent-list" class="receipt-list"></ul>
       </section>
     </main>

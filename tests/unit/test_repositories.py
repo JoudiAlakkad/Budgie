@@ -322,6 +322,25 @@ def test_list_filters(db: Database) -> None:
     assert ids(category="alcohol") == []
 
 
+def test_list_filters_by_having_a_receipt(db: Database) -> None:
+    receipt_id = new_receipt(db)
+    with db.transaction() as session:
+        repo = ExpenseRepository(session)
+        with_receipt = repo.insert(expense(receipt_id, date=dt.date(2026, 10, 2))).id
+        manual = repo.insert(expense(date=dt.date(2026, 10, 1))).id
+        old_manual = repo.insert(expense(date=dt.date(2026, 9, 1))).id
+
+    def ids(**filters: object) -> list[int]:
+        with db.transaction() as session:
+            found = ExpenseRepository(session).list(ExpenseFilter(**filters))  # type: ignore[arg-type]
+            return [e.id for e in found]
+
+    assert ids(has_receipt=True) == [with_receipt]
+    assert ids(has_receipt=False) == [manual, old_manual]
+    assert ids(has_receipt=None) == [with_receipt, manual, old_manual]
+    assert ids(has_receipt=False, date_from=dt.date(2026, 10, 1)) == [manual]
+
+
 def test_by_receipts_maps_receipt_ids(db: Database) -> None:
     a, b = new_receipt(db), new_receipt(db)
     with db.transaction() as session:
