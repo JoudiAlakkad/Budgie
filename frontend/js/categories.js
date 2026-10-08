@@ -19,6 +19,11 @@ export const CATEGORIES = [
   "discount",
 ];
 
+/** The contract's `SpendingCategory`: every category except `deposit` and `discount`. */
+export const SPENDING_CATEGORIES = CATEGORIES.filter(
+  (category) => category !== "deposit" && category !== "discount",
+);
+
 /** A line item that has no category yet; not a `Category`, so it can't be sent. */
 export const UNCATEGORIZED = "uncategorized";
 
