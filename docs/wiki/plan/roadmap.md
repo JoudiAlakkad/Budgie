@@ -28,7 +28,7 @@ Each feature is one issue, one branch (`feat/F<NN>-<slug>`) and one PR. The proc
 | F6 | Upload + review/correct UI, corrections, confirm | F5 | `backend-dev` ∥ `frontend-dev` |
 | F7 | Name normalisation, category lookup table + seed, duplicates | F2 | `backend-dev` (parallel with F3, F4) |
 | F8 | Budgets, savings goal, dashboard, demo seed data ([0022](../decisions/0022-demo-data-by-explicit-command.md)) | F6, F7 | `backend-dev` ∥ `frontend-dev` |
-| F9 | Leak detection + insight cards, leak patterns in the demo seed | F8 | `backend-dev` ∥ `frontend-dev` |
+| F9 | Potential-leak detection (over budget, early burn, spike; [0023](../decisions/0023-leak-rules-and-thresholds.md)) + insight cards, leak patterns in the demo seed | F8 | `backend-dev` ∥ `frontend-dev` |
 | F10 | CSV export + OpenAPI export, Expenses page (list, filter, delete, export) | F5, F6 | `backend-dev` ∥ `frontend-dev` |
 | F11 | Evaluation dataset, runner, comparisons, report | F5 | `backend-dev` + `eval-runner`; the student labels the ground truth and interprets the results |
 | F12 | README, responsible design, compose file, slides | all | main session |
@@ -58,7 +58,8 @@ Each feature is one issue, one branch (`feat/F<NN>-<slug>`) and one PR. The proc
   - A user's choice is saved and used on the next receipt.
 - **F8, F9:**
   - Scenarios 2 and 3 work on the seeded demo data.
-  - Each leak card shows its explanation.
+  - Each potential-leak card shows its explanation.
+  - F9: each rule in [0023](../decisions/0023-leak-rules-and-thresholds.md) has table-driven tests, including the motivating case (44,50 € of a 50 € eating-out budget on 14 Oct → early burn, runs out on 16 Oct).
 - **F10:**
   - The CSV columns match [csv-export](../contracts/csv-export.md).
 - **F11:**
@@ -81,3 +82,9 @@ Each feature is one issue, one branch (`feat/F<NN>-<slug>`) and one PR. The proc
 | 8 | Buffer and slides | 10 | – |
 
 Progress is tracked in the repo's issues and milestones, not on this page.
+
+## Future work
+Not planned for a feature yet. Each would need its thresholds fixed in a decision first.
+- **`small_frequent` leak:** many small purchases in a category that add up, e.g. at least M purchases under X € making up at least Y % of the category's spend. Out of F9 by the student's decision ([0023](../decisions/0023-leak-rules-and-thresholds.md)). The contract's `Leak.type` already has the value.
+- **Month on `GET /insights/leaks`:** the response doesn't say which month it covers (found in F09). A `month` field or a wrapper object would let the dashboard match it to the summary at a month boundary.
+- **`recurring` leak:** the same merchant or the same normalised item at least N times in a month; it would set `Leak.merchant`. Also already in the contract's enum.

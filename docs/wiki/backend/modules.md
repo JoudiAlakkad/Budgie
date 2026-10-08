@@ -43,7 +43,7 @@ The rules are enforced by `import-linter` ([0006](../decisions/0006-sqlite-behin
 ## Stub routes
 From F2 every documented endpoint exists as a route with its final signature ([0016](../decisions/0016-api-representation-and-stub-convention.md)). Until its feature is built, the body is `raise NotImplementedYet("F05")`, which answers `501 not_implemented`. A feature replaces only the body with a service call, so the spec doesn't change. Routers import only `app.api.schemas`, `app.api.errors`, `app.errors` and `app.services`. This is checked in review; no import-linter contract enforces it.
 
-Stub owners: receipts, and listing, creating and fetching expenses → F05 (until F05 the `POST /expenses` stub and `test_contract.py` said F06; F05 owns it because manual entry belongs to the receipt lifecycle); editing, confirming and deleting expenses → F06 (built); item categories → F07 (built); budgets, goal and insights summary → F08 (built); leaks → F09; CSV export → F10.
+Stub owners: receipts, and listing, creating and fetching expenses → F05 (until F05 the `POST /expenses` stub and `test_contract.py` said F06; F05 owns it because manual entry belongs to the receipt lifecycle); editing, confirming and deleting expenses → F06 (built); item categories → F07 (built); budgets, goal and insights summary → F08 (built); leaks → F09 (built); CSV export → F10.
 
 **Frontend mount:** the static frontend is mounted at `/` with `FrontendMount`, a `Mount` that refuses `/api` and `/api/...`. Without it, Starlette preferred the static mount over a partial API match, so an unknown API path gave 405 and a wrong method gave 404.
 

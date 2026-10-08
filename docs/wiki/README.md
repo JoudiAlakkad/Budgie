@@ -41,6 +41,7 @@ back; the parent records them.
 - [0020 — Saving user category choices and the duplicate rule](decisions/0020-user-category-choices-and-duplicate-rule.md)
 - [0021 — Dashboard and goal semantics](decisions/0021-dashboard-and-goal-semantics.md)
 - [0022 — Demo data by an explicit command through the services](decisions/0022-demo-data-by-explicit-command.md)
+- [0023 — Leak rules and thresholds](decisions/0023-leak-rules-and-thresholds.md)
 
 ## Areas
 

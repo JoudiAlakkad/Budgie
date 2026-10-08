@@ -1,4 +1,5 @@
-"""`GET /insights/summary` (contracts/api-endpoints.md; decision 0021)."""
+"""`GET /insights/summary` and `GET /insights/leaks` (contracts/api-endpoints.md; decisions
+0021 and 0023)."""
 
 import datetime as dt
 from collections.abc import Iterator
@@ -243,8 +244,85 @@ def test_a_projection_beyond_the_money_range_is_clamped(settings: Settings) -> N
     assert body["goal"]["on_track"] is False
 
 
-def test_leaks_stay_501(api: TestClient) -> None:
-    response = api.get("/api/insights/leaks")
+# ---------------------------------------------------------------- GET /insights/leaks (F09)
 
-    assert response.status_code == 501
-    assert "F09" in response.json()["detail"]
+
+def leaks(api: TestClient, month: str | None = None) -> list[dict[str, Any]]:
+    params = {"month": month} if month is not None else {}
+    response = api.get("/api/insights/leaks", params=params)
+    assert response.status_code == 200, response.text
+    return list(response.json())
+
+
+def test_leaks_of_an_empty_database(api: TestClient) -> None:
+    assert leaks(api) == []
+    assert leaks(api, "2026-09") == []
+
+
+def test_leaks_default_to_the_current_month_with_the_motivating_case(api: TestClient) -> None:
+    """Budget 50, 44.50 in 6 eating-out visits by the 14th (decision 0023)."""
+    app = api.app
+    app.dependency_overrides[get_today] = lambda: lambda: dt.date(2026, 10, 14)  # type: ignore[attr-defined]
+    api.put("/api/budgets", json=[{"category": "eating_out", "monthly_limit": 50}])
+    for day, amount in enumerate([7.50, 7.50, 7.50, 7.50, 7.50, 7.00], start=1):
+        add(api, f"2026-10-{day:02d}", ("Döner Kebab", amount), merchant="Kebab Haus")
+    add(api, "2026-10-12", ("Cappuccino", 9.0), confirm=False, merchant="Cafe")  # a draft
+
+    assert leaks(api) == [
+        {
+            "type": "on_pace_to_overrun",
+            "category": "eating_out",
+            "merchant": None,
+            "amount": 48.54,
+            "explanation": (
+                "Eating out: you've used 89 % of your 50,00 € budget (44,50 €) by "
+                "14.10.2026, with 17 days left. At this pace it runs out around 16.10.2026 "
+                "and the month ends at about 98,54 € (+48,54 €). 6 visit(s) so far, about "
+                "7,42 € each."
+            ),
+        }
+    ]
+    assert leaks(api, "2026-10") == leaks(api)
+
+
+def test_leaks_of_a_past_month_have_no_burn_but_over_and_spike(api: TestClient) -> None:
+    api.put(
+        "/api/budgets",
+        json=[
+            {"category": "eating_out", "monthly_limit": 50},
+            {"category": "electronics", "monthly_limit": 25},
+        ],
+    )
+    add(api, "2026-07-10", ("Bier", 4.0), merchant="Getränkemarkt")
+    add(api, "2026-08-10", ("Bier", 4.0), merchant="Getränkemarkt")
+    add(api, "2026-09-01", ("Burger", 45.0), merchant="Burgerei")  # 90 % on day 1
+    add(api, "2026-09-02", ("Kopfhörer", 59.99), merchant="MediaMarkt")
+    add(api, "2026-09-03", ("Bier", 6.5), ("Pfand", 3.0), merchant="Getränkemarkt")
+
+    found = leaks(api, "2026-09")
+
+    assert [(leak["type"], leak["category"], leak["amount"]) for leak in found] == [
+        ("over_budget", "electronics", 34.99),
+        ("spike", "alcohol", 2.5),
+    ]
+    assert found[1]["explanation"] == (
+        "Alcohol: 6,50 € this month, +63 % vs. your median of 4,00 € over the last 2 months."
+    )
+
+
+def test_leak_history_at_the_start_of_the_calendar(api: TestClient) -> None:
+    """0001-01 has no previous months; 0001-02 has one, so no spike either."""
+    add(api, "0001-01-05", ("Bier", 4.0), merchant="A")
+    add(api, "0001-02-05", ("Bier", 40.0), merchant="B")
+
+    assert leaks(api, "0001-01") == []
+    assert leaks(api, "0001-02") == []
+
+
+@pytest.mark.parametrize("month", ["2026-13", "2026-1", "x", "0000-01", "0000-12"])
+def test_leaks_with_an_invalid_month_are_422(api: TestClient, month: str) -> None:
+    response = api.get("/api/insights/leaks", params={"month": month})
+
+    assert response.status_code == 422
+    assert response.json()["error"] == "validation_error"
+    assert response.json()["fields"][0]["field"] == "query.month"

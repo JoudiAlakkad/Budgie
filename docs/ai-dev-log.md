@@ -254,3 +254,49 @@ The student accepted the plan, decision 0020 and the agents' design: pure domain
 
 **7. Observed benefit, limitation or risk**
 Risk: the Milch→Bier bug came from a gap in the main session's own decision 0020, which assumed the page resends a category only when the user changes it. All 2086 tests passed because they shared that assumption. Only a reviewer reading the frontend and backend together found it.
+
+## Episode 9 — F09: potential-leak detection, and the "100 %" that tests missed
+- **Date:** 2026-10-08 · **Feature:** F09 · **Commits:** `0c7ef52..9b80848` · **Outcome:** partial
+
+**1. Development task given to the agent**
+Build F09: detect potential budget leaks (over budget, early burn, spike), show them as dashboard cards, and extend the demo seed so scenario 3 shows on every day of the first half of the month.
+
+**2. Relevant context and instructions**
+The issue and decision [0023](wiki/decisions/0023-leak-rules-and-thresholds.md). The student decided during planning:
+- "potential leak" in all UI text, while code keeps `leak`
+- a literal "visit(s)", and the counted history months in the spike text
+- the section placed after the totals
+- the accepted demo side effects ([0022](wiki/decisions/0022-demo-data-by-explicit-command.md))
+
+**3. Agent's proposed contribution**
+- Plan agent: the file list and a seed redesign (budget 60 → 50 €, a 41 € meal on day 1, a wine spike), with seed conflicts found by simulation.
+- `backend-dev`: `domain/leaks.py`, the visits query, `GET /insights/leaks`, the seed and the tests.
+- `frontend-dev`: the "Potential leaks" section in `dashboard.js`.
+- Main session: the wiki, the merge and the review fixes.
+
+**4. Tools or permissions used by the agent**
+Plan (read-only); `backend-dev` and `frontend-dev` in parallel worktrees (Read, Edit, Write, Bash); `reviewer` (read-only); `/code-review`. Commits need approval and pushing is not allowed (`.claude/settings.json`).
+
+**5. How the result was verified**
+- `make check`: 2682 tests after the merge and 2802 after the fixes; OpenAPI unchanged.
+- The `reviewer` found no blockers and `/code-review` made 9 findings.
+- The student tested scenario 3 by hand on a separate demo database.
+
+**6. What was accepted, modified or rejected**
+- Accepted: the design and both agents' code as merged (`eb15b38`).
+- Modified:
+  - the plan's wording, changed by the student to "potential leak"
+  - findings from `/code-review` and the `reviewer`, fixed in `9b80848`
+- Rejected (5 `/code-review` findings, with reasons):
+  - the month mismatch at midnight needs a contract change, so it's logged as future work
+  - separate snapshots for the summary and the potential leaks
+  - refund lines counting as visits, which follows 0023's definition of a visit
+  - extra queries and the duplicated `LeakView`, not worth the cost
+
+**7. Observed benefit, limitation or risk**
+Limitation: every agent test passed while a card could say "you've used 100 %" for a category still under its budget. Only `/code-review`, reading the text as a user would, caught it. The tests checked what the brief said, not what the user reads.
+
+**Detected and corrected**
+- Card text showed unclamped amounts while sorting used the clamped ones, and showed "100 %" under budget → `/code-review` and the `reviewer` → fixed with tests in `9b80848`.
+- The goal-card test checked October only, while the wiki says every month → `reviewer` → test runs over every day of 4 months, `9b80848`.
+- The backend worktree started on `078e2b7` instead of `b19f5bf` → the agent's base check (the brief named the hash) → the agent reset to it before starting.

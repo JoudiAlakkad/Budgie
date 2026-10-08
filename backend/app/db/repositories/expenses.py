@@ -251,6 +251,24 @@ class ExpenseRepository:
         )
         return {category: amount for category, amount in self._session.execute(query)}
 
+    def confirmed_visits_by_category(self, date_from: dt.date, date_to: dt.date) -> dict[str, int]:
+        """Per item category, the confirmed expenses dated `date_from`..`date_to`
+        (inclusive) with at least one item in it (`COUNT(DISTINCT expense id)`), for the
+        burn explanation (decision 0023). Every category is returned, as in
+        `confirmed_spend_by_category`."""
+        visits = func.count(func.distinct(ExpenseRow.id)).label("visits")
+        query = (
+            select(LineItemRow.category, visits)
+            .join(ExpenseRow, LineItemRow.expense_id == ExpenseRow.id)
+            .where(
+                ExpenseRow.confirmed.is_(True),
+                ExpenseRow.date >= date_from,
+                ExpenseRow.date <= date_to,
+            )
+            .group_by(LineItemRow.category)
+        )
+        return {category: int(count) for category, count in self._session.execute(query)}
+
     def count(self) -> int:
         return self._session.scalar(select(func.count()).select_from(ExpenseRow)) or 0
 

@@ -264,11 +264,11 @@ BUILT: list[tuple[str, str, dict[str, Any]]] = [
     ("GET", "/api/goal", {}),
     ("PUT", "/api/goal", {"json": {"target_amount": 500, "target_date": "2099-06-30"}}),
     ("GET", "/api/insights/summary?month=2026-10", {}),
+    ("GET", "/api/insights/leaks", {}),
 ]
 
 STUBS: list[tuple[str, str, dict[str, Any], str]] = [
     ("GET", "/api/expenses/export.csv?from=2026-10-01", {}, "F10"),
-    ("GET", "/api/insights/leaks", {}, "F09"),
 ]
 
 

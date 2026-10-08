@@ -98,7 +98,8 @@ The backend's own copy is `app/domain/categories.py`: `CATEGORIES` (this order),
 
 ## `budget.py` (F8)
 Implements [0021](../decisions/0021-dashboard-and-goal-semantics.md). Pure: `today` is a parameter.
-- `Month` (`parse("YYYY-MM")`, `of(date)`, `first`, `last`, `days`), `project`, `spend_state`, `goal_progress`, `summarize(month, today, spend, budgets, goal) -> Summary`.
+- `Month` (`parse("YYYY-MM")`, `of(date)`, `first`, `last`, `days`, `shifted(n)`, `shifted_or_none(n)` for the services' history and seed months), `project`, `spend_state`, `goal_progress`, `summarize(month, today, spend, budgets, goal) -> Summary`.
+- `spending(spend)`: the 0021 spend filter (cents, spending categories only), shared by `summarize` and `leaks.py` (F09).
 - **Spend:** confirmed expenses dated in the month, line-item amounts summed per category; `deposit`, `discount` and `uncategorized` are dropped here.
 - **Projection:** current month `spent / today.day × days_in_month`; past or future month `spent`.
 - **State:** `over` if `spent > budget`, `on_pace_to_overrun` if `projected > budget`, else `under` (also without a budget, and at exactly the budget).
@@ -106,17 +107,25 @@ Implements [0021](../decisions/0021-dashboard-and-goal-semantics.md). Pure: `tod
 - **Goal:** `months_left = max(1, summary month → target month, inclusive)`; `required_per_month = target / months_left`; `saved_this_month = income − projected_total`; `on_track = saved ≥ required`; without income both are `null`, and so they are for a month after today's (it hasn't started).
 - Money: `Decimal`, rounded half up to cents. Every returned amount is clamped to ±`MONEY_LIMIT` (9,999,999,999.99, the response `Money` limit); states, ordering and the goal are judged on the real amounts.
 - Also `Month.shifted(n)` and `months_inclusive(start, end)`; the domain `GoalProgress` carries `months_left`, which the DTO doesn't. Anything that isn't a spending category is dropped, so the result always fits the `SpendingCategory` Literal.
-- **Demo seed** (`services/demo_seed.py`, [0022](../decisions/0022-demo-data-by-explicit-command.md)): 47 expenses and 9 budgets. `electronics` (59.99 against 25, bought on day 1) is `over` on every day; `health` (9.80 on day 1 against 10.00) is `on_pace_to_overrun` on every day except the month's last, where projected = spent makes it impossible (found in review: before, the demo showed no on-pace row on 11 of 31 October days). The goal card says "Behind" on days 1–2, when a day or two of spend is extrapolated over the month, and "On track" afterwards. A test checks every day of several months.
+- **Demo seed** (`services/demo_seed.py`, [0022](../decisions/0022-demo-data-by-explicit-command.md)): 47 expenses and 9 budgets (370 € in total since F09). `electronics` (59.99 against 25, bought on day 1) is `over` on every day; `health` (9.80 on day 1 against 10.00) is `on_pace_to_overrun` on every day except the month's last, where projected = spent makes it impossible (found in review: before, the demo showed no on-pace row on 11 of 31 October days). The goal card says "Behind" on days 1–3 (1–2 before F09's day-1 eating-out spend), when a day or two of spend is extrapolated over the month, and "On track" afterwards. A test checks every day of several months.
+- **F09 leak patterns** ([0023](../decisions/0023-leak-rules-and-thresholds.md)): eating out has a 50 € budget, 41,00 € on day 1 of the current month and 41,00–49,00 € through day 16 (the monthly Kebab Haus visit is on day 17, Burgerei on day 24), so it burns early on every day of the first half. Rotwein 7,99 € on day 1 makes alcohol a spike (median 4,74 €). Health also burns in the first half. The seed test checks every day of 2026-10, 2026-11, 2024-02 and 2026-02.
 - **Known limit:** a very distant target date makes `required_per_month` round to 0.00, so the goal always counts as on track (pinned by a test).
 
 ## `leaks.py` (F9)
-Each detector returns `Leak {type, category?, merchant?, amount, explanation}`.
-- `recurring`: the same merchant, or the same normalised item, ≥ N times in a month
-- `over_budget` / `on_pace_to_overrun`: from `budget.py`
-- `spike`: a category's monthly spend is more than k × the median of the previous 3 months
-- `small_frequent`: at least M purchases under X € in a category, adding up to at least Y % of that category's spend
+Implements [0023](../decisions/0023-leak-rules-and-thresholds.md). Pure: `today` is a parameter. Each detector returns `Leak {type, category, merchant: None, amount, explanation}`. It reuses `budget.py` for spend, `Month` and the projection, so that logic exists in one place only.
 
-The thresholds are constants in the module, listed here once they're fixed.
+| Type | Fires when | `amount` |
+|---|---|---|
+| `over_budget` | any month, `spent > budget` | `spent − budget` |
+| `on_pace_to_overrun` (early burn) | current month, budget set, `0 < spent ≤ budget`, `spent / budget ≥ 0.80` and `today.day / days_in_month ≤ 0.50` | `projected − budget` |
+| `spike` | any month, ≥ 2 of the previous 3 months have any confirmed spend, median of the category over those months > 0, and `spent > 1.5 × median` | `spent − median` |
+
+- **Entry point:** `detect_leaks(month, today, spend, budgets, history, visits)`; helpers `over_budget`, `early_burn`, `spike`, `counted_history`, `median`, `run_out_day` and the formatters. All comparisons are exact `Decimal`. A history month counts if any spending category has spend ≠ 0 after the 0021 filter.
+- **Constants:** `BURN_USED_MIN` = 0.80, `BURN_ELAPSED_MAX` = 0.50, `SPIKE_FACTOR` = 1.5, `SPIKE_HISTORY_MONTHS` = 3, `SPIKE_MIN_MONTHS` = 2.
+- **Burn explanation** adds the run-out day `ceil(budget × today.day / spent)` and the visits (confirmed expenses in the month with an item in the category) with their average.
+- **Order:** `over_budget`, `on_pace_to_overrun`, `spike`; then the real (unclamped) `amount` descending, then category key; `detect_leaks` clamps only after sorting, and every amount in the text is clamped the same way (found by `/code-review`). Burn and over-budget never both fire for a category.
+- **Text:** fixed templates, `de-DE` money with thousands separators and a plain space before € (`1.271,00 €`, `44,50 €`) and dates (`14.10.2026`); "visit(s)" for every count; the spike text names the counted months (2 or 3). When spent equals the budget, the burn text says "The budget is used up today, and at this pace the month ends at about …"; without a visit count the visit sentence is left out. A spike in a past month still says "this month". The used share never shows 100 % while some of the budget is left (99,6 % → 99 %). Category labels equal `frontend/js/categories.js` (`CATEGORY_LABELS`, checked by a test). No "you will" and no probabilities.
+- **Not built** (future work): `small_frequent` and `recurring`. They stay in the contract's enum.
 
 ## `redaction.py` (F3)
 The safety net for personal data in the three places where the model writes free text: `merchant`, item descriptions and the stored raw output ([0017](../decisions/0017-personal-data-is-redacted-by-code.md)). The first line of defence is the schema: fixed keys, enums for `payment_method` and `unreadable_fields`, and no field for card or address data.

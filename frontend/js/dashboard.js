@@ -1,6 +1,7 @@
-// Dashboard: spend vs. budget per category and goal progress for one month
-// (GET /insights/summary; rules in decision 0021). Leak cards come in F09.
-import { api, clearError, formatMoney, showError } from "./api.js";
+// Dashboard: spend vs. budget per category, goal progress (GET /insights/summary,
+// decision 0021) and the potential-leak cards (GET /insights/leaks, decision 0023)
+// for one month. Every user-visible text says "potential leak"; identifiers keep `leak`.
+import { ApiError, api, clearError, formatMoney, showError } from "./api.js";
 import { categoryLabel } from "./categories.js";
 import { formatDate, h, icon } from "./dom.js";
 
@@ -16,11 +17,25 @@ const monthInput = document.getElementById("month-input");
 const prevButton = document.getElementById("month-prev");
 const nextButton = document.getElementById("month-next");
 
+// The insights endpoints, both answering for the current month without `?month=`.
+// The paths stay literal so tests/unit/test_frontend_static.py can check them.
+const ENDPOINTS = {
+  summary: (query) => api.get(`/insights/summary${query}`),
+  leaks: (query) => api.get(`/insights/leaks${query}`),
+};
+
+/** The request for the current month (no `?month=`) of one endpoint, see currentRequest(). */
+function emptyCurrent() {
+  return {
+    promise: null, // the pending or settled request asked for without a month
+    fetchedOn: null, // Berlin date of that request
+    pending: false, // whether that request is still in flight
+  };
+}
+
 const state = {
-  currentMonth: null, // the server's current month (Europe/Berlin), see currentSummary()
-  currentPromise: null, // the pending or settled summary asked for without a month
-  currentFetchedOn: null, // Berlin date of that request
-  currentPending: false, // whether that request is still in flight
+  currentMonth: null, // the server's current month (Europe/Berlin), from the summary
+  current: { summary: emptyCurrent(), leaks: emptyCurrent() },
   month: null, // the month on screen
   requestId: 0, // only the newest request may render
 };
@@ -32,6 +47,16 @@ const STATE_TEXT = {
   under: { symbol: "✓", text: "Within budget" },
   none: { symbol: "–", text: "No budget" },
 };
+
+// Potential-leak types F09 returns (decision 0023), as words with an icon. Any other
+// type (small_frequent, recurring, later ones) is shown as its raw value with LEAK_OTHER_SYMBOL.
+const LEAK_TYPE_TEXT = {
+  over_budget: { symbol: "✖", text: "Over budget" },
+  on_pace_to_overrun: { symbol: "⚠", text: "Running out early" },
+  spike: { symbol: "↑", text: "Spike" },
+};
+const LEAK_OTHER_SYMBOL = "•";
+const LEAK_NO_CATEGORY = "Potential leak";
 
 // ---------------------------------------------------------------- months
 
@@ -291,11 +316,78 @@ function goalSection(summary, kind) {
   return section;
 }
 
-function render(summary) {
+function leakCard(leak) {
+  const known = Object.hasOwn(LEAK_TYPE_TEXT, leak.type) ? LEAK_TYPE_TEXT[leak.type] : null;
+  const symbol = known ? known.symbol : LEAK_OTHER_SYMBOL;
+  const typeText = known ? known.text : String(leak.type);
+  const label = leak.category ? categoryLabel(leak.category) : LEAK_NO_CATEGORY;
+  return h(
+    "li",
+    { className: "leak-card", dataset: { type: known ? leak.type : "other" } },
+    h(
+      "h3",
+      { className: "leak-head" },
+      h("span", { className: "leak-category" }, label),
+      h("span", { className: "visually-hidden" }, ": "),
+      h("span", { className: "leak-type" }, icon(symbol), " ", typeText),
+    ),
+    h("p", { className: "leak-explanation" }, leak.explanation),
+  );
+}
+
+/** Fills the section once its `GET /insights/leaks` result is in (see settle()). */
+function fillLeaks(section, month, result) {
+  section.removeAttribute("aria-busy");
+  const heading = section.firstChild;
+  if (!result.ok) {
+    const err = result.reason;
+    if (!(err instanceof ApiError)) console.error(err);
+    const detail = err && typeof err.detail === "string" && err.detail ? ` ${err.detail}` : "";
+    section.replaceChildren(
+      heading,
+      h(
+        "p",
+        { className: "note error empty-state" },
+        icon("⚠"),
+        ` Potential leaks could not be loaded.${detail}`,
+      ),
+    );
+    return;
+  }
+  const leaks = Array.isArray(result.value) ? result.value : [];
+  if (leaks.length === 0) {
+    section.replaceChildren(
+      heading,
+      h("p", { className: "note empty-state" }, `No potential leaks found in ${monthName(month)}.`),
+    );
+    return;
+  }
+  section.replaceChildren(heading, h("ul", { className: "leak-list" }, leaks.map(leakCard)));
+}
+
+/**
+ * The "Potential leaks" section: a loading hint now, filled when `leaksResult` settles,
+ * as long as the section is still on screen (a newer month replaces it).
+ */
+function leaksSection(month, leaksResult) {
+  const section = h(
+    "section",
+    { className: "leaks", attrs: { "aria-labelledby": "leaks-heading", "aria-busy": "true" } },
+    h("h2", { id: "leaks-heading" }, "Potential leaks"),
+    h("p", { className: "hint empty-state" }, "Loading potential leaks…"),
+  );
+  leaksResult.then((result) => {
+    if (section.isConnected) fillLeaks(section, month, result);
+  });
+  return section;
+}
+
+function render(summary, leaksResult) {
   const kind = monthKind(summary.month);
   container.replaceChildren(
     h("h2", { className: "month-heading" }, monthName(summary.month)),
     totalsSection(summary, kind),
+    leaksSection(summary.month, leaksResult),
     categoriesSection(summary, kind),
     goalSection(summary, kind),
   );
@@ -309,50 +401,65 @@ function setMonthInUrl(month) {
   window.history.replaceState(null, "", url);
 }
 
-async function fetchSummary(month) {
-  return month
-    ? api.get(`/insights/summary?month=${encodeURIComponent(month)}`)
-    : api.get("/insights/summary");
+/** `GET /insights/summary` or `/insights/leaks`; `month` null asks for the current month. */
+function fetchInsight(endpoint, month) {
+  return ENDPOINTS[endpoint](month ? `?month=${encodeURIComponent(month)}` : "");
 }
 
-function display(summary) {
+/**
+ * A promise that never rejects: `{ok: true, value}` or `{ok: false, reason}`. Attaching
+ * it right away keeps a failed request that nothing awaits from being an unhandled rejection.
+ */
+function settle(promise) {
+  return promise.then(
+    (value) => ({ ok: true, value }),
+    (reason) => ({ ok: false, reason }),
+  );
+}
+
+function display(summary, leaksResult) {
   state.month = summary.month;
   monthInput.value = summary.month;
   updateNavButtons();
-  render(summary);
+  render(summary, leaksResult);
   statusLine.textContent = `Showing ${monthName(summary.month)}.`;
 }
 
 /**
- * The summary for the server's current month (Europe/Berlin), asked for without a month;
- * on success it sets `state.currentMonth`. A pending request is always shared, so a
- * navigation during the first load doesn't ask twice. A settled one is reused, except:
+ * `endpoint` ("summary" or "leaks") for the server's current month (Europe/Berlin), asked
+ * for without a month; a summary sets `state.currentMonth` on success. A pending request
+ * is always shared, so a navigation during the first load doesn't ask twice. A settled one
+ * is reused, except:
  * - `refresh` asks again (the current month is about to be shown, so its data must be fresh);
  * - the Berlin date has changed since (a tab left open across a month boundary);
  * - the last request failed.
  */
-function currentSummary({ refresh = false } = {}) {
+function currentRequest(endpoint, { refresh = false } = {}) {
+  const cache = state.current[endpoint];
   const today = berlinToday();
-  const stale = !state.currentPromise || state.currentFetchedOn !== today;
-  if (stale || (refresh && !state.currentPending)) {
-    const promise = fetchSummary(null).then((summary) => {
-      state.currentMonth = summary.month;
-      return summary;
-    });
-    state.currentPending = true;
+  const stale = !cache.promise || cache.fetchedOn !== today;
+  if (stale || (refresh && !cache.pending)) {
+    let promise = fetchInsight(endpoint, null);
+    if (endpoint === "summary") {
+      promise = promise.then((summary) => {
+        state.currentMonth = summary.month;
+        return summary;
+      });
+    }
+    cache.pending = true;
     promise
       .catch(() => {
-        if (state.currentPromise === promise) state.currentPromise = null;
+        if (cache.promise === promise) cache.promise = null;
       })
       .finally(() => {
-        if (state.currentPromise === promise || state.currentPromise === null) {
-          state.currentPending = false;
+        if (cache.promise === promise || cache.promise === null) {
+          cache.pending = false;
         }
       });
-    state.currentPromise = promise;
-    state.currentFetchedOn = today;
+    cache.promise = promise;
+    cache.fetchedOn = today;
   }
-  return state.currentPromise;
+  return cache.promise;
 }
 
 function showLoadFailure() {
@@ -366,9 +473,12 @@ function showLoadFailure() {
 
 /**
  * Shows `month` ("YYYY-MM"), or the server's current month for `null`.
- * - The current month (see `currentSummary`) decides whether projections are shown.
- * - The known current month is shown from the request without a month, never a second
- *   `?month=` request; any other month is asked for in parallel with it.
+ * - The current month (see `currentRequest`) decides whether projections are shown.
+ * - The known current month is shown from the requests without a month, never a second
+ *   `?month=` request; any other month is asked for in parallel with the current summary.
+ * - The potential leaks of the shown month load in parallel with its summary; the page
+ *   draws once the summary is in, and the leaks section fills itself when they arrive.
+ *   A failed leaks request only shows an error line in that section.
  * - If only the current-month request fails, the requested month is still shown,
  *   classified by the last known current month or Berlin's month (`monthKind`).
  * - Only the newest request renders.
@@ -378,8 +488,11 @@ async function show(month) {
   clearError();
   container.setAttribute("aria-busy", "true");
   const wantsCurrent = !month || month === state.currentMonth;
-  const currentPromise = currentSummary({ refresh: wantsCurrent });
-  const requestedPromise = wantsCurrent ? currentPromise : fetchSummary(month);
+  const currentPromise = currentRequest("summary", { refresh: wantsCurrent });
+  const requestedPromise = wantsCurrent ? currentPromise : fetchInsight("summary", month);
+  let leaksResult = settle(
+    wantsCurrent ? currentRequest("leaks", { refresh: true }) : fetchInsight("leaks", month),
+  );
   const [current, requested] = await Promise.allSettled([currentPromise, requestedPromise]);
   if (requestId !== state.requestId) return;
   try {
@@ -387,7 +500,7 @@ async function show(month) {
       showError(requested.reason);
       // A bad `?month=` on the first load: fall back to the current month.
       if (!state.month && !wantsCurrent && current.status === "fulfilled") {
-        display(current.value);
+        display(current.value, settle(currentRequest("leaks", { refresh: true })));
       } else {
         showLoadFailure();
       }
@@ -396,10 +509,11 @@ async function show(month) {
     let summary = requested.value;
     if (month && summary.month !== month) {
       // The current month moved on (new Berlin day) while `month` was the old one.
-      summary = await fetchSummary(month);
+      leaksResult = settle(fetchInsight("leaks", month));
+      summary = await fetchInsight("summary", month);
       if (requestId !== state.requestId) return;
     }
-    display(summary);
+    display(summary, leaksResult);
     if (month) setMonthInUrl(summary.month);
   } catch (err) {
     if (requestId !== state.requestId) return;
