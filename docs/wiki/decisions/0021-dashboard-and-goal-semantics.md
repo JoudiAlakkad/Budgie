@@ -23,4 +23,6 @@ F08 builds `GET /insights/summary`, whose shape has been fixed since F2 ([api-en
 - For the current month, `saved_this_month` and `on_track` inherit the projection's noise: on day 1 one large shop can make them say "Behind".
 - Discounts are never subtracted, so spend is slightly overstated.
 - All currencies are summed as if they were EUR.
+- A very distant target date makes `required_per_month` round to 0.00, so the goal always counts as on track.
+- A future month's goal card shows only what is needed, since its projected spend is 0.
 - A goal can't be removed, since the contract has no `DELETE /goal`.

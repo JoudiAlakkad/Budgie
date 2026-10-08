@@ -101,7 +101,8 @@ Implements [0021](../decisions/0021-dashboard-and-goal-semantics.md). Pure: `tod
 - **Goal:** `months_left = max(1, summary month → target month, inclusive)`; `required_per_month = target / months_left`; `saved_this_month = income − projected_total`; `on_track = saved ≥ required`; without income both are `null`.
 - Money: `Decimal`, rounded half up to cents.
 - Also `Month.shifted(n)` and `months_inclusive(start, end)`; the domain `GoalProgress` carries `months_left`, which the DTO doesn't. Anything that isn't a spending category is dropped, so the result always fits the `SpendingCategory` Literal.
-- **Demo seed** (`services/demo_seed.py`, [0022](../decisions/0022-demo-data-by-explicit-command.md)): 46 expenses at today = 2026-10-15; `electronics` is `over` on any day (a purchase on day 1), `eating_out` is `on_pace_to_overrun` mid-month. With income 1400 and receipts-only spending of about 160–200 € a month, the goal card always shows "On track".
+- **Demo seed** (`services/demo_seed.py`, [0022](../decisions/0022-demo-data-by-explicit-command.md)): 47 expenses and 9 budgets. `electronics` (59.99 against 25, bought on day 1) is `over` on every day; `health` (9.80 on day 1 against 10.00) is `on_pace_to_overrun` on every day except the month's last, where projected = spent makes it impossible (found in review: before, the demo showed no on-pace row on 11 of 31 October days). The goal card says "Behind" on days 1–2, when a day or two of spend is extrapolated over the month, and "On track" afterwards. A test checks every day of several months.
+- **Known limit:** a very distant target date makes `required_per_month` round to 0.00, so the goal always counts as on track (pinned by a test).
 
 ## `leaks.py` (F9)
 Each detector returns `Leak {type, category?, merchant?, amount, explanation}`.
