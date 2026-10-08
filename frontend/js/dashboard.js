@@ -7,6 +7,8 @@ import { h, icon } from "./dom.js";
 // The insights endpoint sums every currency as EUR (decision 0021).
 const CURRENCY = "EUR";
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+const FIRST_MONTH = "0001-01";
+const LAST_MONTH = "9999-12";
 
 const container = document.getElementById("dashboard");
 const statusLine = document.getElementById("dashboard-status");
@@ -30,17 +32,32 @@ const STATE_TEXT = {
 
 // ---------------------------------------------------------------- months
 
+/** A "YYYY-MM" within FIRST_MONTH…LAST_MONTH (year 0000 isn't a valid date). */
 function isMonth(value) {
-  return typeof value === "string" && MONTH_PATTERN.test(value);
+  return (
+    typeof value === "string" &&
+    MONTH_PATTERN.test(value) &&
+    value >= FIRST_MONTH &&
+    value <= LAST_MONTH
+  );
 }
 
-/** "2026-10" moved by `delta` months, e.g. shiftMonth("2026-01", -1) === "2025-12". */
+/**
+ * "2026-10" moved by `delta` months, e.g. shiftMonth("2026-01", -1) === "2025-12";
+ * null when the result would leave FIRST_MONTH…LAST_MONTH.
+ */
 function shiftMonth(month, delta) {
   const [year, mon] = month.split("-").map(Number);
   const index = year * 12 + (mon - 1) + delta;
   const newYear = Math.floor(index / 12);
   const newMonth = (index % 12) + 1;
-  return `${String(newYear).padStart(4, "0")}-${String(newMonth).padStart(2, "0")}`;
+  const shifted = `${String(newYear).padStart(4, "0")}-${String(newMonth).padStart(2, "0")}`;
+  return isMonth(shifted) ? shifted : null;
+}
+
+function updateNavButtons() {
+  prevButton.disabled = !state.month || shiftMonth(state.month, -1) === null;
+  nextButton.disabled = !state.month || shiftMonth(state.month, 1) === null;
 }
 
 function monthName(month) {
@@ -207,11 +224,26 @@ function goalSection(summary, kind) {
     );
   }
 
+  const needed = h(
+    "div",
+    {},
+    h("dt", {}, "Needed this month"),
+    h("dd", {}, money(goal.required_per_month)),
+  );
+  if (kind === "future") {
+    // Nothing is spent yet, so income − 0 would read as "On track"; show the need only.
+    section.append(
+      h("dl", { className: "goal-list" }, needed),
+      h("p", { className: "hint" }, "This month hasn't started yet."),
+    );
+    return section;
+  }
+
   const savedLabel = kind === "past" ? "Saved this month" : "Expected savings this month";
   const list = h(
     "dl",
     { className: "goal-list" },
-    h("div", {}, h("dt", {}, "Needed this month"), h("dd", {}, money(goal.required_per_month))),
+    needed,
     goal.saved_this_month !== null &&
       h("div", {}, h("dt", {}, savedLabel), h("dd", {}, money(goal.saved_this_month))),
   );
@@ -261,6 +293,7 @@ async function fetchSummary(month) {
 function display(summary) {
   state.month = summary.month;
   monthInput.value = summary.month;
+  updateNavButtons();
   render(summary);
   statusLine.textContent = `Showing ${monthName(summary.month)}.`;
 }
@@ -307,15 +340,19 @@ function init() {
   show(isMonth(requested) ? requested : null);
 }
 
-prevButton.addEventListener("click", () => {
-  if (state.month) show(shiftMonth(state.month, -1));
-});
-nextButton.addEventListener("click", () => {
-  if (state.month) show(shiftMonth(state.month, 1));
-});
+function step(delta) {
+  const month = state.month && shiftMonth(state.month, delta);
+  if (month) show(month);
+}
+
+prevButton.addEventListener("click", () => step(-1));
+nextButton.addEventListener("click", () => step(1));
 monthInput.addEventListener("change", () => {
-  // A cleared or half-typed picker has no valid value; wait for a full month.
+  // A cleared, half-typed or out-of-range picker value is ignored; wait for a valid month.
   if (isMonth(monthInput.value) && monthInput.value !== state.month) show(monthInput.value);
 });
 
+monthInput.min = FIRST_MONTH;
+monthInput.max = LAST_MONTH;
+updateNavButtons();
 init();
