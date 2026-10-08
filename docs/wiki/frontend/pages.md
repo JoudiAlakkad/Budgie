@@ -8,7 +8,7 @@ The pages are planned and built in F6 (Upload, Review), F8 and F9 (Dashboard, Se
 | Review | `review.html?id=` (receipt), `?expense=` (an expense without a photo), `?manual=1` (new manual expense); `id` wins over `expense`, which wins over `manual` | image and editable form side by side; flags and uncategorised items highlighted; confirm; retry or manual entry for a failed receipt | `GET /receipts/{id}`, `GET /receipts/{id}/image`, `POST /receipts/{id}/extract`, `POST /expenses`, `GET /expenses/{id}`, `PATCH /expenses/{id}`, `POST /expenses/{id}/confirm` |
 | Expenses | `expenses.html` | list, filter, delete, export | `GET /expenses`, `DELETE /expenses/{id}`, `GET /expenses/export.csv` |
 | Dashboard | `dashboard.html` | spend vs. budget per category, goal progress, leak cards | `GET /insights/summary`, `GET /insights/leaks` |
-| Settings | `settings.html` | budgets, savings goal, item-category table | `GET/PUT /budgets`, `GET/PUT /goal`, `/item-categories` |
+| Settings | `settings.html` | monthly budgets and the savings goal (no item-category table, the student's decision in F08) | `GET/PUT /budgets`, `GET/PUT /goal` |
 
 ## Review page rules
 - **Manual entry without a photo** (`?manual=1`, F06): the review form at full width with no image, Retry or Delete; `POST /expenses` without `receipt_id`. After the first save the address becomes `?expense=<id>` (`history.replaceState`), so a reload reopens the draft instead of creating a second expense (found by `/code-review`). `?expense=<id>` loads `GET /expenses/{id}`: unknown id → "Expense not found" with links home and to manual entry; an expense with a `receipt_id` → redirected to `?id=<receipt_id>`; confirmed → read-only with Edit again. Manual expenses aren't listed on the home page and can't be deleted from the UI until the Expenses page (F10; the student chose "form only").
@@ -26,3 +26,16 @@ The pages are planned and built in F6 (Upload, Review), F8 and F9 (Dashboard, Se
 - A failed receipt shows its `error_detail` and two actions ([0015](../decisions/0015-non-receipt-is-a-failure-with-retry-or-manual-entry.md)):
   - **Retry** (`POST /receipts/{id}/extract`), except for `unreadable_image`. For `not_a_receipt` the hint says a retry with the same model usually gives the same result.
   - **Enter manually**: an empty form next to the photo, saved with `POST /expenses` and `receipt_id`. For `not_a_receipt` the page says the image wasn't recognised as a receipt; the model's data is never offered as a pre-fill.
+
+## Dashboard rules (F08)
+- **Month:** Previous / Next buttons and a labelled `<input type="month">`. The first load always asks for `GET /insights/summary` without a month, so the server's month (Europe/Berlin) wins, and that month is remembered as the "current month". A `?month=` in the address is then loaded; if it fails, the page shows the error and the current month. Navigating writes `?month=` with `history.replaceState`, and only the newest request draws the page.
+- **Totals:** spent, budget (or "No budgets set" with a link to Settings), and "Projected by month end" only for the current month ([0021](../decisions/0021-dashboard-and-goal-semantics.md)).
+- **Rows:** one per `categories` entry, in the server's order: label, "spent of budget" (or "· no budget"), and the state as words with an icon: Over budget ✖, On pace to overrun ⚠, Within budget ✓, No budget –. Colour is never the only signal. A row with a budget has a CSS bar (`aria-hidden`, fill = min(spent/budget, 1)); for the current month also a projection tick and a "Projected by month end" text. No chart library.
+- **Goal card:** target amount and date, "Needed this month", and "Saved this month" (past month) or "Expected savings this month" (current or future month). Then On track ✓ / Behind ✖, or, when `on_track` is null, a link "Add your monthly income in Settings". A `target_date` before the viewed month's first day shows "Target date has passed". With no goal, the card links "Set a savings goal" to Settings.
+- **Empty state:** no rows → "No confirmed expenses in <month>" with a link to Upload.
+- Leak cards follow in F09.
+
+## Settings rules (F08)
+- **Budgets:** one labelled number input per `SPENDING_CATEGORIES` entry (min 0.01, step 0.01); blank means no budget. Save sends `PUT /budgets` with only the filled rows. A 422 `fields[].field` such as `3.monthly_limit` or `3.category` is matched through the sent list's index to its input (`aria-invalid`, message via `aria-describedby`). Errors without an input are listed above the buttons; `detail` always goes to the banner.
+- **Goal:** target amount, target date (`type=date`) and optional monthly income. A `404` from `GET /goal` shows an empty form with "No goal set yet". Save sends `monthly_income: null` only when the field is empty (0 is sent as 0); field errors are matched by name. No delete, because the contract has no `DELETE /goal`.
+- **Validation:** inputs are checked on the client before sending; a number the browser can't read counts as invalid, not as empty.

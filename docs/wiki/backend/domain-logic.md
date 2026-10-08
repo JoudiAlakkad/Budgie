@@ -100,6 +100,8 @@ Implements [0021](../decisions/0021-dashboard-and-goal-semantics.md). Pure: `tod
 - **Rows:** categories with spend ≠ 0 or a budget, by spend descending, then name. `total_spent` = sum of rows; `projected_total` = sum of rounded row projections; `total_budget` = sum of all budgets or `null`.
 - **Goal:** `months_left = max(1, summary month → target month, inclusive)`; `required_per_month = target / months_left`; `saved_this_month = income − projected_total`; `on_track = saved ≥ required`; without income both are `null`.
 - Money: `Decimal`, rounded half up to cents.
+- Also `Month.shifted(n)` and `months_inclusive(start, end)`; the domain `GoalProgress` carries `months_left`, which the DTO doesn't. Anything that isn't a spending category is dropped, so the result always fits the `SpendingCategory` Literal.
+- **Demo seed** (`services/demo_seed.py`, [0022](../decisions/0022-demo-data-by-explicit-command.md)): 46 expenses at today = 2026-10-15; `electronics` is `over` on any day (a purchase on day 1), `eating_out` is `on_pace_to_overrun` mid-month. With income 1400 and receipts-only spending of about 160–200 € a month, the goal card always shows "On track".
 
 ## `leaks.py` (F9)
 Each detector returns `Leak {type, category?, merchant?, amount, explanation}`.

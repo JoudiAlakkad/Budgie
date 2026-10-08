@@ -50,7 +50,7 @@ The storage is private to the service ([0006](decisions/0006-sqlite-behind-repos
 - Only `app/db/` touches SQLAlchemy, and the API returns DTOs only. `import-linter` enforces this in CI.
 - The static mount serves only `frontend/`. Images are served only through `GET /api/receipts/{id}/image`.
 - SQLite has no network port. The volume is mounted only by the app container, which runs as a non-root user, and `/data` has mode `700`.
-- `*.db` and `data/uploads/` are git-ignored. Demo data is recreated by the seed script, which goes through the service code.
+- `*.db` and `data/uploads/` are git-ignored. Demo data is recreated with `make seed-demo` (`python -m app.demo_seed`), which goes through the service code and only loads into an empty database ([0022](decisions/0022-demo-data-by-explicit-command.md)).
 
 ## Integration points
 Budgie is the only service. Anything outside it must use:

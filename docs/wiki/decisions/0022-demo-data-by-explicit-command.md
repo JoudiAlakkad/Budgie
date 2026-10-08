@@ -14,4 +14,5 @@ Scenarios 2 and 3 must work "on the seeded demo data" ([roadmap](../plan/roadmap
 
 ## Consequences
 - The seed isn't atomic: it runs one transaction per expense. If it fails halfway, delete the database and run it again.
+- The CLI's exit 2 means a storage failure, but argparse also exits 2 on a malformed `--today`.
 - The scenario-2 states (`over`, `on_pace_to_overrun`) depend on the day of the month; the tests pin `today`.
