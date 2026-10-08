@@ -56,7 +56,7 @@ class InsightsService:
         history_months = [
             previous
             for back in range(1, leak_rules.SPIKE_HISTORY_MONTHS + 1)
-            if (previous := _shifted_or_none(target, -back)) is not None
+            if (previous := target.shifted_or_none(-back)) is not None
         ]
         with self._db.transaction() as session:
             expenses = ExpenseRepository(session)
@@ -76,14 +76,6 @@ class InsightsService:
             LeakView(leak.type, leak.category, leak.merchant, leak.amount, leak.explanation)
             for leak in found
         ]
-
-
-def _shifted_or_none(month: budget.Month, by: int) -> budget.Month | None:
-    """`month` moved by `by`, or None before 0001-01 (or after 9999-12)."""
-    try:
-        return month.shifted(by)
-    except ValueError:
-        return None
 
 
 def _parse_month(month: str) -> budget.Month:

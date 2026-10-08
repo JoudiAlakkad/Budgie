@@ -85,6 +85,13 @@ class Month:
         index = self.year * 12 + (self.month - 1) + months
         return Month(index // 12, index % 12 + 1)
 
+    def shifted_or_none(self, months: int) -> "Month | None":
+        """Like `shifted`, but None outside the years 1 to 9999."""
+        try:
+            return self.shifted(months)
+        except ValueError:
+            return None
+
     def __str__(self) -> str:
         return f"{self.year:04d}-{self.month:02d}"
 

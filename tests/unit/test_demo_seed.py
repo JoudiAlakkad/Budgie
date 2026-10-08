@@ -250,24 +250,6 @@ def test_the_seeded_database_shows_the_same_states(
     assert summary == summary_view(_plan_summary(today))
 
 
-@pytest.mark.parametrize(
-    ("today", "on_track"),
-    [
-        (dt.date(2026, 10, 1), False),  # one day of spend extrapolated over the month
-        (dt.date(2026, 10, 2), False),
-        (dt.date(2026, 10, 3), False),  # the F09 day-1 meal and wine (decision 0022)
-        (dt.date(2026, 10, 4), True),
-        (dt.date(2026, 10, 15), True),
-    ],
-    ids=str,
-)
-def test_the_goal_card_is_behind_only_in_the_first_days(today: dt.date, on_track: bool) -> None:
-    progress = _plan_summary(today).goal
-
-    assert progress is not None
-    assert progress.on_track is on_track
-
-
 def _plan_spend(today: dt.date) -> tuple[dict[Month, dict[str, Decimal]], dict[str, int]]:
     """The plan's spend per month and category, and the current month's visits per
     category, with each item's seed category as `ExpenseService` stores it."""
@@ -317,6 +299,20 @@ def test_scenario_three_holds_on_every_day(today: dt.date) -> None:
     assert ("spike", "alcohol") in found
     assert (("on_pace_to_overrun", "eating_out") in found) is (2 * today.day <= days)
     assert (("on_pace_to_overrun", "health") in found) is (2 * today.day <= days)
+
+
+@pytest.mark.parametrize(
+    "today",
+    _every_day(Month(2026, 10), Month(2026, 11), Month(2024, 2), Month(2026, 2)),
+    ids=str,
+)
+def test_the_goal_card_is_behind_only_in_the_first_days(today: dt.date) -> None:
+    """Decision 0022: Behind on days 1–3, while a few days of spend (with the F09 day-1
+    meal and wine) are extrapolated over the month; On track from day 4."""
+    progress = _plan_summary(today).goal
+
+    assert progress is not None
+    assert progress.on_track is (today.day >= 4)
 
 
 def test_scenario_three_the_burn_card_on_day_one() -> None:

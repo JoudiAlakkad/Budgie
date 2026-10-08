@@ -10,6 +10,7 @@
   --accent-fg: #ffffff;
   --warn-bg: #fff4d6;
   --warn-border: #b07800;
+  --warn-text: #8a5d00;
   --error-bg: #fde8e8;
   --error-border: #b42318;
   --ok-bg: #e6f4ea;
@@ -731,7 +732,7 @@ input::placeholder {
 }
 
 .state-on_pace_to_overrun .state-text {
-  color: #8a5d00;
+  color: var(--warn-text);
 }
 
 .state-under .state-text {
@@ -808,7 +809,7 @@ input::placeholder {
 
 .leak-card[data-type="on_pace_to_overrun"] .leak-type,
 .leak-card[data-type="spike"] .leak-type {
-  color: #8a5d00;
+  color: var(--warn-text);
 }
 
 .leak-explanation {

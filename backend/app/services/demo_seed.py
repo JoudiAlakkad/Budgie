@@ -9,7 +9,8 @@ category, so nothing is written to the lookup table as a user choice.
 Scenario 2 on every day of the current month but its last: `electronics` is `over` (a
 day-1 purchase above its budget) and `health` is `on_pace_to_overrun` (a day-1 purchase
 just under its budget, extrapolated over the month). On the last day the projection
-equals the spend, so nothing can be on pace. `eating_out` is on pace on some days too.
+equals the spend, so nothing can be on pace. `eating_out` is on pace through day 16 and
+`over` from day 17.
 
 Scenario 3 (decision 0023): `electronics` is an `over_budget` leak on every day;
 `eating_out` (50.00 budget, 41.00 on day 1) is an early-burn leak on every day of the
@@ -254,7 +255,7 @@ def demo_plan(today: dt.date) -> DemoPlan:
     current = Month.of(today)
     expenses: list[SeedExpense] = []
     for offset in (-2, -1, 0):
-        month = _shifted_or_none(current, offset)
+        month = current.shifted_or_none(offset)
         if month is None:
             continue
         entries = [(day, merchant, items) for day, (merchant, items) in MONTHLY.items()]
@@ -264,7 +265,7 @@ def demo_plan(today: dt.date) -> DemoPlan:
             if date > today:
                 continue
             expenses.append(SeedExpense(merchant=merchant, date=date, line_items=items))
-    target = _shifted_or_none(current, GOAL_MONTHS_AHEAD) or LAST_MONTH
+    target = current.shifted_or_none(GOAL_MONTHS_AHEAD) or LAST_MONTH
     goal = SeedGoal(
         target_amount=GOAL_TARGET,
         target_date=target.last,
@@ -274,14 +275,6 @@ def demo_plan(today: dt.date) -> DemoPlan:
 
 
 LAST_MONTH = Month(9999, 12)
-
-
-def _shifted_or_none(month: Month, by: int) -> Month | None:
-    """`month` moved by `by`, or None outside the years 1 to 9999."""
-    try:
-        return month.shifted(by)
-    except ValueError:
-        return None
 
 
 def is_empty(db: Database) -> bool:

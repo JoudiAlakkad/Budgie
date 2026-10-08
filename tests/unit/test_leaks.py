@@ -442,3 +442,39 @@ def test_burn_amount_is_clamped() -> None:
 
 def test_nothing_spent_nothing_found() -> None:
     assert detect({}, {"eating_out": "50"}, history=HISTORY) == []
+
+
+def test_order_uses_the_real_amounts_before_clamping() -> None:
+    found = detect(
+        {"electronics": "50000000000", "tobacco": "60000000000"},
+        {"electronics": "1", "tobacco": "1"},
+    )
+
+    assert kinds(found) == [("over_budget", "tobacco"), ("over_budget", "electronics")]
+    assert [leak.amount for leak in found] == [MONEY_LIMIT, MONEY_LIMIT]
+
+
+def test_the_text_shows_the_clamped_amounts() -> None:
+    (leak,) = detect(
+        {"electronics": "9000000000"},
+        {"electronics": "9000000000"},
+        today=dt.date(2026, 10, 1),
+    )
+
+    assert "about 9.999.999.999,99 € (+9.999.999.999,99 €)" in leak.explanation
+
+
+@pytest.mark.parametrize(
+    ("spent", "shown"),
+    [
+        ("49.80", "99 %"),  # 99.6 % would round to 100 % while 0,20 € is left
+        ("49.99", "99 %"),
+        ("49.70", "99 %"),  # 99.4 % rounds down anyway
+        ("50.00", "100 %"),  # at the budget it is 100 %
+        ("44.50", "89 %"),
+    ],
+)
+def test_the_used_share_shows_100_only_at_the_budget(spent: str, shown: str) -> None:
+    (leak,) = detect({"eating_out": spent}, {"eating_out": "50"}, today=dt.date(2026, 10, 5))
+
+    assert f"you've used {shown} of your" in leak.explanation

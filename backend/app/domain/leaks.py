@@ -21,8 +21,8 @@ money and dates and the labels of `frontend/js/categories.js`.
 import datetime as dt
 import math
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
-from decimal import ROUND_HALF_UP, Decimal
+from dataclasses import dataclass, replace
+from decimal import ROUND_FLOOR, ROUND_HALF_UP, Decimal
 from typing import Literal
 
 from app.domain.budget import Month, clamp, project, spending
@@ -104,6 +104,20 @@ def format_percent(value: Decimal) -> str:
     return str(value.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
+def _money(value: Decimal) -> str:
+    """An amount for the text: in cents and clamped like `Leak.amount`, so the two agree."""
+    return format_money(clamp(cents(value)))
+
+
+def _used_percent(spent: Decimal, budget: Decimal) -> str:
+    """The share of the budget used, rounded half up, but never `100` while some of the
+    budget is left (99.6 % is `99`), so it can't read as over budget."""
+    used = spent / budget * 100
+    if spent < budget and used.quantize(Decimal("1"), rounding=ROUND_HALF_UP) >= 100:
+        return str(used.quantize(Decimal("1"), rounding=ROUND_FLOOR))
+    return format_percent(used)
+
+
 def label(category: str) -> str:
     return CATEGORY_LABELS.get(category, category)
 
@@ -145,10 +159,10 @@ def over_budget(category: str, spent: Decimal, budget: Decimal | None) -> Leak |
     return Leak(
         type="over_budget",
         category=category,
-        amount=clamp(cents(over)),
+        amount=cents(over),
         explanation=(
-            f"{label(category)}: {format_money(spent)} spent of a {format_money(budget)} "
-            f"budget, {format_money(over)} over."
+            f"{label(category)}: {_money(spent)} spent of a {_money(budget)} "
+            f"budget, {_money(over)} over."
         ),
     )
 
@@ -170,30 +184,30 @@ def early_burn(
         return None
     projected = project(spent, month, today)
     extra = projected - budget
-    used = format_percent(spent / budget * 100)
+    used = _used_percent(spent, budget)
     days_left = month.days - today.day
     day = run_out_day(spent, budget, today)
     if day == today.day:
         pace = (
             "The budget is used up today, and at this pace the month ends at about "
-            f"{format_money(projected)} (+{format_money(extra)})."
+            f"{_money(projected)} (+{_money(extra)})."
         )
     else:
         runs_out = dt.date(month.year, month.month, day)
         pace = (
             f"At this pace it runs out around {format_date(runs_out)} and the month ends "
-            f"at about {format_money(projected)} (+{format_money(extra)})."
+            f"at about {_money(projected)} (+{_money(extra)})."
         )
     text = (
-        f"{label(category)}: you've used {used} % of your {format_money(budget)} budget "
-        f"({format_money(spent)}) by {format_date(today)}, with {days_left} days left. {pace}"
+        f"{label(category)}: you've used {used} % of your {_money(budget)} budget "
+        f"({_money(spent)}) by {format_date(today)}, with {days_left} days left. {pace}"
     )
     if visits > 0:
-        text += f" {visits} visit(s) so far, about {format_money(spent / visits)} each."
+        text += f" {visits} visit(s) so far, about {_money(spent / visits)} each."
     return Leak(
         type="on_pace_to_overrun",
         category=category,
-        amount=clamp(cents(extra)),
+        amount=cents(extra),
         explanation=text,
     )
 
@@ -209,10 +223,10 @@ def spike(category: str, spent: Decimal, counted: Sequence[Mapping[str, Decimal]
     return Leak(
         type="spike",
         category=category,
-        amount=clamp(cents(spent - typical)),
+        amount=cents(spent - typical),
         explanation=(
-            f"{label(category)}: {format_money(spent)} this month, +{rise} % vs. your median "
-            f"of {format_money(typical)} over the last {len(counted)} months."
+            f"{label(category)}: {_money(spent)} this month, +{rise} % vs. your median "
+            f"of {_money(typical)} over the last {len(counted)} months."
         ),
     )
 
@@ -234,12 +248,14 @@ def detect_leaks(
     month's are used).
     """
     spent_by_category = spending(spend)
-    limits = {category: cents(limit) for category, limit in budgets.items()}
+    limits = {
+        category: cents(limit)
+        for category, limit in budgets.items()
+        if category in SPENDING_CATEGORIES
+    }
     counted = counted_history(history)
     leaks: list[Leak] = []
     for category in sorted(set(spent_by_category) | set(limits)):
-        if category not in SPENDING_CATEGORIES:
-            continue
         spent = spent_by_category.get(category, _ZERO)
         budget = limits.get(category)
         found = (
@@ -248,5 +264,6 @@ def detect_leaks(
             spike(category, spent, counted),
         )
         leaks.extend(leak for leak in found if leak is not None)
+    # Sorted on the real amounts (0021), then clamped to the `Money` limit.
     leaks.sort(key=lambda leak: (_TYPE_ORDER[leak.type], -leak.amount, leak.category))
-    return leaks
+    return [replace(leak, amount=clamp(leak.amount)) for leak in leaks]

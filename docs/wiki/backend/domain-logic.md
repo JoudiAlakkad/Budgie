@@ -98,7 +98,7 @@ The backend's own copy is `app/domain/categories.py`: `CATEGORIES` (this order),
 
 ## `budget.py` (F8)
 Implements [0021](../decisions/0021-dashboard-and-goal-semantics.md). Pure: `today` is a parameter.
-- `Month` (`parse("YYYY-MM")`, `of(date)`, `first`, `last`, `days`), `project`, `spend_state`, `goal_progress`, `summarize(month, today, spend, budgets, goal) -> Summary`.
+- `Month` (`parse("YYYY-MM")`, `of(date)`, `first`, `last`, `days`, `shifted(n)`, `shifted_or_none(n)` for the services' history and seed months), `project`, `spend_state`, `goal_progress`, `summarize(month, today, spend, budgets, goal) -> Summary`.
 - `spending(spend)`: the 0021 spend filter (cents, spending categories only), shared by `summarize` and `leaks.py` (F09).
 - **Spend:** confirmed expenses dated in the month, line-item amounts summed per category; `deposit`, `discount` and `uncategorized` are dropped here.
 - **Projection:** current month `spent / today.day × days_in_month`; past or future month `spent`.
@@ -123,8 +123,8 @@ Implements [0023](../decisions/0023-leak-rules-and-thresholds.md). Pure: `today`
 - **Entry point:** `detect_leaks(month, today, spend, budgets, history, visits)`; helpers `over_budget`, `early_burn`, `spike`, `counted_history`, `median`, `run_out_day` and the formatters. All comparisons are exact `Decimal`. A history month counts if any spending category has spend ≠ 0 after the 0021 filter.
 - **Constants:** `BURN_USED_MIN` = 0.80, `BURN_ELAPSED_MAX` = 0.50, `SPIKE_FACTOR` = 1.5, `SPIKE_HISTORY_MONTHS` = 3, `SPIKE_MIN_MONTHS` = 2.
 - **Burn explanation** adds the run-out day `ceil(budget × today.day / spent)` and the visits (confirmed expenses in the month with an item in the category) with their average.
-- **Order:** `over_budget`, `on_pace_to_overrun`, `spike`; then `amount` descending, then category. Burn and over-budget never both fire for a category.
-- **Text:** fixed templates, `de-DE` money with thousands separators and a plain space before € (`1.271,00 €`, `44,50 €`) and dates (`14.10.2026`); "visit(s)" for every count; the spike text names the counted months (2 or 3). When spent equals the budget, the burn text says "The budget is used up today, and at this pace the month ends at about …"; without a visit count the visit sentence is left out. A spike in a past month still says "this month". Category labels equal `frontend/js/categories.js` (`CATEGORY_LABELS`, checked by a test). No "you will" and no probabilities.
+- **Order:** `over_budget`, `on_pace_to_overrun`, `spike`; then the real (unclamped) `amount` descending, then category key; `detect_leaks` clamps only after sorting, and every amount in the text is clamped the same way (found by `/code-review`). Burn and over-budget never both fire for a category.
+- **Text:** fixed templates, `de-DE` money with thousands separators and a plain space before € (`1.271,00 €`, `44,50 €`) and dates (`14.10.2026`); "visit(s)" for every count; the spike text names the counted months (2 or 3). When spent equals the budget, the burn text says "The budget is used up today, and at this pace the month ends at about …"; without a visit count the visit sentence is left out. A spike in a past month still says "this month". The used share never shows 100 % while some of the budget is left (99,6 % → 99 %). Category labels equal `frontend/js/categories.js` (`CATEGORY_LABELS`, checked by a test). No "you will" and no probabilities.
 - **Not built** (future work): `small_frequent` and `recurring`. They stay in the contract's enum.
 
 ## `redaction.py` (F3)
