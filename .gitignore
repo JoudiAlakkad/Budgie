@@ -17,6 +17,8 @@ venv/
 # Local receipt data
 data/uploads/
 data/receipts/
+# Any other upload dir under data/ (e.g. UPLOAD_DIR=./data/demo-uploads for the demo seed)
+data/*uploads*/
 
 # macOS
 .DS_Store
