@@ -110,13 +110,19 @@ Implements [0021](../decisions/0021-dashboard-and-goal-semantics.md). Pure: `tod
 - **Known limit:** a very distant target date makes `required_per_month` round to 0.00, so the goal always counts as on track (pinned by a test).
 
 ## `leaks.py` (F9)
-Each detector returns `Leak {type, category?, merchant?, amount, explanation}`.
-- `recurring`: the same merchant, or the same normalised item, ≥ N times in a month
-- `over_budget` / `on_pace_to_overrun`: from `budget.py`
-- `spike`: a category's monthly spend is more than k × the median of the previous 3 months
-- `small_frequent`: at least M purchases under X € in a category, adding up to at least Y % of that category's spend
+Implements [0023](../decisions/0023-leak-rules-and-thresholds.md). Pure: `today` is a parameter. Each detector returns `Leak {type, category, merchant: None, amount, explanation}`. It reuses `budget.py` for spend, `Month` and the projection, so that logic exists in one place only.
 
-The thresholds are constants in the module, listed here once they're fixed.
+| Type | Fires when | `amount` |
+|---|---|---|
+| `over_budget` | any month, `spent > budget` | `spent − budget` |
+| `on_pace_to_overrun` (early burn) | current month, budget set, `0 < spent ≤ budget`, `spent / budget ≥ 0.80` and `today.day / days_in_month ≤ 0.50` | `projected − budget` |
+| `spike` | any month, ≥ 2 of the previous 3 months have any confirmed spend, median of the category over those months > 0, and `spent > 1.5 × median` | `spent − median` |
+
+- **Constants:** `BURN_USED_MIN` = 0.80, `BURN_ELAPSED_MAX` = 0.50, `SPIKE_FACTOR` = 1.5, `SPIKE_HISTORY_MONTHS` = 3, `SPIKE_MIN_MONTHS` = 2.
+- **Burn explanation** adds the run-out day `ceil(budget × today.day / spent)` and the visits (confirmed expenses in the month with an item in the category) with their average.
+- **Order:** `over_budget`, `on_pace_to_overrun`, `spike`; then `amount` descending, then category. Burn and over-budget never both fire for a category.
+- **Text:** fixed templates, `de-DE` money (`44,50 €`) and dates (`14.10.2026`), labels equal to `frontend/js/categories.js` (`CATEGORY_LABELS`, checked by a test). No "you will" and no probabilities.
+- **Not built** (future work): `small_frequent` and `recurring`. They stay in the contract's enum.
 
 ## `redaction.py` (F3)
 The safety net for personal data in the three places where the model writes free text: `merchant`, item descriptions and the stored raw output ([0017](../decisions/0017-personal-data-is-redacted-by-code.md)). The first line of defence is the schema: fixed keys, enums for `payment_method` and `unreadable_fields`, and no field for card or address data.
