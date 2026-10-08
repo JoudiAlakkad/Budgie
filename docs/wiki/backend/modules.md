@@ -17,7 +17,7 @@ backend/
 │   │   └── data/item_categories_seed.yaml
 │   ├── ai/                # client.py, extractor.py, schema.py, prompts/__init__.py (load_prompts) + prompts/<version>/{system,user,repair}.txt (package data)
 │   ├── db/                # models.py, session.py, records.py, images.py (image store), repositories/*.py
-│   └── demo_seed.py       # python -m app.demo_seed [--today], loads the demo data through services (0022); exit 0 ok, 1 not empty, 2 storage
+│   └── demo_seed.py       # python -m app.demo_seed [--today], loads the demo data through services (0022); exit 0 ok, 1 not empty, 2 storage or app error
 ├── pyproject.toml         # deps, ruff, pytest, import-linter config
 tests/                     # at the repo root: unit/, api/, integration/ (-m integration, live model),
                            # fixtures/recorded_responses/ (generated), recorded.py (replay helper)

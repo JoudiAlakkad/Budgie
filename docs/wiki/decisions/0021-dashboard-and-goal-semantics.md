@@ -14,7 +14,9 @@ F08 builds `GET /insights/summary`, whose shape has been fixed since F2 ([api-en
   - `months_left = max(1, months from the summary month to the target month, inclusive)`
   - `required_per_month = target_amount / months_left`. A target date that has passed clamps to 1 month, and the UI says so.
   - `saved_this_month = monthly_income − projected_total` (the student's decision). For a past month this is the real saving; for the current month it is the saving expected at month end, so `on_track` isn't optimistic early in the month.
-  - `on_track = saved_this_month ≥ required_per_month`. Without income, both are `null`.
+  - `on_track = saved_this_month ≥ required_per_month`. Without income, both are `null`; so they are for a month after the current one, which hasn't started (found by `/code-review`).
+- **Confirm needs at least one line item** (the student's decision, after `/code-review`): spend is the item sum, so an item-less expense would count as 0 €. A confirmed `sum_mismatch` expense counts its items; the user saw the flag.
+- Summary amounts are clamped to ±9,999,999,999.99, the response `Money` limit.
 - Money is `Decimal`, rounded half up to cents.
 
 ## Consequences

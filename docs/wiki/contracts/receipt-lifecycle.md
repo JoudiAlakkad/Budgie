@@ -36,7 +36,7 @@ Any other action returns `409 invalid_state`. Retry is allowed from every `faile
 
 ## Rules
 - **Only confirmed expenses count.** Unconfirmed expenses don't count toward budgets or leaks. The receipt is `confirmed` exactly when its expense is confirmed.
-- **Confirming needs a complete expense:** merchant, date and total set (`422 incomplete_expense`) and every item categorised (`422 uncategorized_items`, [0013](../decisions/0013-deterministic-item-categorisation-by-lookup.md)).
+- **Confirming needs a complete expense:** merchant, date, total and at least one line item set (`422 incomplete_expense`; line items since F08) and every item categorised (`422 uncategorized_items`, [0013](../decisions/0013-deterministic-item-categorisation-by-lookup.md)).
 - **A non-receipt is a failure, not a review result** ([0015](../decisions/0015-non-receipt-is-a-failure-with-retry-or-manual-entry.md)). If the model reports `is_receipt=false`, or the plausibility rule decides the output isn't a receipt, the receipt is `failed` with `error: not_a_receipt`. The user can retry or enter the expense by hand.
 - **`review_status` is a rule result, not a probability** ([0008](../decisions/0008-rule-based-review-status-not-probability.md)):
   - `rejected` means there is no total and no line item, so nothing usable was extracted. The user can still enter the fields by hand.

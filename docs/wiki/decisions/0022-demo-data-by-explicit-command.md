@@ -16,4 +16,5 @@ Scenarios 2 and 3 must work "on the seeded demo data" ([roadmap](../plan/roadmap
 - The seed isn't atomic: it runs one transaction per expense. If it fails halfway, delete the database and run it again.
 - The CLI's exit 2 means a storage failure, but argparse also exits 2 on a malformed `--today`.
 - `over` (electronics) holds on every day and `on_pace_to_overrun` (health) on every day except the month's last, where projected = spent; a test checks every day of several months.
-- On a storage failure the CLI says the data may be partly loaded and how to recover.
+- On a storage failure or any other app error during the seed (exit 2), the CLI says the data may be partly loaded and how to recover. A programming error still shows a traceback.
+- The emptiness check runs in its own transaction, before the inserts. While the app is running, a write between the check and the inserts mixes demo data into real data; seed a fresh database with the app stopped or idle.
