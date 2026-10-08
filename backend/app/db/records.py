@@ -131,6 +131,7 @@ class ExpenseFilter:
     date_from: dt.date | None = None
     date_to: dt.date | None = None
     category: str | None = None
+    has_receipt: bool | None = None
 
 
 @dataclass(frozen=True)

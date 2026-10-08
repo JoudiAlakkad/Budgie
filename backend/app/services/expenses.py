@@ -132,12 +132,14 @@ class ExpenseService:
         date_from: dt.date | None = None,
         date_to: dt.date | None = None,
         category: str | None = None,
+        has_receipt: bool | None = None,
     ) -> list[ExpenseView]:
         """Newest date first, expenses without a date last, ties by id descending.
 
-        `category` matches expenses with at least one item in it; the dates are inclusive.
+        `category` matches expenses with at least one item in it; the dates are inclusive;
+        `has_receipt` False keeps only expenses without a receipt, True only those with one.
         """
-        filters = ExpenseFilter(review_status, confirmed, date_from, date_to, category)
+        filters = ExpenseFilter(review_status, confirmed, date_from, date_to, category, has_receipt)
         with self._db.transaction() as session:
             expenses = ExpenseRepository(session).list(filters)
         return [expense_view(expense) for expense in expenses]
@@ -277,7 +279,8 @@ class ExpenseService:
 
         Flags don't block it. Confirming twice returns the expense unchanged. Raises
         `IncompleteExpense` while merchant (blank counts as missing), date or total is
-        missing, then `UncategorizedItems` while any item is uncategorised.
+        missing or there are no line items (F08; the detail names each missing part), then
+        `UncategorizedItems` while any item is uncategorised.
         """
         with self._db.transaction() as session:
             expenses = ExpenseRepository(session)

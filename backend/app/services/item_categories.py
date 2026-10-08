@@ -13,6 +13,7 @@ import yaml
 from app.db.records import ItemCategoryRecord
 from app.db.repositories.item_categories import SEED, ItemCategoryRepository
 from app.db.session import Database
+from app.domain.categories import CATEGORIES
 from app.errors import InvalidState, NotFound, StorageError
 from app.services.views import ItemCategoryView
 
@@ -20,27 +21,8 @@ logger = logging.getLogger(__name__)
 
 SEED_FILE = "data/item_categories_seed.yaml"
 
-# Mirrors `app.api.schemas.Category` (services don't import api); a test checks they match.
-KNOWN_CATEGORIES = frozenset(
-    {
-        "groceries.fresh",
-        "groceries.staples",
-        "snacks_sweets",
-        "drinks",
-        "alcohol",
-        "tobacco",
-        "household",
-        "personal_care",
-        "health",
-        "eating_out",
-        "transport",
-        "clothing",
-        "electronics",
-        "other",
-        "deposit",
-        "discount",
-    }
-)
+# The domain's category list; a test checks it against `app.api.schemas.Category`.
+KNOWN_CATEGORIES = frozenset(CATEGORIES)
 
 
 class InvalidSeed(ValueError):

@@ -22,31 +22,11 @@ import datetime as dt
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 from typing import Literal
 
-CENT = Decimal("0.01")
-
-# The spending categories (domain-logic.md#categories); `deposit`, `discount` and
-# `uncategorized` are not spending.
-SPENDING_CATEGORIES = frozenset(
-    {
-        "groceries.fresh",
-        "groceries.staples",
-        "snacks_sweets",
-        "drinks",
-        "alcohol",
-        "tobacco",
-        "household",
-        "personal_care",
-        "health",
-        "eating_out",
-        "transport",
-        "clothing",
-        "electronics",
-        "other",
-    }
-)
+from app.domain.categories import SPENDING_CATEGORIES
+from app.domain.money import cents
 
 SpendState = Literal["under", "on_pace_to_overrun", "over"]
 
@@ -55,11 +35,6 @@ _MONTH = re.compile(r"^(\d{4})-(0[1-9]|1[0-2])$")
 
 # The largest amount the API's `Money` can carry (max_digits=12, 2 decimals).
 MONEY_LIMIT = Decimal("9999999999.99")
-
-
-def cents(value: Decimal) -> Decimal:
-    """Round half up to 0.01."""
-    return value.quantize(CENT, rounding=ROUND_HALF_UP)
 
 
 def clamp(value: Decimal) -> Decimal:

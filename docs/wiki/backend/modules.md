@@ -13,7 +13,7 @@ backend/
 │   │   └── receipts.py, expenses.py, item_categories.py, budgets.py (budgets and goal), insights.py, health.py
 │   ├── services/          # dependencies.py (FastAPI providers), health.py, storage.py, views.py (F05),
 │   │                      # receipts.py, receipt_pipeline.py, categorization.py (F07 lookup), item_categories.py (F07), expenses.py (F05), budgets.py, insights.py, demo_seed.py (F08)
-│   ├── domain/            # pure: redaction (F3), validation, confidence, categorize, duplicates, budget, leaks
+│   ├── domain/            # pure: categories (the category list, F08), money (cents, F08), redaction (F3), validation, confidence, categorize, duplicates, budget, leaks
 │   │   └── data/item_categories_seed.yaml
 │   ├── ai/                # client.py, extractor.py, schema.py, prompts/__init__.py (load_prompts) + prompts/<version>/{system,user,repair}.txt (package data)
 │   ├── db/                # models.py, session.py, records.py, images.py (image store), repositories/*.py

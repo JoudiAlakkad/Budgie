@@ -6,16 +6,10 @@ A router builds its DTO with `Model.model_validate(view, from_attributes=True)`
 
 import datetime as dt
 from dataclasses import dataclass
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 
 from app.db.records import ExpenseRecord, LineItemRecord, ReceiptRecord
-
-CENT = Decimal("0.01")
-
-
-def cents(value: Decimal) -> Decimal:
-    """Round half up to 0.01."""
-    return value.quantize(CENT, rounding=ROUND_HALF_UP)
+from app.domain.money import cents
 
 
 def optional_cents(value: Decimal | None) -> Decimal | None:
@@ -57,6 +51,7 @@ class ExpenseView:
     confirmed: bool
     flags: list[FlagView]
     line_items: list[LineItemView]
+    created_at: dt.datetime
 
 
 @dataclass(frozen=True)
@@ -153,6 +148,7 @@ def expense_view(expense: ExpenseRecord) -> ExpenseView:
         confirmed=expense.confirmed,
         flags=[FlagView(flag.field, flag.code, flag.message) for flag in expense.flags],
         line_items=[line_item_view(item) for item in expense.line_items],
+        created_at=expense.created_at,
     )
 
 

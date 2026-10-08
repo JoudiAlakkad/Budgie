@@ -271,6 +271,12 @@ class ExpenseRepository:
                 LineItemRow.category == filters.category
             )
             query = query.where(ExpenseRow.id.in_(with_category))
+        if filters.has_receipt is not None:
+            query = query.where(
+                ExpenseRow.receipt_id.is_not(None)
+                if filters.has_receipt
+                else ExpenseRow.receipt_id.is_(None)
+            )
         return [to_record(row) for row in self._session.scalars(query)]
 
     def delete_unconfirmed_for_receipt(self, receipt_id: int) -> int:

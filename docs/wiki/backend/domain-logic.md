@@ -85,6 +85,11 @@ Implements [0013](../decisions/0013-deterministic-item-categorisation-by-lookup.
 
 The API mirrors this list as Literals in `app/api/schemas.py` (`SpendingCategory`, `Category`), because `api` doesn't import `domain`. A test parses this section and checks that the Literals match it.
 
+The backend's own copy is `app/domain/categories.py`: `CATEGORIES` (this order), `SPECIAL_CATEGORIES` (`deposit`, `discount`) and `SPENDING_CATEGORIES` (the rest). `domain/budget.py` and `services/item_categories.py` (`KNOWN_CATEGORIES`) import it; a test checks it equals `get_args(Category)` and `get_args(SpendingCategory)` (F08, found by `/code-review`: it was three hand-typed copies).
+
+## `money.py` (F08)
+`CENT` and `cents(value)`, rounding half up to 0.01, the one helper for `budget.py`, `validation.py`, `duplicates.py` and `services/views.py`. It uses the caller's decimal context: the sum check wraps it in `localcontext(prec=SUM_PRECISION)` for float-born amounts like `1e30`, which the default 28 digits can't quantize. `db/` keeps its own `CENT` for the `MoneyCents` column, because `db` can't import `domain`.
+
 ## `duplicates.py` (F07)
 - A receipt is a likely duplicate if the normalised merchant, the date and the total (±0.01) match **any other** expense, confirmed or draft ([0020](../decisions/0020-user-category-choices-and-duplicate-rule.md)).
 - Merchants are folded like item names, with punctuation and the legal words gmbh, mbh, ag, kg, kgaa, ohg, ug, se, co, ek and `e.K.`/`e.Kfm.` dropped. Totals are rounded to cents before the comparison. A missing merchant, date or total never matches.
