@@ -17,7 +17,9 @@ const prevButton = document.getElementById("month-prev");
 const nextButton = document.getElementById("month-next");
 
 const state = {
-  currentMonth: null, // the server's current month (Europe/Berlin), from the first summary
+  currentMonth: null, // the server's current month (Europe/Berlin), see currentSummary()
+  currentPromise: null, // the pending or settled summary asked for without a month
+  currentFetchedOn: null, // local date of that request
   month: null, // the month on screen
   requestId: 0, // only the newest request may render
 };
@@ -213,6 +215,7 @@ function goalSection(summary, kind) {
   section.append(
     h("p", { className: "goal-target" }, `Target: ${money(goal.target_amount)} by ${formatDate(goal.target_date)}`),
   );
+  // Relative to the viewed month, not the client's today: months_left clamps to 1 for both.
   if (goal.target_date < `${summary.month}-01`) {
     section.append(
       h(
@@ -220,6 +223,15 @@ function goalSection(summary, kind) {
         { className: "note warn" },
         icon("⚠"),
         " Target date has passed. The whole target amount counts as needed this month.",
+      ),
+    );
+  } else if (goal.target_date.startsWith(`${summary.month}-`)) {
+    section.append(
+      h(
+        "p",
+        { className: "note warn" },
+        icon("⚠"),
+        " Target date is this month: the full amount is needed now.",
       ),
     );
   }
@@ -298,40 +310,73 @@ function display(summary) {
   statusLine.textContent = `Showing ${monthName(summary.month)}.`;
 }
 
+/** The browser's local calendar date, used only to notice that a day has passed. */
+function localDateKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+}
+
 /**
- * Shows `month` ("YYYY-MM"), or the server's current month for `null`. The first call
- * always asks without a month: the server's month (Europe/Berlin) is the "current month"
- * that decides whether projections are shown. Only the newest request renders.
+ * The summary for the server's current month (Europe/Berlin), asked for without a month.
+ * The promise is shared, so a navigation during the first load doesn't ask twice. It is
+ * asked again once the local date has changed (a tab left open across a month boundary)
+ * or after a failure; on success it sets `state.currentMonth`.
+ */
+function currentSummary() {
+  const today = localDateKey();
+  if (!state.currentPromise || state.currentFetchedOn !== today) {
+    const promise = fetchSummary(null).then((summary) => {
+      state.currentMonth = summary.month;
+      return summary;
+    });
+    promise.catch(() => {
+      if (state.currentPromise === promise) state.currentPromise = null;
+    });
+    state.currentPromise = promise;
+    state.currentFetchedOn = today;
+  }
+  return state.currentPromise;
+}
+
+/**
+ * Shows `month` ("YYYY-MM"), or the server's current month for `null`. The current
+ * month (see `currentSummary`) decides whether projections are shown; with a month, both
+ * requests run in parallel. Only the newest request renders.
  */
 async function show(month) {
   const requestId = ++state.requestId;
   clearError();
   container.setAttribute("aria-busy", "true");
-  let current = null;
+  const [current, requested] = await Promise.allSettled([
+    currentSummary(),
+    month ? fetchSummary(month) : Promise.resolve(null),
+  ]);
+  if (requestId !== state.requestId) return;
   try {
-    if (!state.currentMonth) {
-      current = await fetchSummary(null);
-      state.currentMonth = current.month;
+    if (current.status === "rejected") throw current.reason;
+    if (!month) {
+      display(current.value);
+      return;
     }
-    const summary =
-      current && (!month || month === current.month) ? current : await fetchSummary(month);
-    if (requestId !== state.requestId) return;
-    display(summary);
-    if (month) setMonthInUrl(summary.month);
-  } catch (err) {
-    if (requestId !== state.requestId) return;
-    showError(err);
-    if (current) {
+    if (requested.status === "rejected") {
+      showError(requested.reason);
       // A bad `?month=` on the first load: fall back to the current month.
-      display(current);
-    } else if (state.month) {
+      if (!state.month) display(current.value);
+      else monthInput.value = state.month;
+      return;
+    }
+    display(requested.value);
+    setMonthInUrl(requested.value.month);
+  } catch (err) {
+    showError(err);
+    if (state.month) {
       // Put the picker back on the month that is still on screen.
       monthInput.value = state.month;
     } else {
       container.replaceChildren(h("p", {}, "The dashboard could not be loaded."));
     }
   } finally {
-    if (requestId === state.requestId) container.removeAttribute("aria-busy");
+    container.removeAttribute("aria-busy");
   }
 }
 

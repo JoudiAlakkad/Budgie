@@ -1125,9 +1125,11 @@ function updateActions() {
   }
   refs.saveDraft.disabled = state.busy || draftBlocked;
 
-  // Save & confirm: confirming needs merchant, date, total and a category on every item.
+  // Save & confirm: confirming needs merchant, date, total, at least one item and a
+  // category on every item (the server answers 422 incomplete_expense otherwise).
   const confirmReasons = [];
   if (missing.length) confirmReasons.push(`Fill in ${labelsOf(missing).join(", ")}.`);
+  if (state.draft.items.length === 0) confirmReasons.push("Add at least one line item.");
   const uncategorized = state.draft.items.filter((row) => row.category === UNCATEGORIZED).length;
   if (uncategorized) {
     confirmReasons.push(
