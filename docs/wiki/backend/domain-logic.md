@@ -92,9 +92,14 @@ The API mirrors this list as Literals in `app/api/schemas.py` (`SpendingCategory
 - **Known limit:** deleting the earlier expense leaves a stale flag on the newer one until it is edited.
 
 ## `budget.py` (F8)
-- Monthly spend per category counts confirmed expenses only, and excludes `deposit` and `discount`.
-- It compares the spend to the budget and gives a linear projection for the whole month: `spend / day_of_month × days_in_month`.
-- Savings-goal progress: `(income − spend)` per month, against the target.
+Implements [0021](../decisions/0021-dashboard-and-goal-semantics.md). Pure: `today` is a parameter.
+- `Month` (`parse("YYYY-MM")`, `of(date)`, `first`, `last`, `days`), `project`, `spend_state`, `goal_progress`, `summarize(month, today, spend, budgets, goal) -> Summary`.
+- **Spend:** confirmed expenses dated in the month, line-item amounts summed per category; `deposit`, `discount` and `uncategorized` are dropped here.
+- **Projection:** current month `spent / today.day × days_in_month`; past or future month `spent`.
+- **State:** `over` if `spent > budget`, `on_pace_to_overrun` if `projected > budget`, else `under` (also without a budget, and at exactly the budget).
+- **Rows:** categories with spend ≠ 0 or a budget, by spend descending, then name. `total_spent` = sum of rows; `projected_total` = sum of rounded row projections; `total_budget` = sum of all budgets or `null`.
+- **Goal:** `months_left = max(1, summary month → target month, inclusive)`; `required_per_month = target / months_left`; `saved_this_month = income − projected_total`; `on_track = saved ≥ required`; without income both are `null`.
+- Money: `Decimal`, rounded half up to cents.
 
 ## `leaks.py` (F9)
 Each detector returns `Leak {type, category?, merchant?, amount, explanation}`.

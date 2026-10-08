@@ -39,6 +39,8 @@ back; the parent records them.
 - [0018 — Review form editing semantics](decisions/0018-review-form-editing-semantics.md)
 - [0019 — Lean extraction: line totals, date as printed, Pfand](decisions/0019-lean-extraction-line-totals-date-as-printed.md)
 - [0020 — Saving user category choices and the duplicate rule](decisions/0020-user-category-choices-and-duplicate-rule.md)
+- [0021 — Dashboard and goal semantics](decisions/0021-dashboard-and-goal-semantics.md)
+- [0022 — Demo data by an explicit command through the services](decisions/0022-demo-data-by-explicit-command.md)
 
 ## Areas
 
