@@ -1,6 +1,6 @@
 // Upload page: drag and drop or pick a photo, POST /receipts, then open the review page.
 import { api, clearError, formatMoney, showError } from "./api.js";
-import { RECEIPT_STATUS_WORDS, formatTimestamp, h } from "./dom.js";
+import { RECEIPT_STATUS_WORDS, formatDate, formatTimestamp, h } from "./dom.js";
 
 const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("file-input");
@@ -83,13 +83,6 @@ function receiptRow(receipt) {
   );
 }
 
-function formatDate(iso) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || "");
-  if (!match) return iso;
-  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
-  return date.toLocaleDateString("de-DE", { dateStyle: "medium", timeZone: "UTC" });
-}
-
 /** An expense entered by hand without a photo (`receipt_id` is null). */
 function manualRow(expense) {
   const parts = [expense.merchant || "unknown merchant"];
@@ -118,22 +111,24 @@ function manualRow(expense) {
   );
 }
 
+/** A UTC timestamp as milliseconds; an unreadable one sorts last. */
+function timeOf(iso) {
+  const ms = Date.parse(iso || "");
+  return Number.isNaN(ms) ? -Infinity : ms;
+}
+
 /**
- * Receipts and manual expenses in one list, newest first. A receipt sorts by `uploaded_at`,
- * a manual expense by its `date` (the Expense has no creation time), so a manual expense
- * sorts after the receipts uploaded on the same day (UTC); one without a date goes last.
+ * Receipts and manual expenses in one list, newest first by when they were added: a
+ * receipt by `uploaded_at`, a manual expense by `created_at` (not its purchase date), so
+ * an expense entered just now is at the top. Ties by id, highest first.
  */
 function recentEntries(receipts, manualExpenses) {
   const entries = [
-    ...receipts.map((receipt) => ({ key: receipt.uploaded_at || "", id: receipt.id, row: receiptRow(receipt) })),
-    ...manualExpenses.map((expense) => ({ key: expense.date || "", id: expense.id, row: manualRow(expense) })),
+    ...receipts.map((receipt) => ({ time: timeOf(receipt.uploaded_at), id: receipt.id, row: receiptRow(receipt) })),
+    ...manualExpenses.map((expense) => ({ time: timeOf(expense.created_at), id: expense.id, row: manualRow(expense) })),
   ];
   entries.sort((a, b) => {
-    if (a.key !== b.key) {
-      if (!a.key) return 1;
-      if (!b.key) return -1;
-      return a.key < b.key ? 1 : -1;
-    }
+    if (a.time !== b.time) return a.time < b.time ? 1 : -1;
     return b.id - a.id;
   });
   return entries.map((entry) => entry.row);
@@ -141,11 +136,15 @@ function recentEntries(receipts, manualExpenses) {
 
 async function loadRecent() {
   // Both lists load in parallel; if one fails, the other is still shown.
-  const [receipts, expenses] = await Promise.allSettled([api.get("/receipts"), api.get("/expenses")]);
+  const [receipts, expenses] = await Promise.allSettled([
+    api.get("/receipts"),
+    api.get("/expenses?has_receipt=false"),
+  ]);
   const failed = [receipts, expenses].find((result) => result.status === "rejected");
   if (failed) showError(failed.reason);
   const receiptList = receipts.status === "fulfilled" ? receipts.value : [];
-  // A receipt's expense is already listed through its receipt.
+  // The server already filters (`has_receipt=false`); this guard keeps a receipt's expense
+  // from being listed twice should the filter ever be ignored.
   const manualExpenses =
     expenses.status === "fulfilled" ? expenses.value.filter((expense) => expense.receipt_id === null) : [];
   const rows = recentEntries(receiptList, manualExpenses);

@@ -2,7 +2,7 @@
 // (GET /insights/summary; rules in decision 0021). Leak cards come in F09.
 import { api, clearError, formatMoney, showError } from "./api.js";
 import { categoryLabel } from "./categories.js";
-import { h, icon } from "./dom.js";
+import { formatDate, h, icon } from "./dom.js";
 
 // The insights endpoint sums every currency as EUR (decision 0021).
 const CURRENCY = "EUR";
@@ -19,7 +19,8 @@ const nextButton = document.getElementById("month-next");
 const state = {
   currentMonth: null, // the server's current month (Europe/Berlin), see currentSummary()
   currentPromise: null, // the pending or settled summary asked for without a month
-  currentFetchedOn: null, // local date of that request
+  currentFetchedOn: null, // Berlin date of that request
+  currentPending: false, // whether that request is still in flight
   month: null, // the month on screen
   requestId: 0, // only the newest request may render
 };
@@ -71,21 +72,33 @@ function monthName(month) {
   });
 }
 
-function formatDate(iso) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || "");
-  if (!match) return iso || "";
-  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
-  return date.toLocaleDateString("de-DE", { dateStyle: "medium", timeZone: "UTC" });
-}
-
 function money(amount) {
   return formatMoney(amount, CURRENCY);
 }
 
-/** "past", "current" or "future", relative to the server's current month. */
+const BERLIN_DATE = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Europe/Berlin",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+/** Today in Europe/Berlin as "YYYY-MM-DD": the server's calendar (decision 0021). */
+function berlinToday() {
+  const parts = Object.fromEntries(
+    BERLIN_DATE.formatToParts(new Date()).map((part) => [part.type, part.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+/**
+ * "past", "current" or "future", relative to the server's current month; before the
+ * server has answered once, relative to Berlin's month computed here.
+ */
 function monthKind(month) {
-  if (!state.currentMonth || month === state.currentMonth) return "current";
-  return month < state.currentMonth ? "past" : "future";
+  const current = state.currentMonth || berlinToday().slice(0, 7);
+  if (month === current) return "current";
+  return month < current ? "past" : "future";
 }
 
 // ---------------------------------------------------------------- rendering
@@ -310,73 +323,90 @@ function display(summary) {
   statusLine.textContent = `Showing ${monthName(summary.month)}.`;
 }
 
-/** The browser's local calendar date, used only to notice that a day has passed. */
-function localDateKey() {
-  const now = new Date();
-  return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
-}
-
 /**
- * The summary for the server's current month (Europe/Berlin), asked for without a month.
- * The promise is shared, so a navigation during the first load doesn't ask twice. It is
- * asked again once the local date has changed (a tab left open across a month boundary)
- * or after a failure; on success it sets `state.currentMonth`.
+ * The summary for the server's current month (Europe/Berlin), asked for without a month;
+ * on success it sets `state.currentMonth`. A pending request is always shared, so a
+ * navigation during the first load doesn't ask twice. A settled one is reused, except:
+ * - `refresh` asks again (the current month is about to be shown, so its data must be fresh);
+ * - the Berlin date has changed since (a tab left open across a month boundary);
+ * - the last request failed.
  */
-function currentSummary() {
-  const today = localDateKey();
-  if (!state.currentPromise || state.currentFetchedOn !== today) {
+function currentSummary({ refresh = false } = {}) {
+  const today = berlinToday();
+  const stale = !state.currentPromise || state.currentFetchedOn !== today;
+  if (stale || (refresh && !state.currentPending)) {
     const promise = fetchSummary(null).then((summary) => {
       state.currentMonth = summary.month;
       return summary;
     });
-    promise.catch(() => {
-      if (state.currentPromise === promise) state.currentPromise = null;
-    });
+    state.currentPending = true;
+    promise
+      .catch(() => {
+        if (state.currentPromise === promise) state.currentPromise = null;
+      })
+      .finally(() => {
+        if (state.currentPromise === promise || state.currentPromise === null) {
+          state.currentPending = false;
+        }
+      });
     state.currentPromise = promise;
     state.currentFetchedOn = today;
   }
   return state.currentPromise;
 }
 
+function showLoadFailure() {
+  if (state.month) {
+    // Put the picker back on the month that is still on screen.
+    monthInput.value = state.month;
+  } else {
+    container.replaceChildren(h("p", {}, "The dashboard could not be loaded."));
+  }
+}
+
 /**
- * Shows `month` ("YYYY-MM"), or the server's current month for `null`. The current
- * month (see `currentSummary`) decides whether projections are shown; with a month, both
- * requests run in parallel. Only the newest request renders.
+ * Shows `month` ("YYYY-MM"), or the server's current month for `null`.
+ * - The current month (see `currentSummary`) decides whether projections are shown.
+ * - The known current month is shown from the request without a month, never a second
+ *   `?month=` request; any other month is asked for in parallel with it.
+ * - If only the current-month request fails, the requested month is still shown,
+ *   classified by the last known current month or Berlin's month (`monthKind`).
+ * - Only the newest request renders.
  */
 async function show(month) {
   const requestId = ++state.requestId;
   clearError();
   container.setAttribute("aria-busy", "true");
-  const [current, requested] = await Promise.allSettled([
-    currentSummary(),
-    month ? fetchSummary(month) : Promise.resolve(null),
-  ]);
+  const wantsCurrent = !month || month === state.currentMonth;
+  const currentPromise = currentSummary({ refresh: wantsCurrent });
+  const requestedPromise = wantsCurrent ? currentPromise : fetchSummary(month);
+  const [current, requested] = await Promise.allSettled([currentPromise, requestedPromise]);
   if (requestId !== state.requestId) return;
   try {
-    if (current.status === "rejected") throw current.reason;
-    if (!month) {
-      display(current.value);
-      return;
-    }
     if (requested.status === "rejected") {
       showError(requested.reason);
       // A bad `?month=` on the first load: fall back to the current month.
-      if (!state.month) display(current.value);
-      else monthInput.value = state.month;
+      if (!state.month && !wantsCurrent && current.status === "fulfilled") {
+        display(current.value);
+      } else {
+        showLoadFailure();
+      }
       return;
     }
-    display(requested.value);
-    setMonthInUrl(requested.value.month);
-  } catch (err) {
-    showError(err);
-    if (state.month) {
-      // Put the picker back on the month that is still on screen.
-      monthInput.value = state.month;
-    } else {
-      container.replaceChildren(h("p", {}, "The dashboard could not be loaded."));
+    let summary = requested.value;
+    if (month && summary.month !== month) {
+      // The current month moved on (new Berlin day) while `month` was the old one.
+      summary = await fetchSummary(month);
+      if (requestId !== state.requestId) return;
     }
+    display(summary);
+    if (month) setMonthInUrl(summary.month);
+  } catch (err) {
+    if (requestId !== state.requestId) return;
+    showError(err);
+    showLoadFailure();
   } finally {
-    container.removeAttribute("aria-busy");
+    if (requestId === state.requestId) container.removeAttribute("aria-busy");
   }
 }
 

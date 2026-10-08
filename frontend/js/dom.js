@@ -45,6 +45,20 @@ export const RECEIPT_STATUS_WORDS = {
   confirmed: "Confirmed",
 };
 
+/**
+ * A `YYYY-MM-DD` date as `08.10.2026` (de-DE). The date has no time zone, so it is
+ * formatted in UTC and never shifts by a day. Anything else is returned unchanged
+ * ("" for null or undefined).
+ */
+export function formatDate(iso) {
+  if (iso === null || iso === undefined) return "";
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match) return iso;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleDateString("de-DE", { dateStyle: "medium", timeZone: "UTC" });
+}
+
 export function formatTimestamp(iso) {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
