@@ -1,9 +1,8 @@
-"""`/api/insights/*` (contracts/api-endpoints.md). Summary since F08, leaks until F09."""
+"""`/api/insights/*` (contracts/api-endpoints.md). Summary since F08, leaks since F09."""
 
 from fastapi import APIRouter, Depends, Query
 
 from app.api.schemas import MONTH_PATTERN, InsightsSummary, Leak
-from app.errors import NotImplementedYet
 from app.services.dependencies import get_insights_service
 from app.services.insights import InsightsService
 
@@ -20,5 +19,7 @@ def insights_summary(
 
 
 @router.get("/leaks", response_model=list[Leak], summary="Detected spending leaks")
-def insights_leaks(month: str | None = _MONTH) -> list[Leak]:
-    raise NotImplementedYet("F09")
+def insights_leaks(
+    month: str | None = _MONTH, service: InsightsService = Depends(get_insights_service)
+) -> list[Leak]:
+    return [Leak.model_validate(leak, from_attributes=True) for leak in service.leaks(month)]

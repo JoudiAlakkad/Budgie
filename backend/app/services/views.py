@@ -119,6 +119,15 @@ class InsightsSummaryView:
     goal: GoalProgressView | None
 
 
+@dataclass(frozen=True)
+class LeakView:
+    type: str
+    category: str | None
+    merchant: str | None
+    amount: Decimal
+    explanation: str
+
+
 def line_item_view(item: LineItemRecord) -> LineItemView:
     return LineItemView(
         id=item.id,

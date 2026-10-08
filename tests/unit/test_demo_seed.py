@@ -19,6 +19,7 @@ from app.db.repositories.receipts import ReceiptRepository
 from app.db.session import Database
 from app.domain.budget import Goal, Month, Summary, summarize
 from app.domain.categorize import normalize
+from app.domain.leaks import Leak, detect_leaks
 from app.errors import (
     IncompleteExpense,
     InvalidFields,
@@ -108,7 +109,12 @@ def test_on_the_first_only_day_one_of_the_current_month_is_planned() -> None:
     current = [e for e in demo_plan(dt.date(2026, 10, 1)).expenses if e.date.month == 10]
 
     assert {e.date for e in current} == {dt.date(2026, 10, 1)}
-    assert [e.merchant for e in current] == ["Apotheke am Markt", "MediaMarkt"]
+    assert [e.merchant for e in current] == [
+        "Apotheke am Markt",
+        "Burgerei",
+        "MediaMarkt",
+        "Weinhandel",
+    ]
 
 
 # ---------------------------------------------------------------- seeding
@@ -179,7 +185,7 @@ def test_scenario_two_at_mid_october(db: Database, images: ImageStore) -> None:
     assert states["electronics"] == "over"
     assert states["eating_out"] == "on_pace_to_overrun"
     assert states["groceries.fresh"] == "under"
-    assert summary.total_budget == Decimal("380.00")
+    assert summary.total_budget == Decimal("370.00")
     assert summary.goal is not None
     assert summary.goal.required_per_month == Decimal("200.00")  # 1200 over Oct..Mar
     assert summary.goal.saved_this_month == Decimal("1400.00") - summary.projected_total
@@ -249,7 +255,8 @@ def test_the_seeded_database_shows_the_same_states(
     [
         (dt.date(2026, 10, 1), False),  # one day of spend extrapolated over the month
         (dt.date(2026, 10, 2), False),
-        (dt.date(2026, 10, 3), True),
+        (dt.date(2026, 10, 3), False),  # the F09 day-1 meal and wine (decision 0022)
+        (dt.date(2026, 10, 4), True),
         (dt.date(2026, 10, 15), True),
     ],
     ids=str,
@@ -259,6 +266,90 @@ def test_the_goal_card_is_behind_only_in_the_first_days(today: dt.date, on_track
 
     assert progress is not None
     assert progress.on_track is on_track
+
+
+def _plan_spend(today: dt.date) -> tuple[dict[Month, dict[str, Decimal]], dict[str, int]]:
+    """The plan's spend per month and category, and the current month's visits per
+    category, with each item's seed category as `ExpenseService` stores it."""
+    seed = load_seed()
+    current = Month.of(today)
+    spend: dict[Month, dict[str, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
+    visits: dict[str, int] = defaultdict(int)
+    for expense in demo_plan(today).expenses:
+        categories = {seed[normalize(item.description).name] for item in expense.line_items}
+        for item in expense.line_items:
+            spend[Month.of(expense.date)][seed[normalize(item.description).name]] += item.amount
+        if Month.of(expense.date) == current:
+            for category in categories:
+                visits[category] += 1
+    return spend, visits
+
+
+def _plan_leaks(today: dt.date) -> list[Leak]:
+    """The current month's leaks from the plan alone, as `InsightsService.leaks` reads them."""
+    spend, visits = _plan_spend(today)
+    month = Month.of(today)
+    budgets = {budget.category: budget.monthly_limit for budget in demo_plan(today).budgets}
+    history = [spend[month.shifted(-back)] for back in (1, 2, 3)]
+    return detect_leaks(month, today, spend[month], budgets, history, visits)
+
+
+def _every_day(*months: Month) -> list[dt.date]:
+    return [
+        dt.date(month.year, month.month, day)
+        for month in months
+        for day in range(1, month.days + 1)
+    ]
+
+
+@pytest.mark.parametrize(
+    "today",
+    _every_day(Month(2026, 10), Month(2026, 11), Month(2024, 2), Month(2026, 2)),
+    ids=str,
+)
+def test_scenario_three_holds_on_every_day(today: dt.date) -> None:
+    """Decision 0023: electronics over budget and alcohol a spike on every day; eating
+    out burns on exactly the days of the first half (day ≤ days / 2)."""
+    found = {(leak.type, leak.category) for leak in _plan_leaks(today)}
+    days = Month.of(today).days
+
+    assert ("over_budget", "electronics") in found
+    assert ("spike", "alcohol") in found
+    assert (("on_pace_to_overrun", "eating_out") in found) is (2 * today.day <= days)
+    assert (("on_pace_to_overrun", "health") in found) is (2 * today.day <= days)
+
+
+def test_scenario_three_the_burn_card_on_day_one() -> None:
+    burn = [
+        leak
+        for leak in _plan_leaks(dt.date(2026, 10, 1))
+        if (leak.type, leak.category) == ("on_pace_to_overrun", "eating_out")
+    ]
+
+    assert [leak.explanation for leak in burn] == [
+        "Eating out: you've used 82 % of your 50,00 € budget (41,00 €) by 01.10.2026, "
+        "with 30 days left. At this pace it runs out around 02.10.2026 and the month ends "
+        "at about 1.271,00 € (+1.221,00 €). 1 visit(s) so far, about 41,00 € each."
+    ]
+
+
+@pytest.mark.parametrize(
+    "today",
+    [dt.date(2026, 10, 1), dt.date(2026, 10, 14), dt.date(2026, 10, 24), dt.date(2024, 2, 29)],
+    ids=str,
+)
+def test_the_seeded_database_shows_the_same_leaks(
+    db: Database, images: ImageStore, today: dt.date
+) -> None:
+    seed_demo(db, images, today)
+
+    found = InsightsService(db, lambda: today).leaks()
+
+    assert [(v.type, v.category, v.merchant, v.amount, v.explanation) for v in found] == [
+        (leak.type, leak.category, None, leak.amount, leak.explanation)
+        for leak in _plan_leaks(today)
+    ]
+    assert found  # never empty on the demo data
 
 
 @pytest.mark.parametrize(

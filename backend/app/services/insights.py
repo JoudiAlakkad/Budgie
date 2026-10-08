@@ -1,13 +1,19 @@
 """`GET /insights/summary`: spending against budgets, the forecast and goal progress
-(decision 0021). Leaks follow in F09."""
+(decision 0021); `GET /insights/leaks`: the potential leaks (decision 0023)."""
 
 from app.db.repositories.budgets import BudgetRepository, GoalRepository
 from app.db.repositories.expenses import ExpenseRepository
 from app.db.session import Database
 from app.domain import budget
+from app.domain import leaks as leak_rules
 from app.errors import InvalidFields
 from app.services.receipt_pipeline import Today
-from app.services.views import CategorySpendView, GoalProgressView, InsightsSummaryView
+from app.services.views import (
+    CategorySpendView,
+    GoalProgressView,
+    InsightsSummaryView,
+    LeakView,
+)
 
 
 class InsightsService:
@@ -36,6 +42,48 @@ class InsightsService:
             else None
         )
         return summary_view(budget.summarize(target, today, spend, limits, goal))
+
+    def leaks(self, month: str | None = None) -> list[LeakView]:
+        """The potential leaks of `month` (`YYYY-MM`); without one, the current
+        Europe/Berlin month.
+
+        Budgets, the month's spend, the spend of up to `SPIKE_HISTORY_MONTHS` previous
+        months (those before 0001-01 are skipped) and, for the current month only, the
+        visits per category are read in one transaction.
+        """
+        today = self._today()
+        target = budget.Month.of(today) if month is None else _parse_month(month)
+        history_months = [
+            previous
+            for back in range(1, leak_rules.SPIKE_HISTORY_MONTHS + 1)
+            if (previous := _shifted_or_none(target, -back)) is not None
+        ]
+        with self._db.transaction() as session:
+            expenses = ExpenseRepository(session)
+            limits = {b.category: b.monthly_limit for b in BudgetRepository(session).all()}
+            spend = expenses.confirmed_spend_by_category(target.first, target.last)
+            history = [
+                expenses.confirmed_spend_by_category(previous.first, previous.last)
+                for previous in history_months
+            ]
+            visits = (
+                expenses.confirmed_visits_by_category(target.first, target.last)
+                if target == budget.Month.of(today)
+                else {}
+            )
+        found = leak_rules.detect_leaks(target, today, spend, limits, history, visits)
+        return [
+            LeakView(leak.type, leak.category, leak.merchant, leak.amount, leak.explanation)
+            for leak in found
+        ]
+
+
+def _shifted_or_none(month: budget.Month, by: int) -> budget.Month | None:
+    """`month` moved by `by`, or None before 0001-01 (or after 9999-12)."""
+    try:
+        return month.shifted(by)
+    except ValueError:
+        return None
 
 
 def _parse_month(month: str) -> budget.Month:

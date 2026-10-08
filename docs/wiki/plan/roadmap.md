@@ -86,4 +86,5 @@ Progress is tracked in the repo's issues and milestones, not on this page.
 ## Future work
 Not planned for a feature yet. Each would need its thresholds fixed in a decision first.
 - **`small_frequent` leak:** many small purchases in a category that add up, e.g. at least M purchases under X € making up at least Y % of the category's spend. Out of F9 by the student's decision ([0023](../decisions/0023-leak-rules-and-thresholds.md)). The contract's `Leak.type` already has the value.
+- **Month on `GET /insights/leaks`:** the response doesn't say which month it covers (found in F09). A `month` field or a wrapper object would let the dashboard match it to the summary at a month boundary.
 - **`recurring` leak:** the same merchant or the same normalised item at least N times in a month; it would set `Leak.merchant`. Also already in the contract's enum.

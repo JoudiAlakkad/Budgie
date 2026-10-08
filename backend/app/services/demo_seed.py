@@ -10,6 +10,12 @@ Scenario 2 on every day of the current month but its last: `electronics` is `ove
 day-1 purchase above its budget) and `health` is `on_pace_to_overrun` (a day-1 purchase
 just under its budget, extrapolated over the month). On the last day the projection
 equals the spend, so nothing can be on pace. `eating_out` is on pace on some days too.
+
+Scenario 3 (decision 0023): `electronics` is an `over_budget` leak on every day;
+`eating_out` (50.00 budget, 41.00 on day 1) is an early-burn leak on every day of the
+first half; `alcohol` (a day-1 wine against the monthly beer) is a `spike` on every day.
+Side effects: `health` burns in the first half too, and `eating_out` turns over budget
+and later a spike in the second half.
 """
 
 import datetime as dt
@@ -126,7 +132,6 @@ MONTHLY: dict[int, tuple[str, tuple[SeedItem, ...]]] = {
             ("Toilettenpapier", "3.95"),
         ),
     ),
-    6: ("Kebab Haus", _items(("Döner Kebab", "7.50"), ("Cola", "2.50"))),
     8: (
         "Kiosk am Markt",
         _items(("Schokolade", "1.49"), ("Chips", "1.99"), ("Gummibärchen", "1.19")),
@@ -149,7 +154,6 @@ MONTHLY: dict[int, tuple[str, tuple[SeedItem, ...]]] = {
             ("Latte Macchiato", "4.20"),
         ),
     ),
-    13: ("Burgerei", _items(("Burger", "11.90"), ("Pommes", "3.90"))),
     14: ("Getränkemarkt", _items(("Bier", "4.74"), ("Pfand", "0.48"))),
     16: (
         "REWE",
@@ -163,6 +167,7 @@ MONTHLY: dict[int, tuple[str, tuple[SeedItem, ...]]] = {
             ("Pfandrückgabe", "-0.75"),
         ),
     ),
+    17: ("Kebab Haus", _items(("Döner Kebab", "7.50"), ("Cola", "2.50"))),
     18: (
         "Deutsche Bahn",
         _items(
@@ -188,6 +193,7 @@ MONTHLY: dict[int, tuple[str, tuple[SeedItem, ...]]] = {
             ("Zwiebeln", "1.29"),
         ),
     ),
+    24: ("Burgerei", _items(("Burger", "11.90"), ("Pommes", "3.90"))),
     26: ("Kebab Haus", _items(("Currywurst", "4.50"), ("Pommes", "3.50"))),
 }
 
@@ -202,6 +208,18 @@ ONE_OFFS: dict[int, tuple[tuple[int, str, tuple[SeedItem, ...]], ...]] = {
         # 31-day month, so health is `on_pace_to_overrun` on all of them (on the last day
         # the projection equals the spend and it is `under`).
         (1, "Apotheke am Markt", _items(("Ibuprofen", "4.95"), ("Vitamin", "4.85"))),
+        # Eating out, early burn (decision 0023): 41.00 of the 50.00 budget on day 1. The
+        # monthly eating-out spend before day 17 adds 3.80 (day 3) and 4.20 (day 10), so
+        # it stays within 41.00..49.00, at least 80 % and at most the budget, through the
+        # first half of the month; the Kebab Haus and Burgerei visits come after it.
+        (
+            1,
+            "Burgerei",
+            _items(("Menü", "24.90"), ("Burger", "11.90"), ("Pommes", "4.20")),
+        ),
+        # Alcohol spike: 7.99 on day 1 against a median of 4.74 (the day-14 beer) in the
+        # two previous months; 7.99 > 1.5 × 4.74 = 7.11, and it only grows afterwards.
+        (1, "Weinhandel", _items(("Rotwein", "7.99"))),
     ),
     -1: ((11, "H&M", _items(("Socken", "7.99"), ("Shirt", "12.99"))),),
 }
@@ -211,7 +229,7 @@ BUDGETS: tuple[SeedBudget, ...] = tuple(
     for category, limit in (
         ("groceries.fresh", "120.00"),
         ("groceries.staples", "50.00"),
-        ("eating_out", "60.00"),
+        ("eating_out", "50.00"),
         ("snacks_sweets", "20.00"),
         ("household", "25.00"),
         ("personal_care", "20.00"),

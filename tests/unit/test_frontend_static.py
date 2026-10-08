@@ -6,6 +6,10 @@
 3. `frontend/js/categories.js` lists the contract's `Category` Literal, in order.
 4. Every literal path passed to `api.get|post|patch|put|delete(` exists in
    `docs/openapi.json` with that method.
+5. `CATEGORY_LABELS` in `frontend/js/categories.js` equals the domain's copy, which the
+   leak explanations use (F09, decision 0023).
+6. No user-visible string in `frontend/js/dashboard.js` says "leak" without "potential"
+   (F09, decision 0023).
 
 The scanned sources are `frontend/js/**/*.js` and the inline scripts of `frontend/*.html`.
 Comments are stripped first, so a comment may name a sink. Each check skips with a reason
@@ -20,6 +24,7 @@ from typing import get_args
 import pytest
 
 from app.api.schemas import Category
+from app.domain.leaks import CATEGORY_LABELS
 
 ROOT = Path(__file__).resolve().parents[2]
 FRONTEND = ROOT / "frontend"
@@ -206,3 +211,225 @@ def test_every_api_path_in_the_js_exists_in_the_spec() -> None:
     ]
 
     assert unknown == [], "not in docs/openapi.json"
+
+
+# ---------------------------------------------------------------- 5. category labels (F09)
+
+DASHBOARD_JS = JS_DIR / "dashboard.js"
+LABELS_BLOCK = re.compile(
+    r"export\s+const\s+CATEGORY_LABELS\s*=\s*(?:Object\.freeze\(\s*)?\{(.*?)\}", re.DOTALL
+)
+LABEL_LINE = re.compile(r'^\s*(?:"([^"]+)"|([A-Za-z_$][\w$]*))\s*:\s*"([^"]*)",?\s*$')
+
+
+def _js_labels(code: str) -> dict[str, str]:
+    block = LABELS_BLOCK.search(code)
+    assert block is not None, "categories.js must `export const CATEGORY_LABELS = { … }`"
+    lines = [line for line in block.group(1).splitlines() if line.strip()]
+    malformed = [line for line in lines if not LABEL_LINE.match(line)]
+    assert malformed == [], 'write one label per line as `key: "Label",`'
+    matches = [LABEL_LINE.match(line) for line in lines]
+    return {m.group(1) or m.group(2): m.group(3) for m in matches if m is not None}
+
+
+def test_label_parser() -> None:
+    code = 'export const CATEGORY_LABELS = {\n  "a.b": "A: b",\n  c_d: "C and d",\n};'
+
+    assert _js_labels(code) == {"a.b": "A: b", "c_d": "C and d"}
+
+
+def test_domain_labels_equal_the_js_labels() -> None:
+    """The leak explanations name categories as the UI does (decision 0023)."""
+    if not CATEGORIES_JS.is_file():
+        pytest.skip(f"{CATEGORIES_JS.relative_to(ROOT)} doesn't exist yet")
+
+    assert _js_labels(CATEGORIES_JS.read_text(encoding="utf-8")) == CATEGORY_LABELS
+
+
+# ---------------------------------------------------------------- 6. "potential leak" (F09)
+
+# A user-visible "leak" must be a "potential leak" (decision 0023).
+BARE_LEAK = re.compile(r"(?<!potential )\bleaks?\b", re.IGNORECASE)
+# A literal that is one lowercase token: an id, a class, a key, a path.
+TOKEN_LITERAL = re.compile(r"[a-z0-9_\-./?=&#:]*")
+# A word joined by `-`, `_`, `/`, `.`, `=`, `?`, `#`, `&` or `:` inside it (`leak-card`,
+# `/insights/leaks`, `state.leaks`) is a token, not prose.
+TOKEN_WORD = re.compile(r"\w[-_/.=?#&:]\w")
+# A `/` after one of these starts a regex literal, not a division.
+REGEX_BEFORE = set("(,=:[!&|?{};+-*%<>~^")
+
+
+def _string_end(code: str, start: int) -> int:
+    """The index of the quote closing the string opened at `start`."""
+    quote, i = code[start], start + 1
+    while i < len(code) and code[i] != quote and code[i] != "\n":
+        i += 2 if code[i] == "\\" else 1
+    return i
+
+
+def _regex_end(code: str, start: int) -> int:
+    """The index after a regex literal opened at `start` (and its flags)."""
+    i, in_class = start + 1, False
+    while i < len(code) and code[i] != "\n":
+        char = code[i]
+        if char == "\\":
+            i += 2
+            continue
+        if char == "[":
+            in_class = True
+        elif char == "]":
+            in_class = False
+        elif char == "/" and not in_class:
+            i += 1
+            break
+        i += 1
+    while i < len(code) and code[i].isalpha():
+        i += 1
+    return i
+
+
+def _template(code: str, start: int, found: list[tuple[int, str]]) -> int:
+    """Reads a template literal whose text starts at `start`; each `${…}` becomes a space
+    and is scanned for literals of its own. Returns the index after the closing backtick."""
+    i, text = start, []
+    while i < len(code):
+        if code[i] == "\\":
+            text.append(code[i : i + 2])
+            i += 2
+        elif code[i] == "`":
+            i += 1
+            break
+        elif code.startswith("${", i):
+            text.append(" ")
+            i = _scan(code, i + 2, found, in_placeholder=True)
+        else:
+            text.append(code[i])
+            i += 1
+    found.append((start, "".join(text)))
+    return i
+
+
+def _scan(code: str, i: int, found: list[tuple[int, str]], in_placeholder: bool) -> int:
+    """Collects the literals from `i`; inside a `${…}` it returns after the closing brace."""
+    depth, previous = 0, ""
+    while i < len(code):
+        char = code[i]
+        if code.startswith("//", i):
+            end = code.find("\n", i)
+            i = len(code) if end < 0 else end
+            continue
+        if code.startswith("/*", i):
+            end = code.find("*/", i + 2)
+            i = len(code) if end < 0 else end + 2
+            continue
+        if char in "'\"":
+            end = _string_end(code, i)
+            found.append((i + 1, code[i + 1 : end]))
+            i, previous = end + 1, char
+            continue
+        if char == "`":
+            i, previous = _template(code, i + 1, found), char
+            continue
+        if char == "/" and (previous == "" or previous in REGEX_BEFORE):
+            i, previous = _regex_end(code, i), "/"
+            continue
+        if in_placeholder and char == "{":
+            depth += 1
+        elif in_placeholder and char == "}":
+            if depth == 0:
+                return i + 1
+            depth -= 1
+        if not char.isspace():
+            previous = char
+        i += 1
+    return i
+
+
+def _string_literals(code: str) -> list[tuple[int, str]]:
+    """(offset, text) of every string and template literal outside comments."""
+    found: list[tuple[int, str]] = []
+    _scan(code, 0, found, in_placeholder=False)
+    return sorted(found)
+
+
+def _visible_text(literal: str) -> str:
+    """The prose of a literal: "" for a token literal, else without its token words."""
+    if TOKEN_LITERAL.fullmatch(literal.strip()):
+        return ""
+    return " ".join(word for word in literal.split() if not TOKEN_WORD.search(word))
+
+
+def _bare_leaks(code: str) -> list[str]:
+    texts = [_visible_text(literal) for _, literal in _string_literals(code)]
+    return [text for text in texts if BARE_LEAK.search(text)]
+
+
+@pytest.mark.parametrize(
+    ("text", "flagged"),
+    [
+        ("Potential leaks", False),
+        ("potential leak", False),
+        ("POTENTIAL LEAK", False),
+        ("No potential leaks found in October 2026.", False),
+        ("Leaks", True),
+        ("No leaks found", True),
+        ("Leak detected", True),
+        ("a leak, and a potential leak", True),
+        ("Potential  leaks", True),  # two spaces: not the phrase
+        ("leaky tap", False),
+        ("leakage", False),
+        ("Spending by category", False),
+    ],
+)
+def test_bare_leak_pattern(text: str, flagged: bool) -> None:
+    assert bool(BARE_LEAK.search(text)) is flagged
+
+
+@pytest.mark.parametrize(
+    ("code", "literals"),
+    [
+        ('h("h2", {}, "Leaks")', ["h2", "Leaks"]),
+        ("const a = 'it\\'s'; // \"Leaks\" in a comment", ["it\\'s"]),
+        ("/* 'Leaks' */ x = `Found ${n} ${f(\"Leaks\")} here`", ["Found     here", "Leaks"]),
+        ("const P = /^\\d{4}-'x'$/; y = 'ok'", ["ok"]),
+        ("a = b / c; d = 'e' / 2", ["e"]),
+        ("t = `${`in ${'deep'}`}`", [" ", "deep", "in  "]),
+    ],
+)
+def test_string_literal_scanner(code: str, literals: list[str]) -> None:
+    assert sorted(text for _, text in _string_literals(code)) == sorted(literals)
+
+
+@pytest.mark.parametrize(
+    ("literal", "visible"),
+    [
+        ("leaks", ""),
+        ("leak-card", ""),
+        ("/insights/leaks?month=", ""),
+        ("leak-card state-over", ""),
+        ("Potential leaks", "Potential leaks"),
+        ("Leaks in October", "Leaks in October"),
+        ("Showing state.leaks now", "Showing now"),
+    ],
+)
+def test_visible_text(literal: str, visible: str) -> None:
+    assert _visible_text(literal) == visible
+
+
+def test_scan_finds_a_bare_leak() -> None:
+    code = 'h("h2", { id: "leaks-heading", className: "leak-list" }, "Leaks this month");'
+
+    assert _bare_leaks(code) == ["Leaks this month"]
+    assert _bare_leaks(code.replace("Leaks this", "Potential leaks this")) == []
+
+
+def test_the_dashboard_never_says_leak_without_potential() -> None:
+    if not DASHBOARD_JS.is_file():
+        pytest.skip(f"{DASHBOARD_JS.relative_to(ROOT)} doesn't exist yet")
+
+    code = DASHBOARD_JS.read_text(encoding="utf-8")
+    hits = _bare_leaks(code)
+
+    # Not vacuous: the scanner reads the page's prose (about 50 texts in F08).
+    assert len([lit for _, lit in _string_literals(code) if _visible_text(lit)]) > 20
+    assert hits == [], 'the UI says "potential leak", never "leak" alone (decision 0023)'

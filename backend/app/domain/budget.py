@@ -94,6 +94,16 @@ def months_inclusive(start: Month, end: Month) -> int:
     return (end.year - start.year) * 12 + (end.month - start.month) + 1
 
 
+def spending(spend: Mapping[str, Decimal]) -> dict[str, Decimal]:
+    """The raw sums per item category reduced to spend (decision 0021): only spending
+    categories, so `deposit`, `discount` and `uncategorized` are dropped; in cents."""
+    return {
+        category: cents(amount)
+        for category, amount in spend.items()
+        if category in SPENDING_CATEGORIES
+    }
+
+
 def project(spent: Decimal, month: Month, today: dt.date) -> Decimal:
     """Month-end spend: extrapolated for the current month, `spent` otherwise; in cents."""
     if Month.of(today) != month:
@@ -192,16 +202,12 @@ def summarize(
     amounts returned are clamped to `MONEY_LIMIT`, so a huge projection can't break the
     response (a current-month projection is up to 31 × the spend).
     """
-    spending = {
-        category: cents(amount)
-        for category, amount in spend.items()
-        if category in SPENDING_CATEGORIES
-    }
+    spent_by_category = spending(spend)
     limits = {category: cents(limit) for category, limit in budgets.items()}
-    names = {name for name, amount in spending.items() if amount != 0} | set(limits)
+    names = {name for name, amount in spent_by_category.items() if amount != 0} | set(limits)
     rows = []
     for name in names:
-        spent = spending.get(name, Decimal("0.00"))
+        spent = spent_by_category.get(name, Decimal("0.00"))
         budget = limits.get(name)
         projected = project(spent, month, today)
         rows.append(

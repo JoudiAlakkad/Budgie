@@ -199,6 +199,27 @@ def test_spend_skips_expenses_without_a_date(db: Database) -> None:
         )
 
 
+def test_visits_count_confirmed_expenses_per_item_category_in_the_range(db: Database) -> None:
+    """F09: one visit per expense with an item in the category, however many items."""
+    add_expense(db, dt.date(2026, 10, 1), item("eating_out", "5"), item("eating_out", "2"))
+    add_expense(db, dt.date(2026, 10, 31), item("eating_out", "4"), item("drinks", "1"))
+    add_expense(db, dt.date(2026, 10, 15), item("drinks", "2"), item("deposit", "0.25"))
+    add_expense(db, dt.date(2026, 10, 16), item("eating_out", "9"), confirmed=False)  # draft
+    add_expense(db, dt.date(2026, 9, 30), item("eating_out", "9"))  # before
+    add_expense(db, dt.date(2026, 11, 1), item("eating_out", "9"))  # after
+
+    with db.transaction() as session:
+        repository = ExpenseRepository(session)
+        visits = repository.confirmed_visits_by_category(
+            dt.date(2026, 10, 1), dt.date(2026, 10, 31)
+        )
+        empty = repository.confirmed_visits_by_category(dt.date(2027, 1, 1), dt.date(2027, 1, 31))
+
+    assert visits == {"eating_out": 2, "drinks": 2, "deposit": 1}
+    assert all(type(count) is int for count in visits.values())
+    assert empty == {}
+
+
 def test_counts(db: Database) -> None:
     with db.transaction() as session:
         assert ExpenseRepository(session).count() == 0

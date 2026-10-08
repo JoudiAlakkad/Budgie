@@ -36,6 +36,7 @@ The pages are planned and built in F6 (Upload, Review), F8 and F9 (Dashboard, Se
 
 ## Dashboard rules (F08)
 - **Month:** Previous / Next buttons and a labelled `<input type="month">`, limited to `0001-01`…`9999-12`; a picker or address value outside it is ignored. The "current month" is the server's (Europe/Berlin), taken from `GET /insights/summary` without a month.
+  - **Per endpoint (F09):** the current-month request is cached separately for the summary and the potential leaks, with the same rules; only the summary decides the current month.
   - **Sharing:** the request is shared while it is pending, so a navigation during the first load doesn't ask twice.
   - **Refreshing:** the request is made again when the Berlin date has changed (computed on the client with `Intl.DateTimeFormat`, time zone Europe/Berlin), after a failure, and whenever the current month is about to be shown.
   - **Never `?month=<current>`:** the known current month is always shown from the request without a month. Any other month (including a `?month=` from the address on first load) is requested in parallel with it.
@@ -47,12 +48,13 @@ The pages are planned and built in F6 (Upload, Review), F8 and F9 (Dashboard, Se
 - **Empty state:** no rows → "No confirmed expenses in <month>" with a link to Upload.
 
 ## Potential-leak cards (F09, [0023](../decisions/0023-leak-rules-and-thresholds.md))
-- A "Potential leaks" section on the dashboard, after the totals and before "Spending by category", filled from `GET /insights/leaks` for the shown month. The month requests follow the summary's rules above: shared while pending, never `?month=<current>`, and only the newest request draws.
+- A "Potential leaks" section on the dashboard, after the totals and before "Spending by category", filled from `GET /insights/leaks` for the shown month. The month requests follow the summary's rules above: shared while pending, never `?month=<current>`, and only the newest request draws. The page draws as soon as the summary is in; the section shows "Loading potential leaks…" (`aria-busy`) until the leaks arrive, and fills in only while it is still on screen, so a failed newer month doesn't leave the visible month stuck on loading.
 - Every user-visible text says "potential leak", never "leak" alone ([0023](../decisions/0023-leak-rules-and-thresholds.md)); identifiers keep `leak`.
 - One card per leak, in the server's order: a heading with the category label and the type in words with an icon (Over budget ✖, Running out early ⚠, Spike ↑), then `explanation` as is, inserted with `textContent`. Colour is never the only signal. No percentage of certainty is shown.
 - **Empty state:** "No potential leaks found in <month>." For the current month in its first half this means nothing is burning early; the page doesn't explain the rules.
-- **Failures:** if the leaks request fails while the summary loaded, the section shows its own error line, and the rest of the dashboard stays usable.
-- An unknown `type` (`small_frequent`, `recurring` or a later one) is still shown, with the type as text, so a backend change doesn't break the page.
+- **Failures:** if the leaks request fails while the summary loaded, the section shows its own line, "⚠ Potential leaks could not be loaded." plus the server's `detail`, not the page banner, and the rest of the dashboard stays usable.
+- An unknown `type` (`small_frequent`, `recurring` or a later one) is still shown, with the raw type as text and a • icon, so a backend change doesn't break the page. A null category is labelled "Potential leak".
+- **Known limit:** `Leak[]` doesn't say which month it covers, so right at midnight on a month boundary the current-month cards and summary could cover different months. A `month` field would fix it (a contract change, [future work](../plan/roadmap.md#future-work)).
 
 ## Settings rules (F08)
 - **Budgets:** one labelled number input per `SPENDING_CATEGORIES` entry (min 0.01, step 0.01); blank means no budget. Save sends `PUT /budgets` with only the filled rows. A 422 `fields[].field` such as `3.monthly_limit` or `3.category` is matched through the sent list's index to its input (`aria-invalid`, message via `aria-describedby`). Errors without an input are listed above the buttons; `detail` always goes to the banner.

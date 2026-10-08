@@ -763,6 +763,58 @@ input::placeholder {
   margin: 0;
 }
 
+/* Potential-leak cards: the type is always words with an icon; the border colour only repeats it. */
+.leak-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.leak-card {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--muted);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.leak-card[data-type="over_budget"] {
+  border-left-color: var(--error-border);
+}
+
+.leak-card[data-type="on_pace_to_overrun"],
+.leak-card[data-type="spike"] {
+  border-left-color: var(--warn-border);
+}
+
+.leak-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+
+.leak-type {
+  font-weight: 600;
+}
+
+.leak-card[data-type="over_budget"] .leak-type {
+  color: var(--error-border);
+}
+
+.leak-card[data-type="on_pace_to_overrun"] .leak-type,
+.leak-card[data-type="spike"] .leak-type {
+  color: #8a5d00;
+}
+
+.leak-explanation {
+  margin: 0;
+}
+
 /* ---------------------------------------------------------------- settings */
 
 .settings-card {
