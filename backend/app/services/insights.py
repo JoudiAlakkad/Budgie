@@ -1,0 +1,63 @@
+"""`GET /insights/summary`: spending against budgets, the forecast and goal progress
+(decision 0021). Leaks follow in F09."""
+
+from app.db.repositories.budgets import BudgetRepository, GoalRepository
+from app.db.repositories.expenses import ExpenseRepository
+from app.db.session import Database
+from app.domain import budget
+from app.services.receipt_pipeline import Today
+from app.services.views import CategorySpendView, GoalProgressView, InsightsSummaryView
+
+
+class InsightsService:
+    def __init__(self, db: Database, today: Today) -> None:
+        self._db = db
+        self._today = today
+
+    def summary(self, month: str | None = None) -> InsightsSummaryView:
+        """The summary for `month` (`YYYY-MM`); without one, the current Europe/Berlin month.
+
+        Budgets, the goal and the spend are read in one transaction.
+        """
+        today = self._today()
+        target = budget.Month.parse(month) if month is not None else budget.Month.of(today)
+        with self._db.transaction() as session:
+            limits = {b.category: b.monthly_limit for b in BudgetRepository(session).all()}
+            stored_goal = GoalRepository(session).get()
+            spend = ExpenseRepository(session).confirmed_spend_by_category(
+                target.first, target.last
+            )
+        goal = (
+            budget.Goal(
+                stored_goal.target_amount, stored_goal.target_date, stored_goal.monthly_income
+            )
+            if stored_goal is not None
+            else None
+        )
+        return summary_view(budget.summarize(target, today, spend, limits, goal))
+
+
+def summary_view(summary: budget.Summary) -> InsightsSummaryView:
+    """The domain summary as a view; the domain already rounds to cents."""
+    progress = summary.goal
+    return InsightsSummaryView(
+        month=str(summary.month),
+        total_spent=summary.total_spent,
+        total_budget=summary.total_budget,
+        projected_total=summary.projected_total,
+        categories=[
+            CategorySpendView(row.category, row.spent, row.budget, row.projected, row.state)
+            for row in summary.categories
+        ],
+        goal=(
+            GoalProgressView(
+                target_amount=progress.target_amount,
+                target_date=progress.target_date,
+                saved_this_month=progress.saved_this_month,
+                required_per_month=progress.required_per_month,
+                on_track=progress.on_track,
+            )
+            if progress is not None
+            else None
+        ),
+    )

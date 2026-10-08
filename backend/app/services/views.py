@@ -83,6 +83,47 @@ class ImageView:
     media_type: str
 
 
+@dataclass(frozen=True)
+class BudgetView:
+    category: str
+    monthly_limit: Decimal
+
+
+@dataclass(frozen=True)
+class GoalView:
+    target_amount: Decimal
+    target_date: dt.date
+    monthly_income: Decimal | None
+
+
+@dataclass(frozen=True)
+class CategorySpendView:
+    category: str
+    spent: Decimal
+    budget: Decimal | None
+    projected: Decimal
+    state: str
+
+
+@dataclass(frozen=True)
+class GoalProgressView:
+    target_amount: Decimal
+    target_date: dt.date
+    saved_this_month: Decimal | None
+    required_per_month: Decimal
+    on_track: bool | None
+
+
+@dataclass(frozen=True)
+class InsightsSummaryView:
+    month: str
+    total_spent: Decimal
+    total_budget: Decimal | None
+    projected_total: Decimal
+    categories: list[CategorySpendView]
+    goal: GoalProgressView | None
+
+
 def line_item_view(item: LineItemRecord) -> LineItemView:
     return LineItemView(
         id=item.id,

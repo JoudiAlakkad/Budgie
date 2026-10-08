@@ -159,3 +159,20 @@ class DuplicateCandidate:
     merchant: str | None
     date: dt.date | None
     total: Decimal | None
+
+
+@dataclass(frozen=True)
+class BudgetRecord:
+    """A monthly limit for one spending category."""
+
+    category: str
+    monthly_limit: Decimal
+
+
+@dataclass(frozen=True)
+class GoalRecord:
+    """The savings goal (one row at most)."""
+
+    target_amount: Decimal
+    target_date: dt.date
+    monthly_income: Decimal | None

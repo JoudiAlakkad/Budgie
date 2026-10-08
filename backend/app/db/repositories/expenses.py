@@ -4,7 +4,7 @@ import datetime as dt
 from collections.abc import Iterable
 from decimal import ROUND_HALF_UP, Decimal
 
-from sqlalchemy import Select, select, update
+from sqlalchemy import Select, func, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.db.models import ExpenseRow, LineItemRow
@@ -228,6 +228,31 @@ class ExpenseRepository:
             DuplicateCandidate(id=id_, merchant=merchant, date=day, total=amount)
             for id_, merchant, day, amount in self._session.execute(query)
         )
+
+    def confirmed_spend_by_category(
+        self, date_from: dt.date, date_to: dt.date
+    ) -> dict[str, Decimal]:
+        """The line-item amounts of confirmed expenses dated `date_from`..`date_to`
+        (inclusive), summed per item category in one `SUM ... GROUP BY` query.
+
+        Every category is returned, `deposit`, `discount` and `uncategorized` too; the
+        domain decides what counts as spend (decision 0021).
+        """
+        total = func.sum(LineItemRow.amount).label("total")  # MoneyCents: a Decimal sum
+        query = (
+            select(LineItemRow.category, total)
+            .join(ExpenseRow, LineItemRow.expense_id == ExpenseRow.id)
+            .where(
+                ExpenseRow.confirmed.is_(True),
+                ExpenseRow.date >= date_from,
+                ExpenseRow.date <= date_to,
+            )
+            .group_by(LineItemRow.category)
+        )
+        return {category: amount for category, amount in self._session.execute(query)}
+
+    def count(self) -> int:
+        return self._session.scalar(select(func.count()).select_from(ExpenseRow)) or 0
 
     def list(self, filters: ExpenseFilter | None = None) -> list[ExpenseRecord]:
         """Newest date first, expenses without a date last, ties by id descending."""

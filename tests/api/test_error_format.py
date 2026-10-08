@@ -276,8 +276,10 @@ def test_impossible_month_is_422(client: TestClient, route: str, month: str) -> 
 
 
 @pytest.mark.parametrize("month", ["2026-01", "2026-12"])
-def test_valid_month_reaches_the_stub(client: TestClient, month: str) -> None:
-    assert client.get(f"/api/insights/summary?month={month}").status_code == 501
+def test_valid_month_reaches_the_route(client: TestClient, month: str) -> None:
+    """The summary is built (F08); leaks are still a stub (F09)."""
+    assert client.get(f"/api/insights/summary?month={month}").status_code == 200
+    assert client.get(f"/api/insights/leaks?month={month}").status_code == 501
 
 
 def test_malformed_json_is_422_validation_error(client: TestClient) -> None:

@@ -259,20 +259,15 @@ BUILT: list[tuple[str, str, dict[str, Any]]] = [
     ("GET", "/api/item-categories?q=ban", {}),
     ("PUT", "/api/item-categories/banane", {"json": {"category": "groceries.fresh"}}),
     ("DELETE", "/api/item-categories/banane", {}),
+    ("GET", "/api/budgets", {}),
+    ("PUT", "/api/budgets", {"json": [{"category": "snacks_sweets", "monthly_limit": 40}]}),
+    ("GET", "/api/goal", {}),
+    ("PUT", "/api/goal", {"json": {"target_amount": 500, "target_date": "2099-06-30"}}),
+    ("GET", "/api/insights/summary?month=2026-10", {}),
 ]
 
 STUBS: list[tuple[str, str, dict[str, Any], str]] = [
     ("GET", "/api/expenses/export.csv?from=2026-10-01", {}, "F10"),
-    ("GET", "/api/budgets", {}, "F08"),
-    (
-        "PUT",
-        "/api/budgets",
-        {"json": [{"category": "snacks_sweets", "monthly_limit": 40}]},
-        "F08",
-    ),
-    ("GET", "/api/goal", {}, "F08"),
-    ("PUT", "/api/goal", {"json": {"target_amount": 500, "target_date": "2027-06-30"}}, "F08"),
-    ("GET", "/api/insights/summary?month=2026-10", {}, "F08"),
     ("GET", "/api/insights/leaks", {}, "F09"),
 ]
 

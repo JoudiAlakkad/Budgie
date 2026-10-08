@@ -1,6 +1,7 @@
 """SQLAlchemy ORM models (docs/wiki/backend/persistence.md).
 
-`receipts`, `expenses` and `line_items` are fixed in F05, `item_categories` in F07.
+`receipts`, `expenses` and `line_items` are fixed in F05, `item_categories` in F07,
+`budgets` and `savings_goal` in F08.
 Money is stored as integer cents (`MoneyCents`), because SQLite has no decimal type and
 `Numeric` goes through float; `qty` is stored as decimal text (`DecimalText`), because it
 is unrounded. Timestamps are naive UTC.
@@ -13,6 +14,7 @@ from typing import Any
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     Dialect,
@@ -147,3 +149,24 @@ class ItemCategoryRow(Base):
     category: Mapped[str] = mapped_column(String(32))
     source: Mapped[str] = mapped_column(String(8))  # seed | user
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime)
+
+
+class BudgetRow(Base):
+    """A monthly limit for one spending category (decision 0021)."""
+
+    __tablename__ = "budgets"
+
+    category: Mapped[str] = mapped_column(String(32), primary_key=True)
+    monthly_limit: Mapped[Decimal] = mapped_column(MoneyCents)
+
+
+class GoalRow(Base):
+    """The single savings goal: the CHECK keeps the table to the one row with id 1."""
+
+    __tablename__ = "savings_goal"
+    __table_args__ = (CheckConstraint("id = 1", name="single_goal"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    target_amount: Mapped[Decimal] = mapped_column(MoneyCents)
+    target_date: Mapped[dt.date] = mapped_column(Date)
+    monthly_income: Mapped[Decimal | None] = mapped_column(MoneyCents)
