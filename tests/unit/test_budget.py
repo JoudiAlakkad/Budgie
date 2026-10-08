@@ -2,10 +2,13 @@
 
 import datetime as dt
 from decimal import Decimal
+from typing import get_args
 
 import pytest
 
+from app.api.schemas import SpendingCategory
 from app.domain.budget import (
+    SPENDING_CATEGORIES,
     Goal,
     Month,
     months_inclusive,
@@ -272,3 +275,36 @@ def test_saved_exactly_required_boundary() -> None:
 def test_month_rejects_impossible_values(year: int, month: int) -> None:
     with pytest.raises(ValueError):
         Month(year, month)
+
+
+def test_spending_categories_match_the_contract() -> None:
+    assert set(get_args(SpendingCategory)) == SPENDING_CATEGORIES
+
+
+@pytest.mark.parametrize(
+    ("text", "last"), [("9999-12", dt.date(9999, 12, 31)), ("0001-01", dt.date(1, 1, 31))]
+)
+def test_the_calendar_ends(text: str, last: dt.date) -> None:
+    month = Month.parse(text)
+
+    assert (month.last, month.days) == (last, 31)
+    assert project(D("1"), month, MID_OCT) == D("1.00")
+
+
+def test_year_zero_matches_the_api_pattern_but_is_not_a_month() -> None:
+    with pytest.raises(ValueError):
+        Month.parse("0000-01")
+
+
+def test_a_far_target_rounds_the_requirement_to_zero() -> None:
+    """Known behaviour, pinned: 400 over 95,927 months (Oct 2026 .. Dec 9999) is 0.0042,
+    which rounds to 0.00, so any saving counts as on track. The logic is left as decision
+    0021 states it."""
+    far = Goal(D("400"), dt.date(9999, 12, 31), D("0"))
+
+    progress = summarize(OCT, MID_OCT, {}, {}, far).goal
+
+    assert progress is not None
+    assert progress.required_per_month == D("0.00")
+    assert progress.saved_this_month == D("0.00")
+    assert progress.on_track is True

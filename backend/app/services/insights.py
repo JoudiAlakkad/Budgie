@@ -5,6 +5,7 @@ from app.db.repositories.budgets import BudgetRepository, GoalRepository
 from app.db.repositories.expenses import ExpenseRepository
 from app.db.session import Database
 from app.domain import budget
+from app.errors import InvalidFields
 from app.services.receipt_pipeline import Today
 from app.services.views import CategorySpendView, GoalProgressView, InsightsSummaryView
 
@@ -20,7 +21,7 @@ class InsightsService:
         Budgets, the goal and the spend are read in one transaction.
         """
         today = self._today()
-        target = budget.Month.parse(month) if month is not None else budget.Month.of(today)
+        target = budget.Month.of(today) if month is None else _parse_month(month)
         with self._db.transaction() as session:
             limits = {b.category: b.monthly_limit for b in BudgetRepository(session).all()}
             stored_goal = GoalRepository(session).get()
@@ -35,6 +36,17 @@ class InsightsService:
             else None
         )
         return summary_view(budget.summarize(target, today, spend, limits, goal))
+
+
+def _parse_month(month: str) -> budget.Month:
+    """The `?month=` value; a month the calendar lacks (`0000-01`, which the API pattern
+    accepts) is `InvalidFields` on `query.month`, like the pattern's own 422."""
+    try:
+        return budget.Month.parse(month)
+    except ValueError:
+        raise InvalidFields(
+            [("query.month", "The month must be YYYY-MM between 0001-01 and 9999-12.")]
+        ) from None
 
 
 def summary_view(summary: budget.Summary) -> InsightsSummaryView:

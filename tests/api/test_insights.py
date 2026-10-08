@@ -188,12 +188,26 @@ def test_goal_without_income_and_after_its_date(api: TestClient) -> None:
     assert summary(api, "2027-02")["goal"]["required_per_month"] == 1000.0
 
 
-@pytest.mark.parametrize("month", ["2026-13", "2026-1", "x"])
+@pytest.mark.parametrize("month", ["2026-13", "2026-1", "x", "0000-01", "0000-12"])
 def test_an_invalid_month_is_422(api: TestClient, month: str) -> None:
     response = api.get("/api/insights/summary", params={"month": month})
 
     assert response.status_code == 422
     assert response.json()["fields"][0]["field"] == "query.month"
+
+
+@pytest.mark.parametrize("month", ["0001-01", "9999-12"])
+def test_the_calendar_ends_are_valid_months(api: TestClient, month: str) -> None:
+    """9999-12 has no next month; the summary must not need one (was a 500)."""
+    api.put(
+        "/api/goal",
+        json={"target_amount": 100, "target_date": "9999-12-31", "monthly_income": 10},
+    )
+
+    body = summary(api, month)
+
+    assert body["month"] == month
+    assert body["goal"]["target_date"] == "9999-12-31"
 
 
 def test_leaks_stay_501(api: TestClient) -> None:

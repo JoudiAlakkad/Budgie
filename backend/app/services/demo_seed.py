@@ -6,8 +6,10 @@ them. Every description normalises to a name in the item seed and the items sum 
 total, so each expense is accepted without flags and confirmable; no item sends a
 category, so nothing is written to the lookup table as a user choice.
 
-Scenario 2 at mid-month: `electronics` is `over` (a day-1 purchase above its budget, in
-every current month), and `eating_out` is `on_pace_to_overrun` around the 15th.
+Scenario 2 on every day of the current month but its last: `electronics` is `over` (a
+day-1 purchase above its budget) and `health` is `on_pace_to_overrun` (a day-1 purchase
+just under its budget, extrapolated over the month). On the last day the projection
+equals the spend, so nothing can be on pace. `eating_out` is on pace on some days too.
 """
 
 import datetime as dt
@@ -189,17 +191,19 @@ MONTHLY: dict[int, tuple[str, tuple[SeedItem, ...]]] = {
     26: ("Kebab Haus", _items(("Currywurst", "4.50"), ("Pommes", "3.50"))),
 }
 
-# One-offs by month offset from the current month (0 = current, -1 = previous).
-ONE_OFFS: dict[int, dict[int, tuple[str, tuple[SeedItem, ...]]]] = {
-    0: {
-        1: (
-            "MediaMarkt",
-            _items(
-                ("Kopfhörer", "59.99"),
-            ),
-        )
-    },
-    -1: {11: ("H&M", _items(("Socken", "7.99"), ("Shirt", "12.99")))},
+# One-offs by month offset from the current month (0 = current, -1 = previous), as
+# (day, merchant, items).
+ONE_OFFS: dict[int, tuple[tuple[int, str, tuple[SeedItem, ...]], ...]] = {
+    0: (
+        # Above the electronics budget from day 1: `over` on every day of the month.
+        (1, "MediaMarkt", _items(("Kopfhörer", "59.99"))),
+        # 9.80 of a 10.00 health budget on day 1 and nothing more: spent stays under the
+        # budget, and 9.80 / d * days > 10 for every day d before the last of a 28- to
+        # 31-day month, so health is `on_pace_to_overrun` on all of them (on the last day
+        # the projection equals the spend and it is `under`).
+        (1, "Apotheke am Markt", _items(("Ibuprofen", "4.95"), ("Vitamin", "4.85"))),
+    ),
+    -1: ((11, "H&M", _items(("Socken", "7.99"), ("Shirt", "12.99"))),),
 }
 
 BUDGETS: tuple[SeedBudget, ...] = tuple(
@@ -213,6 +217,7 @@ BUDGETS: tuple[SeedBudget, ...] = tuple(
         ("personal_care", "20.00"),
         ("transport", "50.00"),
         ("electronics", "25.00"),
+        ("health", "10.00"),
     )
 )
 
@@ -223,24 +228,42 @@ MONTHLY_INCOME = Decimal("1400.00")
 
 def demo_plan(today: dt.date) -> DemoPlan:
     """Months M-2 and M-1 in full, month M up to `today`; budgets and a goal of 1200 by the
-    end of month M+5 with an income of 1400."""
+    end of month M+5 with an income of 1400.
+
+    Near the calendar's ends, months before 0001-01 are left out and the goal's month is
+    capped at 9999-12, so no `today` makes the plan fail.
+    """
     current = Month.of(today)
     expenses: list[SeedExpense] = []
     for offset in (-2, -1, 0):
-        month = current.shifted(offset)
-        days = MONTHLY | ONE_OFFS.get(offset, {})
-        for day in sorted(days):
+        month = _shifted_or_none(current, offset)
+        if month is None:
+            continue
+        entries = [(day, merchant, items) for day, (merchant, items) in MONTHLY.items()]
+        entries += ONE_OFFS.get(offset, ())
+        for day, merchant, items in sorted(entries, key=lambda entry: entry[:2]):
             date = dt.date(month.year, month.month, day)
             if date > today:
                 continue
-            merchant, items = days[day]
             expenses.append(SeedExpense(merchant=merchant, date=date, line_items=items))
+    target = _shifted_or_none(current, GOAL_MONTHS_AHEAD) or LAST_MONTH
     goal = SeedGoal(
         target_amount=GOAL_TARGET,
-        target_date=current.shifted(GOAL_MONTHS_AHEAD).last,
+        target_date=target.last,
         monthly_income=MONTHLY_INCOME,
     )
     return DemoPlan(expenses=tuple(expenses), budgets=BUDGETS, goal=goal)
+
+
+LAST_MONTH = Month(9999, 12)
+
+
+def _shifted_or_none(month: Month, by: int) -> Month | None:
+    """`month` moved by `by`, or None outside the years 1 to 9999."""
+    try:
+        return month.shifted(by)
+    except ValueError:
+        return None
 
 
 def is_empty(db: Database) -> bool:

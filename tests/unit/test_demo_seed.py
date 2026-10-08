@@ -1,6 +1,7 @@
 """The demo seed: `services/demo_seed.py` and the `python -m app.demo_seed` CLI (decision 0022)."""
 
 import datetime as dt
+from collections import defaultdict
 from collections.abc import Callable, Iterator
 from decimal import Decimal
 from pathlib import Path
@@ -16,12 +17,13 @@ from app.db.repositories.expenses import ExpenseRepository
 from app.db.repositories.item_categories import ItemCategoryRepository
 from app.db.repositories.receipts import ReceiptRepository
 from app.db.session import Database
-from app.domain.budget import Month
+from app.domain.budget import Goal, Month, Summary, summarize
 from app.domain.categorize import normalize
 from app.errors import InvalidState, StorageError
 from app.services.demo_seed import demo_plan, seed_demo
 from app.services.dependencies import database_for, dispose_databases
-from app.services.insights import InsightsService
+from app.services.expenses import ExpenseService
+from app.services.insights import InsightsService, summary_view
 from app.services.item_categories import load_seed
 from app.services.storage import prepare_storage
 
@@ -99,7 +101,8 @@ def test_the_plan_is_deterministic() -> None:
 def test_on_the_first_only_day_one_of_the_current_month_is_planned() -> None:
     current = [e for e in demo_plan(dt.date(2026, 10, 1)).expenses if e.date.month == 10]
 
-    assert [e.date for e in current] == [dt.date(2026, 10, 1)]
+    assert {e.date for e in current} == {dt.date(2026, 10, 1)}
+    assert [e.merchant for e in current] == ["Apotheke am Markt", "MediaMarkt"]
 
 
 # ---------------------------------------------------------------- seeding
@@ -170,7 +173,7 @@ def test_scenario_two_at_mid_october(db: Database, images: ImageStore) -> None:
     assert states["electronics"] == "over"
     assert states["eating_out"] == "on_pace_to_overrun"
     assert states["groceries.fresh"] == "under"
-    assert summary.total_budget == Decimal("370.00")
+    assert summary.total_budget == Decimal("380.00")
     assert summary.goal is not None
     assert summary.goal.required_per_month == Decimal("200.00")  # 1200 over Oct..Mar
     assert summary.goal.saved_this_month == Decimal("1400.00") - summary.projected_total
@@ -178,6 +181,89 @@ def test_scenario_two_at_mid_october(db: Database, images: ImageStore) -> None:
     september = InsightsService(db, lambda: SCENARIO).summary("2026-09")
     assert september.projected_total == september.total_spent
     assert all(row.state == "under" for row in september.categories)
+
+
+def _days_before_the_last(*months: Month) -> list[dt.date]:
+    return [
+        dt.date(month.year, month.month, day) for month in months for day in range(1, month.days)
+    ]
+
+
+def _plan_summary(today: dt.date) -> Summary:
+    """The current month's summary from the plan alone: each item's seed category, as
+    `ExpenseService` stores it (the seeding tests check that), summed per category."""
+    plan = demo_plan(today)
+    month = Month.of(today)
+    seed = load_seed()
+    spend: dict[str, Decimal] = defaultdict(Decimal)
+    for expense in plan.expenses:
+        if Month.of(expense.date) == month:
+            for item in expense.line_items:
+                spend[seed[normalize(item.description).name]] += item.amount
+    goal = Goal(plan.goal.target_amount, plan.goal.target_date, plan.goal.monthly_income)
+    budgets = {budget.category: budget.monthly_limit for budget in plan.budgets}
+    return summarize(month, today, spend, budgets, goal)
+
+
+@pytest.mark.parametrize(
+    "today",
+    _days_before_the_last(Month(2026, 10), Month(2026, 11), Month(2024, 2), Month(2026, 2)),
+    ids=str,
+)
+def test_scenario_two_holds_on_every_day_but_the_last(today: dt.date) -> None:
+    states = {row.category: row.state for row in _plan_summary(today).categories}
+
+    assert states["electronics"] == "over"
+    assert states["health"] == "on_pace_to_overrun"
+
+
+@pytest.mark.parametrize("month", [Month(2026, 10), Month(2026, 11), Month(2024, 2)], ids=str)
+def test_on_the_last_day_nothing_is_on_pace(month: Month) -> None:
+    states = {row.category: row.state for row in _plan_summary(month.last).categories}
+
+    assert states["electronics"] == "over"
+    assert "on_pace_to_overrun" not in states.values()
+
+
+@pytest.mark.parametrize(
+    "today", [dt.date(2026, 10, 1), dt.date(2026, 10, 30), dt.date(2024, 2, 28)], ids=str
+)
+def test_the_seeded_database_shows_the_same_states(
+    db: Database, images: ImageStore, today: dt.date
+) -> None:
+    seed_demo(db, images, today)
+
+    summary = InsightsService(db, lambda: today).summary()
+
+    assert summary == summary_view(_plan_summary(today))
+
+
+@pytest.mark.parametrize(
+    ("today", "on_track"),
+    [
+        (dt.date(2026, 10, 1), False),  # one day of spend extrapolated over the month
+        (dt.date(2026, 10, 2), False),
+        (dt.date(2026, 10, 3), True),
+        (dt.date(2026, 10, 15), True),
+    ],
+    ids=str,
+)
+def test_the_goal_card_is_behind_only_in_the_first_days(today: dt.date, on_track: bool) -> None:
+    progress = _plan_summary(today).goal
+
+    assert progress is not None
+    assert progress.on_track is on_track
+
+
+@pytest.mark.parametrize(
+    "today", [dt.date(9999, 12, 31), dt.date(9999, 8, 1), dt.date(1, 1, 5)], ids=str
+)
+def test_the_plan_never_leaves_the_calendar(today: dt.date) -> None:
+    plan = demo_plan(today)
+
+    assert plan.goal.target_date <= dt.date(9999, 12, 31)
+    assert plan.goal.target_date >= today
+    assert all(expense.date <= today for expense in plan.expenses)
 
 
 def _add_expense(db: Database) -> None:
@@ -250,11 +336,11 @@ def test_cli_loads_then_refuses(settings: Settings, capsys: pytest.CaptureFixtur
     assert cli.main(["--today", "2026-10-15"], settings) == cli.EXIT_NOT_EMPTY
     refused = capsys.readouterr().err
 
-    assert "Loaded 46 confirmed expenses" in loaded
+    assert "Loaded 47 confirmed expenses" in loaded
     assert "empty database" in refused
     db = database_for(settings.database_url)
     try:
-        assert counts(db) == (46, 0, 8, True)
+        assert counts(db) == (47, 0, 9, True)
     finally:
         dispose_databases()
 
@@ -275,7 +361,7 @@ def test_cli_rejects_a_bad_date(settings: Settings) -> None:
 
 
 def test_cli_maps_a_storage_error_during_the_seed(
-    settings: Settings, monkeypatch: pytest.MonkeyPatch
+    settings: Settings, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     def broken(*args: object) -> None:
         raise StorageError()
@@ -283,3 +369,31 @@ def test_cli_maps_a_storage_error_during_the_seed(
     monkeypatch.setattr(cli, "seed_demo", broken)
 
     assert cli.main(["--today", "2026-10-15"], settings) == cli.EXIT_STORAGE
+    assert "delete the database and run it again" in capsys.readouterr().err
+
+
+def test_a_seed_failing_halfway_exits_2_then_a_rerun_is_refused(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The seed isn't atomic (0022): what was stored stays, so a second run refuses."""
+    create = ExpenseService.create
+    calls = 0
+
+    def failing_create(self: ExpenseService, body: object) -> object:
+        nonlocal calls
+        calls += 1
+        if calls > 5:
+            raise StorageError()
+        return create(self, body)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(ExpenseService, "create", failing_create)
+    assert cli.main(["--today", "2026-10-15"], settings) == cli.EXIT_STORAGE
+    assert "delete the database and run it again" in capsys.readouterr().err
+
+    monkeypatch.setattr(ExpenseService, "create", create)
+    assert cli.main(["--today", "2026-10-15"], settings) == cli.EXIT_NOT_EMPTY
+    db = database_for(settings.database_url)
+    try:
+        assert counts(db) == (5, 0, 0, False)
+    finally:
+        dispose_databases()

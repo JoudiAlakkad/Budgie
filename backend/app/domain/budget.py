@@ -15,6 +15,7 @@ Pure: `today` is a parameter, and the inputs are plain mappings and dataclasses.
 Money is `Decimal`, rounded half up to cents.
 """
 
+import calendar
 import datetime as dt
 import re
 from collections.abc import Mapping
@@ -68,7 +69,8 @@ class Month:
 
     @classmethod
     def parse(cls, text: str) -> "Month":
-        """`YYYY-MM` with a month from 01 to 12; anything else raises `ValueError`."""
+        """`YYYY-MM` with a month from 01 to 12 and a year from 0001; anything else raises
+        `ValueError` (the API pattern lets `0000-01` through)."""
         match = _MONTH.fullmatch(text)
         if match is None:
             raise ValueError(f"not a month: {text!r}")
@@ -84,14 +86,16 @@ class Month:
 
     @property
     def last(self) -> dt.date:
-        return self.shifted(1).first - dt.timedelta(days=1)
+        # Not "next month's first day - 1": 9999-12 has no next month.
+        return dt.date(self.year, self.month, self.days)
 
     @property
     def days(self) -> int:
-        return self.last.day
+        return calendar.monthrange(self.year, self.month)[1]
 
     def shifted(self, months: int) -> "Month":
-        """This month moved by `months` (negative goes back)."""
+        """This month moved by `months` (negative goes back); `ValueError` outside the
+        years 1 to 9999."""
         index = self.year * 12 + (self.month - 1) + months
         return Month(index // 12, index % 12 + 1)
 

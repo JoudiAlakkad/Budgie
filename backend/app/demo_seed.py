@@ -41,7 +41,12 @@ def main(argv: list[str] | None = None, settings: Settings | None = None) -> int
         print(exc.detail, file=sys.stderr)
         return EXIT_NOT_EMPTY
     except StorageError as exc:
-        print(f"Storage error: {exc.detail}", file=sys.stderr)
+        # The seed isn't atomic (one transaction per expense, decision 0022).
+        print(
+            f"Storage error: {exc.detail} The demo data may be partly loaded; "
+            "delete the database and run it again.",
+            file=sys.stderr,
+        )
         return EXIT_STORAGE
     finally:
         close_storage()
