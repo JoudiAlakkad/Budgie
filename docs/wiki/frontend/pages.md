@@ -47,7 +47,7 @@ The pages are planned and built in F6 (Upload, Review), F8 and F9 (Dashboard, Se
 - **Empty state:** no rows → "No confirmed expenses in <month>" with a link to Upload.
 
 ## Potential-leak cards (F09, [0023](../decisions/0023-leak-rules-and-thresholds.md))
-- A "Potential leaks" section on the dashboard, filled from `GET /insights/leaks` for the shown month. The month requests follow the summary's rules above: shared while pending, never `?month=<current>`, and only the newest request draws.
+- A "Potential leaks" section on the dashboard, after the totals and before "Spending by category", filled from `GET /insights/leaks` for the shown month. The month requests follow the summary's rules above: shared while pending, never `?month=<current>`, and only the newest request draws.
 - Every user-visible text says "potential leak", never "leak" alone ([0023](../decisions/0023-leak-rules-and-thresholds.md)); identifiers keep `leak`.
 - One card per leak, in the server's order: a heading with the category label and the type in words with an icon (Over budget ✖, Running out early ⚠, Spike ↑), then `explanation` as is, inserted with `textContent`. Colour is never the only signal. No percentage of certainty is shown.
 - **Empty state:** "No potential leaks found in <month>." For the current month in its first half this means nothing is burning early; the page doesn't explain the rules.

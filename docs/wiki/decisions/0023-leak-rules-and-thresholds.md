@@ -20,17 +20,17 @@ F08's dashboard row already says `on_pace_to_overrun` whenever the linear projec
   - `amount = projected − budget`, with `projected` from 0021. It is always positive here, since used ≥ 0.8 by mid-month projects to at least 1.6 × the budget.
   - **Run-out day** = `ceil(budget × today.day / spent)`, the day the budget is used up at the current daily rate. It is never before today and always falls inside the month.
   - **Visits** = confirmed expenses in the month with at least one item in the category.
-  - Explanation: `Eating out: you've used 89 % of your 50,00 € budget (44,50 €) by 14.10.2026, with 17 days left. At this pace it runs out around 16.10.2026 and the month ends at about 98,54 € (+48,54 €). 6 visits so far, about 7,42 € each.` When the run-out day is today, the explanation says the budget is used up today.
+  - Explanation: `Eating out: you've used 89 % of your 50,00 € budget (44,50 €) by 14.10.2026, with 17 days left. At this pace it runs out around 16.10.2026 and the month ends at about 98,54 € (+48,54 €). 6 visit(s) so far, about 7,42 € each.` The visit text is always "visit(s)", for any count (the student's decision). When the run-out day is today, the explanation says the budget is used up today.
 - **`over_budget`**, in any month: `spent > budget`, `amount = spent − budget`. `Eating out: 62,40 € spent of a 50,00 € budget, 12,40 € over.`
 - **`spike`**, in any month:
   - The history is the 3 months before the viewed month. A history month counts only if it has any confirmed spend at all, so months before the user started with Budgie don't count as 0.
   - At least 2 counted months are needed (`SPIKE_MIN_MONTHS`). The median is taken over the counted months, with the category's spend in each (0 if it has none that month).
   - It fires when `median > 0` and `spent > SPIKE_FACTOR × median`, where `SPIKE_FACTOR` = **1.5**. It compares the real spend, not the projection, so in the current month it fires only once the spend has actually happened.
-  - `amount = spent − median`. `Snacks and sweets: 38,00 € this month, +60 % vs. your median of 23,75 € over the last 3 months.`
+  - `amount = spent − median`. `Snacks and sweets: 38,00 € this month, +60 % vs. your median of 23,75 € over the last 3 months.` The month count in the text is the number of counted history months (2 or 3), not always 3 (the student's decision).
 - **Wording:** "at this pace" and "about", never "you will". There are no probabilities ([0008](0008-rule-based-review-status-not-probability.md)). Every number in the text is computed and every sentence is a fixed template; no model writes leak text.
 - **"Potential leak" in the UI** (the student's decision): a rule can only flag a pattern, and whether it really is a leak is for the user to judge. Every user-visible text says "potential leak" (section "Potential leaks", empty state "No potential leaks found in <month>."). Code and contract names keep `leak` (`Leak`, `GET /insights/leaks`, `domain/leaks.py`), so the contract doesn't change. The explanations don't use the word.
-- **Formats** in `explanation` match the UI: money as `de-DE` currency (`44,50 €`), dates as `de-DE` medium (`14.10.2026`), percentages as whole numbers rounded half up. Category names use the labels of `frontend/js/categories.js`; the domain keeps its own copy, and a test checks the two are equal.
-- **Order:** `over_budget`, then `on_pace_to_overrun`, then `spike`; within a type by `amount` descending, then by category name. A category can be both `over_budget` and `spike`.
+- **Formats** in `explanation` match the UI: money as `de-DE` currency with a plain space before `€` (`44,50 €`, not the NBSP `Intl` writes), dates as `de-DE` medium (`14.10.2026`), percentages as whole numbers rounded half up. Category names use the labels of `frontend/js/categories.js`; the domain keeps its own copy, and a test checks the two are equal.
+- **Order:** `over_budget`, then `on_pace_to_overrun`, then `spike`; within a type by `amount` descending, then by category key (as in the summary). A category can be both `over_budget` and `spike`.
 - `category` is set on every leak and `merchant` is always `null`. Amounts are rounded half up to cents and clamped to the `Money` limit, as in 0021.
 - The thresholds are constants in `domain/leaks.py`: `BURN_USED_MIN`, `BURN_ELAPSED_MAX`, `SPIKE_FACTOR`, `SPIKE_HISTORY_MONTHS` = 3 and `SPIKE_MIN_MONTHS` = 2.
 
@@ -42,3 +42,4 @@ F08's dashboard row already says `on_pace_to_overrun` whenever the linear projec
 - `spike` needs 2 months of history, so a new user sees no spike cards in their first two months.
 - The category labels exist twice (frontend and domain), held together by a test.
 - The demo can show a burn card only in the first half of the month.
+- **Demo side effects (accepted by the student):** health is at 98 % of its budget on day 1, so it also gets a burn card in the first half; eating out turns `over_budget` in the second half and later also `spike`.

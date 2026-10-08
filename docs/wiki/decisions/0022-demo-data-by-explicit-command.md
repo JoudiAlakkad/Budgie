@@ -16,5 +16,6 @@ Scenarios 2 and 3 must work "on the seeded demo data" ([roadmap](../plan/roadmap
 - The seed isn't atomic: it runs one transaction per expense. If it fails halfway, delete the database and run it again.
 - The CLI's exit 2 means a storage failure, but argparse also exits 2 on a malformed `--today`.
 - `over` (electronics) holds on every day and `on_pace_to_overrun` (health) on every day except the month's last, where projected = spent; a test checks every day of several months.
+- **F09 leak patterns** ([0023](0023-leak-rules-and-thresholds.md)): the eating-out budget is 50 € with 41,00 € on day 1, so the eating-out burn card shows on every day of the first half; a 7,99 € wine purchase on day 1 makes alcohol spike against the two previous months. Side effects: health also burns in the first half, eating out turns over budget and then spike in the second half, and the goal card is Behind until day 3.
 - On a storage failure or any other app error during the seed (exit 2), the CLI says the data may be partly loaded and how to recover. A programming error still shows a traceback.
 - The emptiness check runs in its own transaction, before the inserts. While the app is running, a write between the check and the inserts mixes demo data into real data; seed a fresh database with the app stopped or idle.
