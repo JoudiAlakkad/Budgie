@@ -19,7 +19,13 @@ from app.db.repositories.receipts import ReceiptRepository
 from app.db.session import Database
 from app.domain.budget import Goal, Month, Summary, summarize
 from app.domain.categorize import normalize
-from app.errors import InvalidState, StorageError
+from app.errors import (
+    IncompleteExpense,
+    InvalidFields,
+    InvalidState,
+    StorageError,
+    UncategorizedItems,
+)
 from app.services.demo_seed import demo_plan, seed_demo
 from app.services.dependencies import database_for, dispose_databases
 from app.services.expenses import ExpenseService
@@ -397,3 +403,58 @@ def test_a_seed_failing_halfway_exits_2_then_a_rerun_is_refused(
         assert counts(db) == (5, 0, 0, False)
     finally:
         dispose_databases()
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        UncategorizedItems(),
+        IncompleteExpense(),
+        InvalidFields([("0.category", "repeated")]),
+    ],
+    ids=lambda error: type(error).__name__,
+)
+def test_an_app_error_after_some_expenses_exits_2_with_the_hint(
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    error: Exception,
+) -> None:
+    confirm = ExpenseService.confirm
+    calls = 0
+
+    def failing_confirm(self: ExpenseService, expense_id: int) -> object:
+        nonlocal calls
+        calls += 1
+        if calls > 3:
+            raise error
+        return confirm(self, expense_id)
+
+    monkeypatch.setattr(ExpenseService, "confirm", failing_confirm)
+    assert cli.main(["--today", "2026-10-15"], settings) == cli.EXIT_STORAGE
+    err = capsys.readouterr().err
+    assert error.code in err  # type: ignore[attr-defined]
+    assert "delete the database and run it again" in err
+    assert "Traceback" not in err
+
+    monkeypatch.setattr(ExpenseService, "confirm", confirm)
+    assert cli.main(["--today", "2026-10-15"], settings) == cli.EXIT_NOT_EMPTY
+    db = database_for(settings.database_url)
+    try:
+        # 3 confirmed, the 4th created but left unconfirmed
+        assert counts(db) == (4, 0, 0, False)
+    finally:
+        dispose_databases()
+
+
+def test_a_programming_error_is_not_swallowed(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken(*args: object) -> None:
+        raise RuntimeError("bug")
+
+    monkeypatch.setattr(cli, "seed_demo", broken)
+
+    with pytest.raises(RuntimeError, match="bug"):
+        cli.main(["--today", "2026-10-15"], settings)
+    dispose_databases()

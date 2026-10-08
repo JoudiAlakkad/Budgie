@@ -1,7 +1,9 @@
 """Load the demo data into an empty database (decision 0022).
 
 `python -m app.demo_seed [--today YYYY-MM-DD]`, or `make seed-demo`. Exit codes: 0 loaded,
-1 the database isn't empty (nothing changed), 2 the storage isn't usable.
+1 the database isn't empty (nothing changed), 2 the storage isn't usable or the seed
+stopped partway (an app error; delete the database and run it again). Any other exception
+is a bug and stays a traceback.
 """
 
 import argparse
@@ -10,7 +12,7 @@ import sys
 
 from app.config import Settings, get_settings
 from app.db.images import ImageStore
-from app.errors import InvalidState, StorageError
+from app.errors import BudgieError, InvalidState, StorageError
 from app.services.demo_seed import seed_demo
 from app.services.dependencies import database_for, today_in_berlin
 from app.services.storage import close_storage, prepare_storage
@@ -45,6 +47,15 @@ def main(argv: list[str] | None = None, settings: Settings | None = None) -> int
         print(
             f"Storage error: {exc.detail} The demo data may be partly loaded; "
             "delete the database and run it again.",
+            file=sys.stderr,
+        )
+        return EXIT_STORAGE
+    except BudgieError as exc:
+        # A rule refused a planned expense, budget or goal (a bug in the plan): the
+        # expenses before it are already committed. Programming errors stay tracebacks.
+        print(
+            f"The demo data could not be loaded ({exc.code}: {exc.detail}) It may be partly "
+            "loaded; delete the database and run it again.",
             file=sys.stderr,
         )
         return EXIT_STORAGE

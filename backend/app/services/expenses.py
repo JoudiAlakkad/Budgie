@@ -510,20 +510,22 @@ def _move_receipt(receipts: ReceiptRepository, expense: ExpenseRecord, from_: st
 
 
 def _check_confirmable(expense: ExpenseRecord) -> None:
-    """Merchant, date and total set, then every item categorised (receipt-lifecycle.md)."""
+    """Merchant, date, total and at least one line item set, then every item categorised
+    (receipt-lifecycle.md). An expense without items would count nothing as spend."""
     missing = [
         name
         for name, absent in (
             ("merchant", is_blank(expense.merchant)),
             ("date", expense.date is None),
             ("total", expense.total is None),
+            ("line items", not expense.line_items),
         )
         if absent
     ]
     if missing:
         raise IncompleteExpense(
-            "Merchant, date and total are required before the expense can be confirmed; "
-            f"missing: {', '.join(missing)}."
+            "Merchant, date, total and at least one line item are required before the "
+            f"expense can be confirmed; missing: {', '.join(missing)}."
         )
     uncategorized = sum(
         not ItemFacts(item.description, item.amount, item.category).is_categorized

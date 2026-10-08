@@ -780,12 +780,36 @@ def test_confirm_of_an_incomplete_expense_is_422(
     assert response.json() == {
         "error": "incomplete_expense",
         "detail": (
-            "Merchant, date and total are required before the expense can be confirmed; "
-            f"missing: {missing}."
+            "Merchant, date, total and at least one line item are required before the "
+            f"expense can be confirmed; missing: {missing}."
         ),
         "fields": None,
     }
     assert api.get(f"/api/expenses/{expense['id']}").json() == ready
+    assert receipt_status(api, receipt_id) == "extracted"
+
+
+@pytest.mark.parametrize(
+    ("answer_fields", "missing"),
+    [
+        ({"line_items": []}, "line items"),
+        ({"line_items": [], "date": None}, "date, line items"),
+    ],
+)
+def test_confirm_of_an_expense_without_items_is_422(
+    api: TestClient, model: ModelServer, answer_fields: dict, missing: str
+) -> None:
+    """An AI expense with a total but no items would count nothing as spend (F08)."""
+    receipt_id, expense = extracted(api, model, **answer_fields)
+    assert expense["line_items"] == [] and expense["total"] is not None
+
+    response = api.post(f"/api/expenses/{expense['id']}/confirm")
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error"] == "incomplete_expense"
+    assert body["detail"].endswith(f"missing: {missing}.")
+    assert api.get(f"/api/expenses/{expense['id']}").json()["confirmed"] is False
     assert receipt_status(api, receipt_id) == "extracted"
 
 

@@ -210,6 +210,39 @@ def test_the_calendar_ends_are_valid_months(api: TestClient, month: str) -> None
     assert body["goal"]["target_date"] == "9999-12-31"
 
 
+def test_a_future_month_has_no_saving_yet(api: TestClient) -> None:
+    api.put(
+        "/api/goal",
+        json={"target_amount": 1200, "target_date": "2027-03-31", "monthly_income": 1400},
+    )
+
+    goal = summary(api, "2026-11")["goal"]
+
+    assert (goal["saved_this_month"], goal["on_track"]) == (None, None)
+    assert goal["required_per_month"] == 240.0  # Nov .. Mar = 5 months
+
+
+def test_a_projection_beyond_the_money_range_is_clamped(settings: Settings) -> None:
+    """Day 1 x 31 days: 155,000,000,000 doesn't fit `Money` (was a 500)."""
+    app = create_app(settings)
+    app.dependency_overrides[get_today] = lambda: lambda: dt.date(2026, 10, 1)
+    with TestClient(app) as client:
+        client.put(
+            "/api/goal",
+            json={"target_amount": 1200, "target_date": "2027-03-31", "monthly_income": 1400},
+        )
+        add(client, "2026-10-01", ("Kopfhörer", 5_000_000_000.00), merchant="MediaMarkt")
+        response = client.get("/api/insights/summary")
+    dispose_databases()
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["categories"][0]["spent"] == 5_000_000_000.0
+    assert body["categories"][0]["projected"] == body["projected_total"] == 9_999_999_999.99
+    assert body["goal"]["saved_this_month"] == -9_999_999_999.99
+    assert body["goal"]["on_track"] is False
+
+
 def test_leaks_stay_501(api: TestClient) -> None:
     response = api.get("/api/insights/leaks")
 

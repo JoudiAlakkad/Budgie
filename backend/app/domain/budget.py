@@ -10,7 +10,9 @@ Pure: `today` is a parameter, and the inputs are plain mappings and dataclasses.
 - State: `over` if spent > budget, `on_pace_to_overrun` if projected > budget, else `under`
   (also without a budget, and at exactly the budget).
 - Goal: per month and stateless; `months_left = max(1, months to the target, inclusive)`,
-  `required = target / months_left`, `saved = income - projected_total`.
+  `required = target / months_left`, `saved = income - projected_total`; for a month
+  after today's, `saved` and `on_track` are unknown (None).
+- Amounts returned are clamped to ±`MONEY_LIMIT`, the API's `Money` range.
 
 Money is `Decimal`, rounded half up to cents.
 """
@@ -51,9 +53,18 @@ SpendState = Literal["under", "on_pace_to_overrun", "over"]
 _MONTH = re.compile(r"^(\d{4})-(0[1-9]|1[0-2])$")
 
 
+# The largest amount the API's `Money` can carry (max_digits=12, 2 decimals).
+MONEY_LIMIT = Decimal("9999999999.99")
+
+
 def cents(value: Decimal) -> Decimal:
     """Round half up to 0.01."""
     return value.quantize(CENT, rounding=ROUND_HALF_UP)
+
+
+def clamp(value: Decimal) -> Decimal:
+    """`value` limited to ±`MONEY_LIMIT`, so it fits a response."""
+    return max(-MONEY_LIMIT, min(MONEY_LIMIT, value))
 
 
 @dataclass(frozen=True, order=True)
@@ -163,24 +174,27 @@ class Summary:
     goal: GoalProgress | None
 
 
-def goal_progress(month: Month, goal: Goal, projected_total: Decimal) -> GoalProgress:
+def goal_progress(
+    month: Month, goal: Goal, projected_total: Decimal, today: dt.date
+) -> GoalProgress:
     """What the summary month needs to save, and whether the forecast saving covers it.
 
-    A target month already past clamps to 1 month left. Without income, `saved_this_month`
-    and `on_track` are None.
+    A target month already past clamps to 1 month left. Without income, or for a month
+    after `today`'s (it hasn't started, so there is no spend to judge), `saved_this_month`
+    and `on_track` are None. Money is clamped to `MONEY_LIMIT`.
     """
     months_left = max(1, months_inclusive(month, Month.of(goal.target_date)))
     required = cents(goal.target_amount / months_left)
-    if goal.monthly_income is None:
+    if goal.monthly_income is None or month > Month.of(today):
         saved, on_track = None, None
     else:
         saved = cents(goal.monthly_income - projected_total)
         on_track = saved >= required
     return GoalProgress(
-        target_amount=cents(goal.target_amount),
+        target_amount=clamp(cents(goal.target_amount)),
         target_date=goal.target_date,
-        saved_this_month=saved,
-        required_per_month=required,
+        saved_this_month=clamp(saved) if saved is not None else None,
+        required_per_month=clamp(required),
         on_track=on_track,
         months_left=months_left,
     )
@@ -198,6 +212,10 @@ def summarize(
     `spend` is the raw sum per item category (non-spending ones are dropped); `budgets`
     maps a category to its monthly limit. Rows are the categories with spend ≠ 0 or a
     budget, by spend descending, then name.
+
+    States, ordering, totals and the goal are computed on the real amounts; only the
+    amounts returned are clamped to `MONEY_LIMIT`, so a huge projection can't break the
+    response (a current-month projection is up to 31 × the spend).
     """
     spending = {
         category: cents(amount)
@@ -215,12 +233,23 @@ def summarize(
             CategoryRow(name, spent, budget, projected, spend_state(spent, projected, budget))
         )
     rows.sort(key=lambda row: (-row.spent, row.category))
+    total_spent = sum((row.spent for row in rows), Decimal("0.00"))
     projected_total = sum((row.projected for row in rows), Decimal("0.00"))
+    total_budget = sum(limits.values(), Decimal("0.00")) if limits else None
     return Summary(
         month=month,
-        total_spent=sum((row.spent for row in rows), Decimal("0.00")),
-        total_budget=sum(limits.values(), Decimal("0.00")) if limits else None,
-        projected_total=projected_total,
-        categories=tuple(rows),
-        goal=goal_progress(month, goal, projected_total) if goal is not None else None,
+        total_spent=clamp(total_spent),
+        total_budget=clamp(total_budget) if total_budget is not None else None,
+        projected_total=clamp(projected_total),
+        categories=tuple(
+            CategoryRow(
+                row.category,
+                clamp(row.spent),
+                clamp(row.budget) if row.budget is not None else None,
+                clamp(row.projected),
+                row.state,
+            )
+            for row in rows
+        ),
+        goal=goal_progress(month, goal, projected_total, today) if goal is not None else None,
     )

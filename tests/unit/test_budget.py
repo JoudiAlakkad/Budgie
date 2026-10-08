@@ -8,6 +8,7 @@ import pytest
 
 from app.api.schemas import SpendingCategory
 from app.domain.budget import (
+    MONEY_LIMIT,
     SPENDING_CATEGORIES,
     Goal,
     Month,
@@ -240,6 +241,10 @@ def goal(target: str = "1200", on: dt.date = dt.date(2027, 3, 31), income: str |
         (goal(income="100"), Month(2026, 9), {"other": D("150")}, "171.43", "-50.00", False),
         # no income: saved and on_track unknown
         (goal(income=None), OCT, {"other": D("10")}, "200.00", None, None),
+        # a month after today's hasn't started: unknown, not "income - 0 = on track"
+        (goal(), Month(2026, 11), {}, "240.00", None, None),  # Nov .. Mar = 5 months
+        (goal(), Month(2027, 3), {"other": D("5")}, "1200.00", None, None),
+        (goal(), Month(2027, 9), {}, "1200.00", None, None),  # after the target too
     ],
 )
 def test_goal_progress(
@@ -308,3 +313,46 @@ def test_a_far_target_rounds_the_requirement_to_zero() -> None:
     assert progress.required_per_month == D("0.00")
     assert progress.saved_this_month == D("0.00")
     assert progress.on_track is True
+
+
+# ---------------------------------------------------------------- money limit
+
+LIMIT = D("9999999999.99")
+
+
+def test_the_limit_is_the_largest_response_money() -> None:
+    assert MONEY_LIMIT == LIMIT
+
+
+def test_a_huge_projection_is_clamped_but_keeps_its_state() -> None:
+    # Day 1 of a 31-day month: 5,000,000,000 x 31 would not fit the API's Money.
+    spend = {"electronics": D("5000000000.00"), "other": D("4999999999.99")}
+    budgets = {"electronics": D("9999999999.99"), "health": D("9999999999.99")}
+
+    summary = summarize(OCT, dt.date(2026, 10, 1), spend, budgets, goal())
+
+    rows = {row.category: row for row in summary.categories}
+    assert rows["electronics"].projected == LIMIT
+    assert rows["electronics"].spent == D("5000000000.00")
+    assert rows["electronics"].state == "on_pace_to_overrun"  # judged on the real amount
+    assert summary.projected_total == LIMIT
+    assert summary.total_spent == LIMIT  # 9,999,999,999.99 fits exactly
+    assert summary.total_budget == LIMIT  # twice the limit, clamped
+    assert summary.goal is not None
+    assert summary.goal.saved_this_month == -LIMIT
+    assert summary.goal.on_track is False
+
+
+def test_total_spent_above_the_limit_is_clamped() -> None:
+    spend = {"electronics": D("9000000000"), "other": D("9000000000")}
+
+    summary = summarize(Month(2026, 9), MID_OCT, spend, {}, None)
+
+    assert summary.total_spent == summary.projected_total == LIMIT
+    assert [row.spent for row in summary.categories] == [D("9000000000.00")] * 2
+
+
+def test_negative_amounts_are_clamped_too() -> None:
+    summary = summarize(OCT, dt.date(2026, 10, 1), {"other": D("-5000000000")}, {}, None)
+
+    assert summary.categories[0].projected == summary.projected_total == -LIMIT
