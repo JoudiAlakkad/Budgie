@@ -265,10 +265,14 @@ BUILT: list[tuple[str, str, dict[str, Any]]] = [
     ("PUT", "/api/goal", {"json": {"target_amount": 500, "target_date": "2099-06-30"}}),
     ("GET", "/api/insights/summary?month=2026-10", {}),
     ("GET", "/api/insights/leaks", {}),
+    ("GET", "/api/expenses/export.csv?from=2026-10-01", {}),
 ]
 
-STUBS: list[tuple[str, str, dict[str, Any], str]] = [
-    ("GET", "/api/expenses/export.csv?from=2026-10-01", {}, "F10"),
+# Endpoints that still answer 501 `not_implemented`, with the feature that builds them.
+# Empty since F10; the 501 mapping itself stays tested in test_error_format.py.
+STUBS: list[tuple[str, str, dict[str, Any], str]] = []
+STUB_PARAMS = [pytest.param(*stub, id=f"{stub[0]} {stub[1]}") for stub in STUBS] or [
+    pytest.param("", "", {}, "", id="none", marks=pytest.mark.skip(reason="no stubs left"))
 ]
 
 
@@ -286,9 +290,7 @@ def test_stub_list_covers_every_documented_endpoint() -> None:
     assert len(covered) == len(stubs) + len(built), "an endpoint is listed twice"
 
 
-@pytest.mark.parametrize(
-    ("method", "url", "kwargs", "feature"), STUBS, ids=[f"{m} {u}" for m, u, _, _ in STUBS]
-)
+@pytest.mark.parametrize(("method", "url", "kwargs", "feature"), STUB_PARAMS)
 def test_stub_answers_501_naming_its_feature(
     client: TestClient, method: str, url: str, kwargs: dict[str, Any], feature: str
 ) -> None:

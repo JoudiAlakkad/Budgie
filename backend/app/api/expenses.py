@@ -1,4 +1,5 @@
-"""`/api/expenses` (contracts/api-endpoints.md#expenses). The CSV export is a stub until F10."""
+"""`/api/expenses` (contracts/api-endpoints.md#expenses), including the CSV export
+(contracts/csv-export.md)."""
 
 import datetime as dt
 
@@ -12,9 +13,9 @@ from app.api.schemas import (
     LineItemCategory,
     ReviewStatus,
 )
-from app.errors import NotImplementedYet
-from app.services.dependencies import get_expense_service
+from app.services.dependencies import get_expense_service, get_export_service
 from app.services.expenses import ExpenseService
+from app.services.export import CSV_COLUMNS, CSV_MEDIA_TYPE, ExportService
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])
 
@@ -57,6 +58,18 @@ def create_expense(
     return Expense.model_validate(service.create(body), from_attributes=True)
 
 
+_CSV_DESCRIPTION = (
+    "RFC 4180 CSV (contracts/csv-export.md): UTF-8 without BOM, comma, CRLF, a header row; "
+    "confirmed expenses only, one row per line item, by date, then expense_id, then item "
+    "position. Columns: "
+    + ", ".join(f"`{name}`" for name in CSV_COLUMNS)
+    + ". Money has exactly 2 decimals; an empty field is null (only `item_qty` and "
+    "`item_unit`). A value in `merchant`, `item_description`, `item_normalized_name` or "
+    "`item_unit` starting with `=`, `+`, `-`, `@`, a tab or a carriage return gets a "
+    "leading `'` (formula guard)."
+)
+
+
 # Declared before /{id:int}; the int converter also keeps `export.csv` from matching an id route.
 @router.get(
     "/export.csv",
@@ -64,16 +77,33 @@ def create_expense(
     summary="Confirmed expenses as CSV, one row per line item",
     responses={
         200: {
-            "description": "CSV file (contracts/csv-export.md)",
+            "description": _CSV_DESCRIPTION,
             "content": {"text/csv": {"schema": {"type": "string"}}},
+            "headers": {
+                "Content-Disposition": {
+                    "description": 'attachment; filename="budgie-expenses_<from|all>_<to|all>.csv"',
+                    "schema": {"type": "string"},
+                },
+                "Cache-Control": {"description": "no-store", "schema": {"type": "string"}},
+            },
         }
     },
 )
 def export_csv(
     from_: dt.date | None = Query(None, alias="from", description="inclusive"),
     to: dt.date | None = Query(None, description="inclusive"),
+    service: ExportService = Depends(get_export_service),
 ) -> Response:
-    raise NotImplementedYet("F10")
+    # Built fully in memory first: a storage error is a JSON 500, never a truncated file.
+    export = service.expenses_csv(from_, to)
+    return Response(
+        content=export.content.encode("utf-8"),
+        media_type=CSV_MEDIA_TYPE,
+        headers={
+            "Content-Disposition": f'attachment; filename="{export.filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.get(

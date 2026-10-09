@@ -21,6 +21,7 @@ from app.db.session import Database
 from app.services.budgets import BudgetService
 from app.services.categorization import ItemCategorizer, LookupCategorizer
 from app.services.expenses import ExpenseService
+from app.services.export import ExportService
 from app.services.insights import InsightsService
 from app.services.item_categories import ItemCategoryService
 from app.services.receipt_pipeline import ExtractorFactory, ReceiptPipeline, Today
@@ -136,6 +137,10 @@ def get_expense_service(
     images: ImageStore = Depends(get_image_store),
 ) -> ExpenseService:
     return ExpenseService(db, categorizer, today, images)
+
+
+def get_export_service(db: Database = Depends(get_database)) -> ExportService:
+    return ExportService(db)
 
 
 def get_item_category_service(db: Database = Depends(get_database)) -> ItemCategoryService:
