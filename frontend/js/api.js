@@ -83,7 +83,67 @@ export const api = {
     form.append("file", file);
     return request("POST", "/receipts", form);
   },
+  download,
 };
+
+const DEFAULT_DOWNLOAD_NAME = "budgie-expenses.csv";
+
+/**
+ * The file name from a `Content-Disposition` header (`filename*=UTF-8''…` or
+ * `filename="…"`), without any path part; null when there is none.
+ */
+function filenameFrom(header) {
+  if (!header) return null;
+  let name = null;
+  const extended = /filename\*\s*=\s*([^']*)'[^']*'([^;]+)/i.exec(header);
+  if (extended) {
+    try {
+      name = decodeURIComponent(extended[2].trim());
+    } catch {
+      name = null;
+    }
+  }
+  if (!name) {
+    const plain = /filename\s*=\s*(?:"((?:[^"\\]|\\.)*)"|([^;]+))/i.exec(header);
+    if (plain) name = (plain[1] !== undefined ? plain[1].replace(/\\(.)/g, "$1") : plain[2]).trim();
+  }
+  if (!name) return null;
+  // Never let a header pick a directory.
+  name = name.split(/[\\/]/).pop().trim();
+  return name || null;
+}
+
+/**
+ * `GET` a file and save it through a temporary `<a download>` (F10, frontend/api-client.md).
+ * Throws an `ApiError` on a non-2xx response, like the other calls. Resolves to the file name.
+ */
+async function download(path) {
+  let response;
+  try {
+    response = await fetch(API_PREFIX + path, { method: "GET" });
+  } catch {
+    throw new ApiError(0, "network_error", "Could not reach the server. Is Budgie running?", null);
+  }
+  if (!response.ok) {
+    throw await errorFrom(response);
+  }
+  const blob = await response.blob();
+  const filename = filenameFrom(response.headers.get("Content-Disposition")) || DEFAULT_DOWNLOAD_NAME;
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.hidden = true;
+  document.body.append(link);
+  try {
+    link.click();
+  } finally {
+    link.remove();
+    // Revoking in the same task can cancel the download in some browsers.
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  return filename;
+}
 
 /**
  * Polls `GET /receipts/{id}` every 2 s until the status is extracted, failed or confirmed.

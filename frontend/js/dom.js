@@ -45,6 +45,13 @@ export const RECEIPT_STATUS_WORDS = {
   confirmed: "Confirmed",
 };
 
+/** `Expense.review_status` in words (a rule result, never a probability; decision 0008). */
+export const REVIEW_STATUS_WORDS = {
+  accepted: "Accepted",
+  needs_review: "Needs review",
+  rejected: "Nothing usable extracted",
+};
+
 /**
  * A `YYYY-MM-DD` date as `08.10.2026` (de-DE). The date has no time zone, so it is
  * formatted in UTC and never shifts by a day. Anything else is returned unchanged

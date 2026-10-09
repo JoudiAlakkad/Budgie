@@ -3,13 +3,7 @@
 // Save & confirm and Save draft follow decision 0019.
 import { ApiError, api, clearError, formatMoney, pollReceipt, showError } from "./api.js";
 import { CATEGORIES, UNCATEGORIZED, categoryLabel } from "./categories.js";
-import { RECEIPT_STATUS_WORDS, h, icon } from "./dom.js";
-
-const REVIEW_WORDS = {
-  accepted: "Accepted",
-  needs_review: "Needs review",
-  rejected: "Nothing usable extracted",
-};
+import { RECEIPT_STATUS_WORDS, REVIEW_STATUS_WORDS as REVIEW_WORDS, h, icon } from "./dom.js";
 
 const SOURCE_WORDS = {
   ai: "Extracted by AI",
