@@ -3,13 +3,7 @@
 // Save & confirm and Save draft follow decision 0019.
 import { ApiError, api, clearError, formatMoney, pollReceipt, showError } from "./api.js";
 import { CATEGORIES, UNCATEGORIZED, categoryLabel } from "./categories.js";
-import { RECEIPT_STATUS_WORDS, REVIEW_STATUS_WORDS as REVIEW_WORDS, h, icon } from "./dom.js";
-
-const SOURCE_WORDS = {
-  ai: "Extracted by AI",
-  ai_corrected: "Extracted by AI, corrected by you",
-  manual: "Entered by you",
-};
+import { RECEIPT_STATUS_WORDS, REVIEW_STATUS_WORDS, SOURCE_WORDS, h, icon } from "./dom.js";
 
 const CATEGORY_SOURCE_HINTS = { user: "from your earlier choice", seed: "default" };
 
@@ -851,7 +845,11 @@ function statusLine() {
       "span",
       {},
       "Review status: ",
-      h("span", { className: "review-status" }, REVIEW_WORDS[expense.review_status] || expense.review_status),
+      h(
+        "span",
+        { className: "review-status" },
+        REVIEW_STATUS_WORDS[expense.review_status] || expense.review_status,
+      ),
     ),
     h("span", {}, "Source: ", SOURCE_WORDS[expense.source] || expense.source),
     state.receipt

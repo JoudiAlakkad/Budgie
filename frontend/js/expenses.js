@@ -2,7 +2,7 @@
 // (docs/wiki/frontend/pages.md, "Expenses page rules"; decision 0024 for the CSV).
 import { ApiError, api, clearError, formatMoney, showError } from "./api.js";
 import { CATEGORIES, UNCATEGORIZED, categoryLabel } from "./categories.js";
-import { REVIEW_STATUS_WORDS, formatDate, h, icon } from "./dom.js";
+import { REVIEW_STATUS_WORDS, SOURCE_WORDS, formatDate, h, icon } from "./dom.js";
 
 const DATE_PATTERN = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const UNKNOWN = "unknown";
@@ -12,15 +12,6 @@ const FILTER_NAMES = ["from", "to", "category", "confirmed", "review_status", "h
 const EXPORT_FILTERS = ["from", "to"];
 const BOOLEAN_VALUES = new Set(["true", "false"]);
 const CATEGORY_VALUES = new Set([...CATEGORIES, UNCATEGORIZED]);
-
-// Source as the page names it; AI values are always labelled as such (criterion 19).
-const SOURCE_TEXT = {
-  // Where the data came from, as plain text: not the review page's "AI-generated" badge,
-  // which disappears once the user confirms (0018).
-  ai: "AI-extracted",
-  ai_corrected: "AI-extracted, corrected",
-  manual: "Manual entry",
-};
 
 // Words first, icon second; colour is never the only signal.
 const CONFIRMED_TEXT = {
@@ -55,6 +46,11 @@ const state = {
   requestId: 0, // only the newest list request may draw
   pendingDelete: null, // the expense the dialog asks about
   downloading: false,
+  // `errorCount` right after the download's own error, so the next download clears only
+  // that one and never a list or delete error shown since.
+  downloadErrorAt: null,
+  // "Deleted: …" waiting for the next load that draws the list; it goes before that count.
+  announcement: "",
 };
 
 // ---------------------------------------------------------------- filters
@@ -186,7 +182,8 @@ function statusCell(expense) {
 }
 
 function sourceCell(expense) {
-  return h("span", { className: "source-label" }, SOURCE_TEXT[expense.source] || expense.source);
+  // AI values are always labelled as such (criterion 19), as plain text (SOURCE_WORDS).
+  return h("span", { className: "source-label" }, SOURCE_WORDS[expense.source] || expense.source);
 }
 
 /** "REWE on 03.10.2026, 23,47 €", for screen-reader names and the delete dialog. */
@@ -279,6 +276,16 @@ function countText(count) {
   return count === 1 ? "1 expense" : `${count} expenses`;
 }
 
+/**
+ * Writes the live region, after any pending delete announcement, which it then clears.
+ * Only the newest list request calls this, so the announcement never goes before a
+ * stale count and is never lost to a superseded request.
+ */
+function announce(text) {
+  listStatus.textContent = [state.announcement, text].filter(Boolean).join(" ");
+  state.announcement = "";
+}
+
 /** `showError`, counted, so a list request that started earlier leaves it up. */
 function reportError(err) {
   state.errorCount += 1;
@@ -299,7 +306,8 @@ async function loadList() {
     if (requestId !== state.requestId) return;
     listContainer.setAttribute("aria-busy", "false");
     listContainer.replaceChildren(h("p", { className: "hint" }, "The expenses could not be loaded."));
-    listStatus.textContent = "";
+    // A delete that went through is still announced, so it isn't lost to a failed reload.
+    announce("");
     reportError(err);
     return;
   }
@@ -309,14 +317,14 @@ async function loadList() {
   const filtered = Object.keys(filters).length > 0;
   if (expenses.length === 0) {
     listContainer.replaceChildren(emptyState(filtered));
-    listStatus.textContent = "";
+    announce("");
     return;
   }
   // The server's order is kept (newest date first, no date last).
   listContainer.replaceChildren(h("div", { className: "table-wrap" }, expenseTable(expenses)));
-  listStatus.textContent = filtered
-    ? `${countText(expenses.length)} match these filters.`
-    : `${countText(expenses.length)}.`;
+  announce(
+    filtered ? `${countText(expenses.length)} match these filters.` : `${countText(expenses.length)}.`,
+  );
 }
 
 // ---------------------------------------------------------------- delete
@@ -330,18 +338,20 @@ function askDelete(expense) {
 }
 
 async function deleteExpense(expense) {
+  let verb = "Deleted";
   try {
     await api.delete(`/expenses/${encodeURIComponent(expense.id)}`);
   } catch (err) {
-    // 404: someone (another tab, a retry) deleted it already; the reload shows that.
     if (!(err instanceof ApiError && err.status === 404)) {
       reportError(err);
       return;
     }
+    // 404: someone (another tab, a retry) deleted it already; the reload shows that.
+    verb = "Already deleted";
   }
+  // Kept in `state` until the newest list request draws, which puts it before its count.
+  state.announcement = `${verb}: ${describe(expense)}.`;
   await loadList();
-  // After the reload, which rewrites the live region with the count.
-  listStatus.textContent = `Deleted: ${describe(expense)}. ${listStatus.textContent}`.trim();
   listHeading.focus();
 }
 
@@ -356,9 +366,14 @@ dialog.addEventListener("close", () => {
 async function downloadCsv() {
   if (state.downloading) return;
   state.downloading = true;
-  exportButton.disabled = true;
+  // aria-disabled, not `disabled`: a disabled button drops keyboard focus to <body>.
+  // The `state.downloading` guard above ignores clicks meanwhile.
+  exportButton.setAttribute("aria-disabled", "true");
   exportStatus.textContent = "Preparing the CSV…";
-  clearError();
+  // Clear only the download's own earlier error; a list or delete error shown since
+  // (which bumped `errorCount`) is still true and stays up.
+  if (state.downloadErrorAt !== null && state.downloadErrorAt === state.errorCount) clearError();
+  state.downloadErrorAt = null;
   const query = queryFor(currentFilters(), EXPORT_FILTERS);
   try {
     const filename = await api.download(`/expenses/export.csv${query}`);
@@ -366,9 +381,10 @@ async function downloadCsv() {
   } catch (err) {
     exportStatus.textContent = "";
     reportError(err);
+    state.downloadErrorAt = state.errorCount;
   } finally {
     state.downloading = false;
-    exportButton.disabled = false;
+    exportButton.removeAttribute("aria-disabled");
   }
 }
 
