@@ -117,17 +117,31 @@ def test_one_row_per_item_in_position_order(client: TestClient) -> None:
             "expense_total": "5.57",
             "item_description": "BIO BANANE",
             "item_normalized_name": exported[0]["item_normalized_name"],
-            "item_qty": "1.234",
-            "item_unit": "kg",
             "item_amount": "1.99",
             "category": "groceries.fresh",
             "source": "manual",
         },
-        exported[1] | {"item_description": "MILCH", "item_qty": "2", "item_unit": ""},
-        exported[2] | {"item_description": "BROT", "item_qty": "", "item_amount": "2.49"},
+        exported[1] | {"item_description": "MILCH", "item_amount": "1.09"},
+        exported[2] | {"item_description": "BROT", "item_amount": "2.49"},
     ]
     assert [row["item_amount"] for row in exported] == ["1.99", "1.09", "2.49"]
     assert all(row["expense_id"] == str(expense_id) for row in exported)
+
+
+def test_qty_and_unit_stay_in_the_json_api_but_not_in_the_csv(client: TestClient) -> None:
+    expense_id = add(
+        client,
+        "2026-10-03",
+        [{"description": "BIO BANANE", "amount": 1.99, "qty": 1.234, "unit": "kg"}],
+    )
+
+    stored = client.get(f"/api/expenses/{expense_id}").json()["line_items"][0]
+    response = export(client)
+
+    assert (float(stored["qty"]), stored["unit"]) == (1.234, "kg")
+    assert {"item_qty", "item_unit"}.isdisjoint(rows(response)[0])
+    assert b"1.234" not in response.content
+    assert b"kg" not in response.content
 
 
 def test_only_confirmed_expenses_sorted_by_date_then_id(client: TestClient) -> None:

@@ -18,7 +18,6 @@ from app.domain.csv_export import (
     export_filename,
     format_line,
     format_money,
-    format_qty,
     guard,
     quote_field,
     render,
@@ -38,8 +37,6 @@ ROW = ExportRow(
     position=0,
     item_description="BIO BANANE 1 KG",
     item_normalized_name="banane",
-    item_qty=Decimal("1"),
-    item_unit="kg",
     item_amount=Decimal("1.99"),
     category="groceries.fresh",
     source="ai_corrected",
@@ -70,14 +67,20 @@ def documented_columns() -> list[str]:
 def test_header_row_equals_the_contract_column_table_in_order() -> None:
     documented = documented_columns()
 
-    assert len(documented) == 12, "the parser found the column table"
+    assert len(documented) == 10, "the parser found the column table"
     assert parse(render([]))[0] == documented
     assert list(COLUMNS) == documented
 
 
 def test_guarded_columns_are_string_columns_of_the_table() -> None:
-    assert {"merchant", "item_description", "item_normalized_name", "item_unit"} == GUARDED_COLUMNS
+    assert {"merchant", "item_description", "item_normalized_name"} == GUARDED_COLUMNS
     assert set(COLUMNS) >= GUARDED_COLUMNS
+
+
+@pytest.mark.parametrize("dropped", ["item_qty", "item_unit"])
+def test_qty_and_unit_are_not_exported(dropped: str) -> None:
+    assert dropped not in COLUMNS
+    assert dropped not in GUARDED_COLUMNS
 
 
 # ---------------------------------------------------------------- values
@@ -102,29 +105,6 @@ def test_guarded_columns_are_string_columns_of_the_table() -> None:
 )
 def test_money_has_exactly_two_decimals(value: Decimal | None, expected: str) -> None:
     assert format_money(value) == expected
-
-
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [
-        (Decimal("1"), "1"),
-        (Decimal("1.000"), "1"),
-        (Decimal("1.234"), "1.234"),
-        (Decimal("1.2340"), "1.234"),
-        (Decimal("0.5"), "0.5"),
-        (Decimal("100"), "100"),
-        (Decimal("1E+2"), "100"),
-        (Decimal("1.5E-7"), "0.00000015"),
-        (Decimal("0"), "0"),
-        (Decimal("0E-7"), "0"),
-        (Decimal("-2"), "-2"),
-        (None, ""),
-    ],
-)
-def test_qty_is_plain_without_exponent_or_trailing_zeros(
-    value: Decimal | None, expected: str
-) -> None:
-    assert format_qty(value) == expected
 
 
 @pytest.mark.parametrize(
@@ -194,7 +174,6 @@ def test_negative_amounts_are_never_prefixed() -> None:
         ROW,
         expense_total=Decimal("-0.25"),
         item_amount=Decimal("-0.25"),
-        item_qty=Decimal("-1"),
         category="discount",
     )
 
@@ -202,7 +181,6 @@ def test_negative_amounts_are_never_prefixed() -> None:
 
     assert values["expense_total"] == "-0.25"
     assert values["item_amount"] == "-0.25"
-    assert values["item_qty"] == "-1"
     assert parse(render([row]))[1][COLUMNS.index("item_amount")] == "-0.25"
 
 
@@ -215,8 +193,6 @@ def test_row_values_in_column_order() -> None:
         "23.47",
         "BIO BANANE 1 KG",
         "banane",
-        "1",
-        "kg",
         "1.99",
         "groceries.fresh",
         "ai_corrected",
@@ -224,11 +200,16 @@ def test_row_values_in_column_order() -> None:
 
 
 def test_null_is_an_empty_field() -> None:
-    row = replace(ROW, item_qty=None, item_unit=None)
+    # Not possible for a confirmed expense (confirm requires them), but still written empty.
+    row = replace(ROW, merchant=None, expense_total=None)
 
     assert line(row) == (
-        "42,2026-10-03,REWE,EUR,23.47,BIO BANANE 1 KG,banane,,,1.99,groceries.fresh,ai_corrected"
+        "42,2026-10-03,,EUR,,BIO BANANE 1 KG,banane,1.99,groceries.fresh,ai_corrected"
     )
+
+
+def test_a_confirmed_row_has_no_empty_field() -> None:
+    assert all(value != "" for value in row_values(ROW))
 
 
 # ---------------------------------------------------------------- file format
@@ -299,7 +280,7 @@ def test_semicolon_field_is_quoted_once_with_inner_quotes_doubled() -> None:
     row = replace(ROW, merchant='REWE;=HYPERLINK("x")', expense_total=Decimal("-0.25"))
 
     assert line(row) == (
-        '42,2026-10-03,"REWE;=HYPERLINK(""x"")",EUR,-0.25,BIO BANANE 1 KG,banane,1,kg,1.99,'
+        '42,2026-10-03,"REWE;=HYPERLINK(""x"")",EUR,-0.25,BIO BANANE 1 KG,banane,1.99,'
         "groceries.fresh,ai_corrected"
     )
     assert parse(render([row]))[1][COLUMNS.index("merchant")] == 'REWE;=HYPERLINK("x")'
@@ -313,7 +294,12 @@ def test_guarded_semicolon_field_is_guarded_then_quoted() -> None:
 
 
 def test_umlauts_round_trip_through_utf8() -> None:
-    row = replace(ROW, merchant="Bäckerei Müller", item_description="BRÖTCHEN ß", item_unit="Stück")
+    row = replace(
+        ROW,
+        merchant="Bäckerei Müller",
+        item_description="BRÖTCHEN ß",
+        item_normalized_name="brötchen",
+    )
 
     data = render([row])
 
@@ -322,7 +308,7 @@ def test_umlauts_round_trip_through_utf8() -> None:
     parsed = parse(data)[1]
     assert parsed[COLUMNS.index("merchant")] == "Bäckerei Müller"
     assert parsed[COLUMNS.index("item_description")] == "BRÖTCHEN ß"
-    assert parsed[COLUMNS.index("item_unit")] == "Stück"
+    assert parsed[COLUMNS.index("item_normalized_name")] == "brötchen"
 
 
 def test_rows_sorted_by_date_then_expense_id_then_position() -> None:

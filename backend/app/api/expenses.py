@@ -64,10 +64,10 @@ _CSV_DESCRIPTION = (
     "quote inside is doubled. Confirmed expenses only, one row per line item, by date, then "
     "expense_id, then item position. Columns: "
     + ", ".join(f"`{name}`" for name in CSV_COLUMNS)
-    + ". Money has exactly 2 decimals; an empty field is null (only `item_qty` and "
-    "`item_unit`). A value in `merchant`, `item_description`, `item_normalized_name` or "
-    "`item_unit` gets a leading `'` (formula guard; strip exactly one to get the stored "
-    "value) when it starts with a tab, a carriage return or `'`, or when its first "
+    + ". Money has exactly 2 decimals; an empty field would mean null, but a confirmed "
+    "expense has no empty column. A value in `merchant`, `item_description` or "
+    "`item_normalized_name` gets a leading `'` (formula guard; strip exactly one to get the "
+    "stored value) when it starts with a tab, a carriage return or `'`, or when its first "
     "character after leading whitespace is `=`, `+`, `-`, `@` or a full-width `＝`, `＋`, "
     "`－`, `＠`."
 )

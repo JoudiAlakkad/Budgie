@@ -7,8 +7,8 @@ sorts them (the export's only sort), formats every value and applies the formula
   one of `QUOTE_TRIGGERS` (comma, quote, line break or `;`), a quote inside is doubled.
   Stdlib `csv` can't quote on `;` with a comma delimiter, so `quote_field` does it.
 - Order: `date`, then `expense_id`, then the item's position on the receipt.
-- Money has exactly 2 decimals with `.`; `item_qty` is a plain decimal without exponent
-  or trailing zeros; `None` is an empty field.
+- Money has exactly 2 decimals with `.`; `None` is an empty field (a confirmed expense
+  has none).
 - Formula guard: a value in one of `GUARDED_COLUMNS` gets a leading `'` when it starts
   with one of `CONTROL_PREFIXES` or `'`, or when its first character after leading
   whitespace is one of `FORMULA_SIGNS`. The guard is chosen by column, never by value,
@@ -31,15 +31,13 @@ COLUMNS: tuple[str, ...] = (
     "expense_total",
     "item_description",
     "item_normalized_name",
-    "item_qty",
-    "item_unit",
     "item_amount",
     "category",
     "source",
 )
 """The header row, in order; contracts/csv-export.md has the same table."""
 
-GUARDED_COLUMNS = frozenset({"merchant", "item_description", "item_normalized_name", "item_unit"})
+GUARDED_COLUMNS = frozenset({"merchant", "item_description", "item_normalized_name"})
 """The free-text columns the formula guard applies to."""
 
 FORMULA_SIGNS = ("=", "+", "-", "@", "＝", "＋", "－", "＠")
@@ -80,8 +78,6 @@ class ExportRow:
     position: int
     item_description: str
     item_normalized_name: str
-    item_qty: Decimal | None
-    item_unit: str | None
     item_amount: Decimal
     category: str
     source: str
@@ -95,15 +91,6 @@ def format_money(value: Decimal | None) -> str:
     if rounded == 0:
         rounded = abs(rounded)  # no `-0.00`
     return f"{rounded:.2f}"
-
-
-def format_qty(value: Decimal | None) -> str:
-    """A plain decimal without exponent or trailing zeros: `1`, `1.234`, `100`."""
-    if value is None:
-        return ""
-    if value == 0:
-        return "0"
-    return f"{value.normalize():f}"
 
 
 def guard(value: str | None) -> str:
@@ -141,8 +128,6 @@ def row_values(row: ExportRow) -> tuple[str, ...]:
         "expense_total": format_money(row.expense_total),
         "item_description": row.item_description,
         "item_normalized_name": row.item_normalized_name,
-        "item_qty": format_qty(row.item_qty),
-        "item_unit": row.item_unit or "",
         "item_amount": format_money(row.item_amount),
         "category": row.category,
         "source": row.source,

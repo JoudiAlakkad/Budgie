@@ -43,8 +43,6 @@ def export_rows(expenses: Iterable[ExpenseRecord]) -> tuple[ExportRow, ...]:
             position=item.position,
             item_description=item.description,
             item_normalized_name=item.normalized_name,
-            item_qty=item.qty,
-            item_unit=item.unit,
             item_amount=item.amount,
             category=item.category,
             source=expense.source,

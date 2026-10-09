@@ -1,6 +1,6 @@
 # CSV export
 
-`GET /api/expenses/export.csv?from=YYYY-MM-DD&to=YYYY-MM-DD` returns the documented file-exchange integration point ([architecture](../architecture.md#integration-points)). Columns fixed in F2, `item_qty` and `item_unit` removed in F10 (the student's decision); format details fixed in F10 ([0024](../decisions/0024-csv-format-and-formula-guard.md)).
+`GET /api/expenses/export.csv?from=YYYY-MM-DD&to=YYYY-MM-DD` returns the documented file-exchange integration point ([architecture](../architecture.md#integration-points)). Columns fixed in F2, `item_qty` and `item_unit` removed in F10 (the student's decision; `qty` and `unit` are still stored and returned by the JSON API, only the CSV leaves them out); format details fixed in F10 ([0024](../decisions/0024-csv-format-and-formula-guard.md)).
 
 - **What's included:** confirmed expenses only, one row per **line item**. Every expense has at least one item, manual ones included. Deposit and discount items are included. Amounts are as stored, never converted.
 - **Range:** `from ≤ date ≤ to`, both optional and inclusive, on the purchase date. `from` after `to`, or no match, gives the header row only. A bad date answers `422 validation_error` on `query.from` / `query.to`. The other `GET /expenses` filters don't apply to the export.
