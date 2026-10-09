@@ -1,19 +1,20 @@
 """The CSV export's file format (contracts/csv-export.md; decision 0024).
 
-Pure: rows in, text out. The service reads the confirmed expenses; this module sorts
-them, formats every value and applies the formula guard.
+Pure: rows in, UTF-8 bytes out. The service reads the confirmed expenses; this module
+sorts them (the export's only sort), formats every value and applies the formula guard.
 
-- RFC 4180: comma, CRLF line ends, a header row; a field is quoted only if it contains a
-  comma, a quote or a line break (stdlib `csv`, `QUOTE_MINIMAL`), a quote is doubled.
+- RFC 4180: comma, CRLF line ends, a header row; a field is quoted only if it contains
+  one of `QUOTE_TRIGGERS` (comma, quote, line break or `;`), a quote inside is doubled.
+  Stdlib `csv` can't quote on `;` with a comma delimiter, so `quote_field` does it.
 - Order: `date`, then `expense_id`, then the item's position on the receipt.
 - Money has exactly 2 decimals with `.`; `item_qty` is a plain decimal without exponent
   or trailing zeros; `None` is an empty field.
-- Formula guard: a value in one of `GUARDED_COLUMNS` that starts with one of
-  `FORMULA_PREFIXES` gets a leading `'`. The guard is chosen by column, never by value,
+- Formula guard: a value in one of `GUARDED_COLUMNS` gets a leading `'` when it starts
+  with one of `CONTROL_PREFIXES` or `'`, or when its first character after leading
+  whitespace is one of `FORMULA_SIGNS`. The guard is chosen by column, never by value,
   so a negative amount stays bare.
 """
 
-import csv
 import datetime as dt
 import io
 from collections.abc import Iterable
@@ -41,13 +42,24 @@ COLUMNS: tuple[str, ...] = (
 GUARDED_COLUMNS = frozenset({"merchant", "item_description", "item_normalized_name", "item_unit"})
 """The free-text columns the formula guard applies to."""
 
-FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
-"""First characters a spreadsheet may run as a formula (OWASP CSV injection)."""
+FORMULA_SIGNS = ("=", "+", "-", "@", "＝", "＋", "－", "＠")
+"""Characters that start a formula (OWASP CSV injection), with their full-width forms
+`＝`, `＋`, `－`, `＠`; checked after leading whitespace, which some spreadsheets trim."""
+
+CONTROL_PREFIXES = ("\t", "\r")
+"""First characters that are guarded on their own."""
 
 FORMULA_ESCAPE = "'"
 """Also prefixed when it is already the first character, so stripping exactly one leading
 `'` from a guarded column always gives back the stored value."""
 
+QUOTE_TRIGGERS = frozenset({",", '"', "\r", "\n", ";"})
+"""A field containing any of these is quoted; `;` so that a spreadsheet splitting on `;`
+keeps it one cell (decision 0024)."""
+
+DELIMITER = ","
+LINE_END = "\r\n"
+ENCODING = "utf-8"
 MEDIA_TYPE = "text/csv; charset=utf-8"
 
 
@@ -95,12 +107,28 @@ def format_qty(value: Decimal | None) -> str:
 
 
 def guard(value: str | None) -> str:
-    """The formula guard: a leading `'` if the text starts like a formula or with `'`."""
+    """The formula guard: a leading `'` in front of the whole value if it starts with a
+    tab, a CR or `'`, or if it starts like a formula after leading whitespace."""
     if value is None:
         return ""
-    if value.startswith((*FORMULA_PREFIXES, FORMULA_ESCAPE)):
+    if value.startswith((*CONTROL_PREFIXES, FORMULA_ESCAPE)) or value.lstrip().startswith(
+        FORMULA_SIGNS
+    ):
         return FORMULA_ESCAPE + value
     return value
+
+
+def quote_field(value: str) -> str:
+    """RFC 4180: in quotes with inner quotes doubled if it contains one of
+    `QUOTE_TRIGGERS`, otherwise as is."""
+    if QUOTE_TRIGGERS.isdisjoint(value):
+        return value
+    return '"' + value.replace('"', '""') + '"'
+
+
+def format_line(values: Iterable[str]) -> str:
+    """One record, fields quoted where needed, with its CRLF line end."""
+    return DELIMITER.join(quote_field(value) for value in values) + LINE_END
 
 
 def row_values(row: ExportRow) -> tuple[str, ...]:
@@ -127,13 +155,17 @@ def _order(row: ExportRow) -> tuple[bool, dt.date, int, int]:
     return (row.date is None, row.date or dt.date.min, row.expense_id, row.position)
 
 
-def render(rows: Iterable[ExportRow]) -> str:
-    """The whole file: header row, then the rows sorted by date, expense id, position."""
-    buffer = io.StringIO(newline="")
-    writer = csv.writer(buffer, lineterminator="\r\n", quoting=csv.QUOTE_MINIMAL)
-    writer.writerow(COLUMNS)
-    writer.writerows(row_values(row) for row in sorted(rows, key=_order))
-    return buffer.getvalue()
+def render(rows: Iterable[ExportRow]) -> bytes:
+    """The whole file in UTF-8 without BOM: header row, then the rows sorted by date,
+    expense id, position (the export's only sort). Encoded while it is written, so the
+    file is held in memory once."""
+    buffer = io.BytesIO()
+    with io.TextIOWrapper(buffer, encoding=ENCODING, newline="", write_through=True) as text:
+        text.write(format_line(COLUMNS))
+        for row in sorted(rows, key=_order):
+            text.write(format_line(row_values(row)))
+        text.flush()
+        return buffer.getvalue()
 
 
 def export_filename(date_from: dt.date | None, date_to: dt.date | None) -> str:

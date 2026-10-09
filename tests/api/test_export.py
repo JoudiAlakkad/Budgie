@@ -226,6 +226,27 @@ def test_quoting_and_crlf_on_the_wire(client: TestClient) -> None:
     assert "\n" not in body.replace("\r\n", "")
 
 
+@pytest.mark.parametrize(
+    ("merchant", "description", "wire"),
+    [
+        ('REWE;=HYPERLINK("x")', "BROT", ',"REWE;=HYPERLINK(""x"")",EUR,2.49,BROT,'),
+        ("Aldi; Süd", "A;B", ',"Aldi; Süd",EUR,2.49,"A;B",'),
+        ("REWE", " =1+1", ",REWE,EUR,2.49,' =1+1,"),
+        ("＠evil", "＝SUM(A1)", ",'＠evil,EUR,2.49,'＝SUM(A1),"),
+        ("REWE", " -1;2", ',REWE,EUR,2.49,"\' -1;2",'),
+        (" REWE", " BROT", ", REWE,EUR,2.49, BROT,"),
+    ],
+)
+def test_semicolon_quoting_and_formula_guard_on_the_wire(
+    client: TestClient, merchant: str, description: str, wire: str
+) -> None:
+    add(client, "2026-10-03", [{"description": description, "amount": 2.49}], merchant=merchant)
+
+    body = export(client).content.decode("utf-8")
+
+    assert wire in body
+
+
 def test_built_in_memory_and_no_row_logged(
     client: TestClient, tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:

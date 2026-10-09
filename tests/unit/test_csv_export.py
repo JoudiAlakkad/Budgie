@@ -3,6 +3,7 @@
 import csv
 import datetime as dt
 import io
+import itertools
 import re
 from dataclasses import replace
 from decimal import Decimal
@@ -15,9 +16,11 @@ from app.domain.csv_export import (
     GUARDED_COLUMNS,
     ExportRow,
     export_filename,
+    format_line,
     format_money,
     format_qty,
     guard,
+    quote_field,
     render,
     row_values,
 )
@@ -43,8 +46,13 @@ ROW = ExportRow(
 )
 
 
-def parse(text: str) -> list[list[str]]:
-    return list(csv.reader(io.StringIO(text, newline="")))
+def parse(data: bytes) -> list[list[str]]:
+    return list(csv.reader(io.StringIO(data.decode("utf-8"), newline="")))
+
+
+def line(row: ExportRow) -> str:
+    """The row's line on the wire, without its CRLF."""
+    return render([row]).decode("utf-8").split("\r\n")[1]
 
 
 def fields(row: ExportRow) -> dict[str, str]:
@@ -128,10 +136,33 @@ def test_qty_is_plain_without_exponent_or_trailing_zeros(
         ("@cmd", "'@cmd"),
         ("\tTAB", "'\tTAB"),
         ("\rCR", "'\rCR"),
+        ("\t", "'\t"),
         ("REWE", "REWE"),
         ("A=B", "A=B"),
-        (" =x", " =x"),
+        ("A-1", "A-1"),
         ("'t Hoekje", "''t Hoekje"),
+        ("''", "'''"),
+        # after leading whitespace; the `'` goes in front of the whole value
+        (" =1+1", "' =1+1"),
+        ("   +49", "'   +49"),
+        ("\n-1", "'\n-1"),
+        (" @x", "' @x"),
+        ("　=x", "'　=x"),
+        (" \t=x", "' \t=x"),
+        (" REWE", " REWE"),
+        (" 't Hoekje", " 't Hoekje"),
+        (" A=B", " A=B"),
+        # full-width signs, at the start and after whitespace
+        ("＝SUM(A1)", "'＝SUM(A1)"),
+        ("＋1", "'＋1"),
+        ("－20% Rabatt", "'－20% Rabatt"),
+        ("＠cmd", "'＠cmd"),
+        (" ＝1", "' ＝1"),
+        ("A＝B", "A＝B"),
+        # whitespace-only and empty stay unchanged
+        (" ", " "),
+        ("   ", "   "),
+        ("\n", "\n"),
         ("", ""),
         (None, ""),
     ],
@@ -140,8 +171,18 @@ def test_guard(value: str | None, expected: str) -> None:
     assert guard(value) == expected
 
 
+@pytest.mark.parametrize(
+    "value",
+    ["=1", " =1", "'x", "''x", "＠x", "\t=x", " 'x", "REWE", " ", "", "-0.25"],
+)
+def test_guard_is_undone_by_stripping_exactly_one_quote(value: str) -> None:
+    guarded = guard(value)
+
+    assert (guarded[1:] if guarded.startswith("'") else guarded) == value
+
+
 @pytest.mark.parametrize("column", sorted(GUARDED_COLUMNS))
-@pytest.mark.parametrize("value", ["=1+1", "+1", "-1", "@x", "\tx", "\rx"])
+@pytest.mark.parametrize("value", ["=1+1", "+1", "-1", "@x", "\tx", "\rx", " =1+1", "＝1", "－1"])
 def test_every_string_column_is_guarded(column: str, value: str) -> None:
     row = replace(ROW, **{column: value})
 
@@ -185,7 +226,7 @@ def test_row_values_in_column_order() -> None:
 def test_null_is_an_empty_field() -> None:
     row = replace(ROW, item_qty=None, item_unit=None)
 
-    assert render([row]).splitlines()[1] == (
+    assert line(row) == (
         "42,2026-10-03,REWE,EUR,23.47,BIO BANANE 1 KG,banane,,,1.99,groceries.fresh,ai_corrected"
     )
 
@@ -193,9 +234,16 @@ def test_null_is_an_empty_field() -> None:
 # ---------------------------------------------------------------- file format
 
 
+def test_render_returns_utf8_bytes() -> None:
+    data = render([ROW])
+
+    assert isinstance(data, bytes)
+    assert data.decode("utf-8").startswith(",".join(COLUMNS) + "\r\n")
+
+
 def test_crlf_line_ends_and_header_only_for_no_rows() -> None:
-    assert render([]) == ",".join(COLUMNS) + "\r\n"
-    text = render([ROW, replace(ROW, position=1)])
+    assert render([]) == (",".join(COLUMNS) + "\r\n").encode("utf-8")
+    text = render([ROW, replace(ROW, position=1)]).decode("utf-8")
 
     assert text.count("\r\n") == 3
     assert "\n" not in text.replace("\r\n", "")
@@ -210,24 +258,68 @@ def test_crlf_line_ends_and_header_only_for_no_rows() -> None:
         ('12" Pizza', '"12"" Pizza"'),
         ("two\nlines", '"two\nlines"'),
         ("two\r\nlines", '"two\r\nlines"'),
+        ("cr\ronly", '"cr\ronly"'),
         (" spaced ", " spaced "),
+        ("a;b", '"a;b"'),
+        (";", '";"'),
+        ('a;"b"', '"a;""b"""'),
+        ("tab\there", "tab\there"),
+        ("it's", "it's"),
+        ("", ""),
     ],
 )
 def test_quoting_is_minimal(description: str, line_field: str) -> None:
     row = replace(ROW, item_description=description)
-    text = render([row])
+    data = render([row])
 
-    assert f",{line_field},banane," in text
-    assert parse(text)[1][COLUMNS.index("item_description")] == description
+    assert f",{line_field},banane,".encode() in data
+    assert parse(data)[1][COLUMNS.index("item_description")] == description
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("REWE", "REWE"),
+        ("a;b", '"a;b"'),
+        ("a,b", '"a,b"'),
+        ('a"b', '"a""b"'),
+        ("a\nb", '"a\nb"'),
+        ("a\rb", '"a\rb"'),
+        ('"', '""""'),
+        ("-0.25", "-0.25"),
+        ("'=x", "'=x"),
+        ("", ""),
+    ],
+)
+def test_quote_field(value: str, expected: str) -> None:
+    assert quote_field(value) == expected
+
+
+def test_semicolon_field_is_quoted_once_with_inner_quotes_doubled() -> None:
+    row = replace(ROW, merchant='REWE;=HYPERLINK("x")', expense_total=Decimal("-0.25"))
+
+    assert line(row) == (
+        '42,2026-10-03,"REWE;=HYPERLINK(""x"")",EUR,-0.25,BIO BANANE 1 KG,banane,1,kg,1.99,'
+        "groceries.fresh,ai_corrected"
+    )
+    assert parse(render([row]))[1][COLUMNS.index("merchant")] == 'REWE;=HYPERLINK("x")'
+
+
+def test_guarded_semicolon_field_is_guarded_then_quoted() -> None:
+    row = replace(ROW, item_description=" =1;2")
+
+    assert ',"\' =1;2",banane,' in line(row)
+    assert parse(render([row]))[1][COLUMNS.index("item_description")] == "' =1;2"
 
 
 def test_umlauts_round_trip_through_utf8() -> None:
     row = replace(ROW, merchant="Bäckerei Müller", item_description="BRÖTCHEN ß", item_unit="Stück")
 
-    data = render([row]).encode("utf-8")
+    data = render([row])
 
     assert not data.startswith(b"\xef\xbb\xbf"), "no BOM"
-    parsed = parse(data.decode("utf-8"))[1]
+    assert "Bäckerei Müller".encode() in data
+    parsed = parse(data)[1]
     assert parsed[COLUMNS.index("merchant")] == "Bäckerei Müller"
     assert parsed[COLUMNS.index("item_description")] == "BRÖTCHEN ß"
     assert parsed[COLUMNS.index("item_unit")] == "Stück"
@@ -245,6 +337,30 @@ def test_rows_sorted_by_date_then_expense_id_then_position() -> None:
     parsed = parse(render(rows))[1:]
 
     assert [line[COLUMNS.index("item_description")] for line in parsed] == ["a", "b", "c", "d"]
+
+
+@pytest.mark.parametrize("order", list(itertools.permutations(range(4))))
+def test_input_order_does_not_matter(order: tuple[int, ...]) -> None:
+    day1, day2 = dt.date(2026, 10, 1), dt.date(2026, 10, 2)
+    rows = [
+        replace(ROW, expense_id=3, date=day1, position=0),
+        replace(ROW, expense_id=3, date=day1, position=1),
+        replace(ROW, expense_id=7, date=day1, position=0),
+        replace(ROW, expense_id=1, date=day2, position=0),
+    ]
+
+    assert render([rows[i] for i in order]) == render(rows)
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["plain", "a,b", 'say "hi"', "two\nlines", "two\r\nlines", " x ", "it's", "", "-0.25"],
+)
+def test_without_semicolon_quoting_matches_stdlib_minimal(value: str) -> None:
+    stdlib = io.StringIO(newline="")
+    csv.writer(stdlib, lineterminator="\r\n", quoting=csv.QUOTE_MINIMAL).writerow(["x", value])
+
+    assert format_line(["x", value]) == stdlib.getvalue()
 
 
 def test_a_missing_date_sorts_last_and_is_empty() -> None:

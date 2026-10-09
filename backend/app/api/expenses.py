@@ -60,13 +60,16 @@ def create_expense(
 
 _CSV_DESCRIPTION = (
     "RFC 4180 CSV (contracts/csv-export.md): UTF-8 without BOM, comma, CRLF, a header row; "
-    "confirmed expenses only, one row per line item, by date, then expense_id, then item "
-    "position. Columns: "
+    "a field is quoted only if it contains a comma, a quote, a line break or `;`, and a "
+    "quote inside is doubled. Confirmed expenses only, one row per line item, by date, then "
+    "expense_id, then item position. Columns: "
     + ", ".join(f"`{name}`" for name in CSV_COLUMNS)
     + ". Money has exactly 2 decimals; an empty field is null (only `item_qty` and "
     "`item_unit`). A value in `merchant`, `item_description`, `item_normalized_name` or "
-    "`item_unit` starting with `=`, `+`, `-`, `@`, a tab, a carriage return or `'` gets a "
-    "leading `'` (formula guard; strip exactly one to get the stored value)."
+    "`item_unit` gets a leading `'` (formula guard; strip exactly one to get the stored "
+    "value) when it starts with a tab, a carriage return or `'`, or when its first "
+    "character after leading whitespace is `=`, `+`, `-`, `@` or a full-width `＝`, `＋`, "
+    "`－`, `＠`."
 )
 
 
@@ -97,7 +100,7 @@ def export_csv(
     # Built fully in memory first: a storage error is a JSON 500, never a truncated file.
     export = service.expenses_csv(from_, to)
     return Response(
-        content=export.content.encode("utf-8"),
+        content=export.data,
         media_type=CSV_MEDIA_TYPE,
         headers={
             "Content-Disposition": f'attachment; filename="{export.filename}"',

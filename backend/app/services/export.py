@@ -25,10 +25,10 @@ CSV_MEDIA_TYPE = csv_export.MEDIA_TYPE
 
 @dataclass(frozen=True)
 class CsvFile:
-    """The rendered file and the name the download gets."""
+    """The rendered file, already UTF-8 encoded, and the name the download gets."""
 
     filename: str
-    content: str
+    data: bytes
 
 
 def export_rows(expenses: Iterable[ExpenseRecord]) -> tuple[ExportRow, ...]:
@@ -64,7 +64,8 @@ class ExportService:
         filters = ExpenseFilter(confirmed=True, date_from=date_from, date_to=date_to)
         with self._db.transaction() as session:
             expenses = ExpenseRepository(session).list(filters)
+        # The repository's order doesn't matter: `csv_export.render` does the only sort.
         return CsvFile(
             filename=csv_export.export_filename(date_from, date_to),
-            content=csv_export.render(export_rows(expenses)),
+            data=csv_export.render(export_rows(expenses)),
         )
