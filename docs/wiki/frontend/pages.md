@@ -34,6 +34,15 @@ The pages are planned and built in F6 (Upload, Review), F8 and F9 (Dashboard, Se
   - **Retry** (`POST /receipts/{id}/extract`), except for `unreadable_image`. For `not_a_receipt` the hint says a retry with the same model usually gives the same result.
   - **Enter manually**: an empty form next to the photo, saved with `POST /expenses` and `receipt_id`. For `not_a_receipt` the page says the image wasn't recognised as a receipt; the model's data is never offered as a pre-fill.
 
+## Expenses page rules (F10, [0024](../decisions/0024-csv-format-and-formula-guard.md))
+- **Filters:** `from`, `to`, category (every `Category` plus `uncategorized`), status (All / Confirmed / Drafts → `confirmed`), review status, and type (Photo / Manual → `has_receipt`). They are kept in the address with `history.replaceState`, so a reload keeps them. Only the newest list request draws the page.
+- **List:** date, merchant, total, the item categories as labels, the status as words with an icon (colour is never the only signal) and the source: "AI-generated" (`ai`), "AI-extracted, corrected" (`ai_corrected`) or "Manual" (`manual`). The server's order is kept. A `null` merchant or date shows "unknown".
+- **Open:** `review.html?id=<receipt_id>` for an expense with a photo, `review.html?expense=<id>` otherwise.
+- **Delete:** a native `<dialog>` asks first. For an expense with a `receipt_id` it says the receipt photo is deleted too and that this can't be undone. A `404` counts as already gone: the list reloads and no error stays up. Other errors go through `showError`.
+- **Download CSV:** exports the current `from`/`to` with `api.download`. Text next to the button says it covers confirmed expenses only, one row per item, and that the other filters don't apply. An error shows `detail` in the banner, never a raw JSON page.
+- **Empty state:** "No expenses match these filters." (or "No expenses yet." without filters), with a link to Upload.
+- **Nav:** an "Expenses" link on every page, with `aria-current="page"` on its own.
+
 ## Dashboard rules (F08)
 - **Month:** Previous / Next buttons and a labelled `<input type="month">`, limited to `0001-01`…`9999-12`; a picker or address value outside it is ignored. The "current month" is the server's (Europe/Berlin), taken from `GET /insights/summary` without a month.
   - **Per endpoint (F09):** the current-month request is cached separately for the summary and the potential leaks, with the same rules; only the summary decides the current month.

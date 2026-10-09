@@ -31,7 +31,7 @@ All bodies are JSON unless stated otherwise. Errors use the [error format](error
 |---|---|---|---|
 | GET | `/expenses` | `?review_status=&confirmed=&from=&to=&category=&has_receipt=` (all optional) | `200` `Expense[]`, newest date first, expenses without a date last, ties by id descending |
 | POST | `/expenses` | `ExpenseCreate` | `201` `Expense`; `409` `invalid_state` if `receipt_id` is set and that receipt isn't `failed`; `404` for an unknown `receipt_id` |
-| GET | `/expenses/export.csv` | `?from=&to=` | `200` `text/csv` ([csv-export](csv-export.md)) |
+| GET | `/expenses/export.csv` | `?from=&to=` | `200` `text/csv` ([csv-export](csv-export.md)); `422` for a bad date |
 | GET | `/expenses/{id}` | – | `200` `Expense`; `404` |
 | PATCH | `/expenses/{id}` | `ExpenseUpdate` | `200` `Expense`; editing a confirmed expense un-confirms it; `404` |
 | POST | `/expenses/{id}/confirm` | – | `200` `Expense`; `422` `uncategorized_items` or `incomplete_expense`; confirming twice is a no-op; `404` |

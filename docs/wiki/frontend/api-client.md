@@ -7,6 +7,7 @@ The file is `frontend/js/api.js`, and it's the only module that calls `fetch`. B
   - sends and parses JSON
   - on a non-2xx response, throws an `ApiError {status, error, detail, fields}` built from the [error format](../contracts/error-format.md); `fields` marks the form inputs that failed validation
 - `api.upload(file)` sends the multipart `POST /receipts`.
+- `api.download(path)` (F10) does a `GET`, throws an `ApiError` on non-2xx like the others, and saves the body as a file: the name comes from `Content-Disposition` (fallback `budgie-expenses.csv`), through a temporary `<a download>` and `URL.createObjectURL`/`revokeObjectURL`. `test_frontend_static.py` checks its path like any `api.get`.
 - `pollReceipt(id, onUpdate)` polls every 2 s until the status is `extracted`, `failed` or `confirmed`, and stops after 5 minutes with a "still processing" message ([receipt-lifecycle](../contracts/receipt-lifecycle.md)).
 - `showError(err)` shows `err.detail` in a banner.
 - A failed receipt is not an `ApiError`: `GET /receipts/{id}` returns `200` with `status: failed`. The page shows `error_detail` and the actions for its `error` code ([receipt error codes](../contracts/error-format.md#receipt-error-codes)).
