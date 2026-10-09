@@ -1,12 +1,13 @@
 # API client
 
-The file is `frontend/js/api.js`, and it's the only module that calls `fetch`. Built in F06, with `js/dom.js` (text-only DOM helpers, the receipt status words, `formatTimestamp` and, since F08, `formatDate` for a `YYYY-MM-DD` date as de-DE, using UTC) and `js/categories.js` (`CATEGORIES` in the contract's order, and since F08 `SPENDING_CATEGORIES` without `deposit` and `discount`; `tests/unit/test_frontend_static.py` checks it against `api/schemas.py`).
+The file is `frontend/js/api.js`, and it's the only module that calls `fetch`. Built in F06, with `js/dom.js` (text-only DOM helpers, the receipt status words, since F10 the shared `REVIEW_STATUS_WORDS` and `SOURCE_WORDS`, `formatTimestamp` and, since F08, `formatDate` for a `YYYY-MM-DD` date as de-DE, using UTC) and `js/categories.js` (`CATEGORIES` in the contract's order, and since F08 `SPENDING_CATEGORIES` without `deposit` and `discount`; `tests/unit/test_frontend_static.py` checks it against `api/schemas.py`).
 
 - `api.get/post/patch/put/delete(path, body?)`:
   - prefixes `/api`
   - sends and parses JSON
   - on a non-2xx response, throws an `ApiError {status, error, detail, fields}` built from the [error format](../contracts/error-format.md); `fields` marks the form inputs that failed validation
 - `api.upload(file)` sends the multipart `POST /receipts`.
+- `api.download(path)` (F10) does a `GET`, throws an `ApiError` on non-2xx like the others, and saves the body as a file: the name comes from `Content-Disposition` (fallback `budgie-expenses.csv`), through a temporary `<a download>` and `URL.createObjectURL`; the URL is revoked after 1 s, because revoking in the same task can cancel the download. It reads `filename*=` and `filename=`, drops any path part, and resolves to the filename. `test_frontend_static.py` checks its path like any `api.get`.
 - `pollReceipt(id, onUpdate)` polls every 2 s until the status is `extracted`, `failed` or `confirmed`, and stops after 5 minutes with a "still processing" message ([receipt-lifecycle](../contracts/receipt-lifecycle.md)).
 - `showError(err)` shows `err.detail` in a banner.
 - A failed receipt is not an `ApiError`: `GET /receipts/{id}` returns `200` with `status: failed`. The page shows `error_detail` and the actions for its `error` code ([receipt error codes](../contracts/error-format.md#receipt-error-codes)).

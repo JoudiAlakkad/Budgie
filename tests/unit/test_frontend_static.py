@@ -5,7 +5,7 @@
 2. `fetch(` only in `frontend/js/api.js`.
 3. `frontend/js/categories.js` lists the contract's `Category` Literal, in order.
 4. Every literal path passed to `api.get|post|patch|put|delete(` exists in
-   `docs/openapi.json` with that method.
+   `docs/openapi.json` with that method; `api.download(` counts as a `GET` (F10).
 5. `CATEGORY_LABELS` in `frontend/js/categories.js` equals the domain's copy, which the
    leak explanations use (F09, decision 0023).
 6. No user-visible string in `frontend/js/dashboard.js` says "leak" without "potential"
@@ -42,7 +42,12 @@ LINE_COMMENT = re.compile(r"(^|\s)//[^\n]*")
 INLINE_SCRIPT = re.compile(r"<script\b[^>]*>(.*?)</script>", re.DOTALL | re.IGNORECASE)
 HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 # api.get('/receipts'), api.patch(`/expenses/${id}`, body): the first argument as a literal.
-API_CALL = re.compile(r"\bapi\s*\.\s*(get|post|patch|put|delete)\s*\(\s*(['\"`])(.*?)\2", re.DOTALL)
+# api.download(`/expenses/export.csv${query}`) is a GET that saves the body (F10).
+API_CALL = re.compile(
+    r"\bapi\s*\.\s*(get|post|patch|put|delete|download)\s*\(\s*(['\"`])(.*?)\2", re.DOTALL
+)
+HELPER_METHODS = {"download": "GET"}
+"""`api.*` helpers whose name isn't their HTTP method."""
 PLACEHOLDER = re.compile(r"\$\{[^}]*\}")
 CATEGORIES_BLOCK = re.compile(
     r"export\s+const\s+CATEGORIES\s*=\s*(?:Object\.freeze\(\s*)?\[(.*?)\]", re.DOTALL
@@ -188,6 +193,23 @@ def _normalise(raw: str) -> str:
     return path
 
 
+def _http_method(helper: str) -> str:
+    """The HTTP method behind an `api.<helper>(` call."""
+    return HELPER_METHODS.get(helper, helper.upper())
+
+
+def test_download_is_checked_as_a_get() -> None:
+    """The regex sees `api.download(...)`, and the check treats it as a GET (F10)."""
+    code = "await api.download(`/expenses/export.csv${query}`);"
+    [match] = API_CALL.finditer(code)
+
+    assert (_http_method(match.group(1)), _normalise(match.group(3))) == (
+        "GET",
+        "/api/expenses/export.csv",
+    )
+    assert ("GET", "/api/expenses/export.csv") in _spec_operations()
+
+
 def _spec_operations() -> set[tuple[str, str]]:
     spec = json.loads(OPENAPI.read_text(encoding="utf-8"))
     return {
@@ -202,12 +224,12 @@ def test_every_api_path_in_the_js_exists_in_the_spec() -> None:
     operations = _spec_operations()
     calls = [(path, code, m) for path, code in sources.items() for m in API_CALL.finditer(code)]
     if not calls:
-        pytest.skip("no api.get/post/patch/put/delete call with a literal path yet")
+        pytest.skip("no api.get/post/patch/put/delete/download call with a literal path yet")
 
     unknown = [
-        f"{_where(path, code, m.start())}: {m.group(1).upper()} {m.group(3)}"
+        f"{_where(path, code, m.start())}: {_http_method(m.group(1))} {m.group(3)}"
         for path, code, m in calls
-        if (m.group(1).upper(), _normalise(m.group(3))) not in operations
+        if (_http_method(m.group(1)), _normalise(m.group(3))) not in operations
     ]
 
     assert unknown == [], "not in docs/openapi.json"

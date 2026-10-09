@@ -45,6 +45,25 @@ export const RECEIPT_STATUS_WORDS = {
   confirmed: "Confirmed",
 };
 
+/** `Expense.review_status` in words (a rule result, never a probability; decision 0008). */
+export const REVIEW_STATUS_WORDS = {
+  accepted: "Accepted",
+  needs_review: "Needs review",
+  rejected: "Nothing usable extracted",
+};
+
+/**
+ * `Expense.source` in words, the same words as the CSV `source` column describes. Plain
+ * text about where the data came from, never the review page's "AI-generated" badge,
+ * which disappears once the user confirms (decision 0018). Shared by the Expenses list
+ * and the review page's "Source:" line.
+ */
+export const SOURCE_WORDS = {
+  ai: "AI-extracted",
+  ai_corrected: "AI-extracted, corrected",
+  manual: "Manual entry",
+};
+
 /**
  * A `YYYY-MM-DD` date as `08.10.2026` (de-DE). The date has no time zone, so it is
  * formatted in UTC and never shifts by a day. Anything else is returned unchanged

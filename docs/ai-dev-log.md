@@ -300,3 +300,54 @@ Limitation: every agent test passed while a card could say "you've used 100 %" f
 - Card text showed unclamped amounts while sorting used the clamped ones, and showed "100 %" under budget → `/code-review` and the `reviewer` → fixed with tests in `9b80848`.
 - The goal-card test checked October only, while the wiki says every month → `reviewer` → test runs over every day of 4 months, `9b80848`.
 - The backend worktree started on `078e2b7` instead of `b19f5bf` → the agent's base check (the brief named the hash) → the agent reset to it before starting.
+
+## Episode 10 — F10: CSV export, where review and /code-review harden the formula guard
+- **Date:** 2026-10-09 · **Feature:** F10 · **Commits:** `62a8d2b..c4ae997` · **Outcome:** accepted
+
+**1. Development task given to the agent**
+Plan F10 (CSV export + Expenses page) as a senior developer, assign the tasks to `backend-dev`/`frontend-dev`, and build it. Later: drop `item_qty`/`item_unit` from the CSV.
+
+**2. Relevant context and instructions**
+`.github/issues/F10.md`, [csv-export](wiki/contracts/csv-export.md), decisions 0009/0016/0017/0018. The contract-first commit `62a8d2b` added [0024](wiki/decisions/0024-csv-format-and-formula-guard.md). Each brief named its base hash.
+
+Prompts by the student:
+- "You will run senior software developer with focus on AI and LLM agent to plan next feature in the current project "Budgie". It will review the docs and start a plan while assigning the agents to specific tasks according to their specialization field (backend/frontend)."
+- "go" (accepting all 7 recommendations of the plan)
+- `/code-review`, then: "convert the results of code-review into questions if there are design choices and let the student choose, If not and the results are bugs, assign the backend and frontend agents to solve the bugs"
+- "Let the backend agent do the following: in CSV delete the following columns: source, item_qty, item_unit" (asked back because of criterion 19; the student kept `source`)
+- "After testing on browser, changing the filters in not reflected in the downloaded CSV file."
+
+Briefs written by the main session (summarised):
+- Plan agent: senior developer persona, read-only; read the wiki, issue, contracts, decisions, agent definitions and code; return a sharpened issue, contract gaps, design, task assignment and risks.
+- `backend-dev` (T1): base `62a8d2b`; pure `domain/csv_export.py`, `ExportService` (not on `ExpenseService`, 3.12 pitfall), route with headers, table-driven tests, contract-table test, `make openapi`.
+- `frontend-dev` (T2): base `62a8d2b`; `expenses.html`/`expenses.js` per the page rules, `api.download`, nav link; no HTML sinks, `fetch` only in `api.js`.
+- `reviewer`: diff `c0be9e1..f4e108a` against the issue, contracts, 0024, layer rules and DOM safety.
+- `backend-dev` / `frontend-dev` (code-review fixes): base `dc99479`; the student's four choices, and the five frontend bugs.
+- `backend-dev` (columns): base `787d166`; drop the two columns from the CSV only, not from the DB or JSON API.
+
+**3. Agent's proposed contribution**
+- Plan agent: sharpened issue, contract gaps, 7 open questions with recommendations, split into T0 (wiki) / T1 (backend) / T2 (frontend).
+- `backend-dev`: `domain/csv_export.py`, `ExportService`, route, tests.
+- `frontend-dev`: `expenses.html`/`expenses.js`, `api.download`, nav link.
+
+**4. Tools or permissions used by the agent**
+Plan (read-only); `backend-dev`/`frontend-dev` (Read, Edit, Write, Bash, Grep, Glob) in parallel worktrees; `reviewer` (read-only); `/code-review`. Local commits only.
+
+Model and context: main session and subagents on Claude Opus 5.5 (`claude-opus-5-5`). The context window size isn't shown in the session. Tokens used per subagent run: `backend-dev` T1 94,308; `frontend-dev` T2 81,069; `reviewer` 72,134; `backend-dev` fixes 47,016; `frontend-dev` fixes 55,112; `backend-dev` columns 38,025 (about 388k in total; the Plan agent's use wasn't reported).
+
+**5. How the result was verified**
+- `make check` at every merge (final: 2993 passed, 1 skipped, import contracts kept, no OpenAPI drift).
+- `reviewer`: 0 blockers, 3 should-fix. `/code-review`: 10 findings, 5 decided by the student and 5 bugs sent to the agents.
+- The student's browser test: the CSV ignores list filters other than the dates, which is the behaviour decided in planning (0024). `make docker-check` passed on the host.
+
+**6. What was accepted, modified or rejected**
+Accepted the plan's recommendations for the CSV format (comma, no BOM, formula guard). Modified after review: the guard now also covers values starting with `'`, leading spaces and full-width signs, and fields containing `;` are quoted. The source label became plain text instead of the AI badge. Rejected removing `source` from the CSV, because criterion 19 needs exported AI data to be identifiable; only `item_qty`/`item_unit` were dropped.
+
+**7. Observed benefit, limitation or risk**
+Limitation: every agent passed all automated checks, yet three review layers each found something the tests didn't: an ambiguous guard, a conflict with an earlier decision, and the German `;` hole. The page was never run until the student tested it in a browser, because the container has no JS engine.
+
+**Detected and corrected**
+- Plan agent ran `git checkout` while read-only → its own report → main session confirmed with `git status`: no change.
+- Guard ambiguous for a leading `'`, and 0024 cited a contract rule that didn't exist → reviewer → `c5e1f65`.
+- "AI-generated" badge on confirmed expenses contradicted 0018 → reviewer → `c5e1f65`.
+- `;` and ` =…` slipped past the guard → `/code-review` → student's choice, `dc99479`, `9f40f1b`.

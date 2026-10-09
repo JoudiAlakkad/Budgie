@@ -53,7 +53,8 @@ body {
 
 .site-header nav ul {
   display: flex;
-  gap: 1rem;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -108,7 +109,8 @@ button.danger {
   color: var(--error-border);
 }
 
-button:disabled {
+button:disabled,
+button[aria-disabled="true"] {
   opacity: 0.55;
   cursor: not-allowed;
 }
@@ -814,6 +816,247 @@ input::placeholder {
 
 .leak-explanation {
   margin: 0;
+}
+
+/* ---------------------------------------------------------------- expenses page */
+
+.filter-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
+  gap: 0.75rem 1rem;
+  align-items: end;
+  padding: 1rem 1.25rem;
+  margin-bottom: 0.75rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.filter label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.2rem;
+}
+
+.filter-actions button {
+  width: 100%;
+}
+
+.export-box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.export-box p {
+  margin: 0;
+  flex: 1 1 18rem;
+}
+
+.export-box #export-status {
+  flex-basis: 100%;
+}
+
+.export-box #export-status:empty {
+  display: none;
+}
+
+#list-heading:focus {
+  outline: none;
+}
+
+.table-wrap {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+table.expense-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.expense-table th,
+.expense-table td {
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.expense-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.expense-table th {
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.expense-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.expense-table td.merchant {
+  overflow-wrap: anywhere;
+}
+
+.unknown-value {
+  font-style: italic;
+  color: var(--muted);
+}
+
+.category-tags {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.category-tag {
+  padding: 0 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.category-tag.uncategorized {
+  border-color: var(--warn-border);
+  background: var(--warn-bg);
+  font-weight: 600;
+}
+
+.expense-status {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  white-space: nowrap;
+}
+
+.expense-status .is-confirmed {
+  color: var(--ok-border);
+}
+
+.review-word {
+  font-size: 0.875rem;
+}
+
+.review-needs_review {
+  color: var(--warn-text);
+}
+
+.review-rejected {
+  color: var(--error-border);
+}
+
+.source-label {
+  font-size: 0.875rem;
+}
+
+.row-actions {
+  white-space: nowrap;
+}
+
+.row-actions .button,
+.row-actions button {
+  padding: 0.25rem 0.7rem;
+  margin: 0 0.35rem 0.35rem 0;
+}
+
+dialog#delete-dialog {
+  max-width: min(32rem, calc(100vw - 2rem));
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--fg);
+  background: var(--card);
+}
+
+dialog#delete-dialog::backdrop {
+  background: rgba(29, 35, 48, 0.45);
+}
+
+dialog#delete-dialog h2 {
+  margin-top: 0;
+}
+
+#delete-what {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+/* Phone width: each expense becomes a card; the column name comes from data-label. */
+@media (max-width: 700px) {
+  .expense-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .expense-table,
+  .expense-table tbody,
+  .expense-table tr,
+  .expense-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .expense-table tr {
+    padding: 0.5rem 0.25rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .expense-table tbody tr:last-child {
+    border-bottom: none;
+  }
+
+  .expense-table td {
+    display: grid;
+    grid-template-columns: 6.5rem 1fr;
+    gap: 0.5rem;
+    padding: 0.2rem 0.5rem;
+    border-bottom: none;
+    text-align: left;
+  }
+
+  .expense-table td.num {
+    text-align: left;
+  }
+
+  .expense-table td[data-label]::before {
+    content: attr(data-label);
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: var(--muted);
+  }
+
+  .expense-table td.row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    padding-top: 0.4rem;
+  }
+
+  .expense-status {
+    white-space: normal;
+  }
 }
 
 /* ---------------------------------------------------------------- settings */

@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Expenses · Budgie</title>
+    <link rel="stylesheet" href="css/style.css" />
+    <script type="module" src="js/expenses.js"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="index.html">Budgie</a>
+      <nav aria-label="Main">
+        <ul>
+          <li><a href="index.html">Upload</a></li>
+          <li><a href="expenses.html" aria-current="page">Expenses</a></li>
+          <li><a href="dashboard.html">Dashboard</a></li>
+          <li><a href="settings.html">Settings</a></li>
+        </ul>
+      </nav>
+    </header>
+    <main>
+      <div id="error-banner" class="error-banner" role="alert" hidden></div>
+      <h1>Expenses</h1>
+
+      <form id="filters" class="filter-bar" aria-labelledby="filters-heading">
+        <h2 id="filters-heading" class="visually-hidden">Filters</h2>
+        <div class="filter">
+          <label for="filter-from">From</label>
+          <input id="filter-from" name="from" type="date" min="0001-01-01" max="9999-12-31" />
+        </div>
+        <div class="filter">
+          <label for="filter-to">To</label>
+          <input id="filter-to" name="to" type="date" min="0001-01-01" max="9999-12-31" />
+        </div>
+        <div class="filter">
+          <label for="filter-category">Category</label>
+          <select id="filter-category" name="category"></select>
+        </div>
+        <div class="filter">
+          <label for="filter-confirmed">Status</label>
+          <select id="filter-confirmed" name="confirmed">
+            <option value="">All</option>
+            <option value="true">Confirmed</option>
+            <option value="false">Drafts</option>
+          </select>
+        </div>
+        <div class="filter">
+          <label for="filter-review">Review status</label>
+          <select id="filter-review" name="review_status"></select>
+        </div>
+        <div class="filter">
+          <label for="filter-type">Type</label>
+          <select id="filter-type" name="has_receipt">
+            <option value="">All</option>
+            <option value="true">Photo</option>
+            <option value="false">Manual</option>
+          </select>
+        </div>
+        <div class="filter filter-actions">
+          <button type="button" id="filters-clear">Clear filters</button>
+        </div>
+      </form>
+      <p id="range-hint" class="hint" hidden></p>
+
+      <section class="export-box" aria-labelledby="export-heading">
+        <h2 id="export-heading" class="visually-hidden">Export</h2>
+        <button type="button" id="export-button" aria-describedby="export-note">
+          <span class="icon" aria-hidden="true">⤓ </span>Download CSV
+        </button>
+        <p id="export-note" class="hint">
+          <span id="export-range"></span>
+          The CSV contains confirmed expenses only, one row per item. Only the From and To
+          dates apply; the other filters don't.
+        </p>
+        <p id="export-status" class="hint" role="status" aria-live="polite"></p>
+      </section>
+
+      <section aria-labelledby="list-heading">
+        <h2 id="list-heading" tabindex="-1">List</h2>
+        <p id="list-status" class="hint" role="status" aria-live="polite"></p>
+        <div id="list" aria-busy="true">
+          <p>Loading…</p>
+        </div>
+      </section>
+
+      <dialog id="delete-dialog" aria-labelledby="delete-title" aria-describedby="delete-text">
+        <form method="dialog">
+          <h2 id="delete-title">Delete this expense?</h2>
+          <div id="delete-text">
+            <p id="delete-what"></p>
+            <p id="delete-photo" hidden>
+              <span class="icon" aria-hidden="true">⚠ </span>The receipt photo is deleted too.
+            </p>
+            <p>This can't be undone.</p>
+          </div>
+          <div class="dialog-actions">
+            <button type="submit" value="cancel" autofocus>Cancel</button>
+            <button type="submit" value="delete" class="danger">Delete</button>
+          </div>
+        </form>
+      </dialog>
+    </main>
+  </body>
+</html>

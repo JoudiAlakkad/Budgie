@@ -712,9 +712,23 @@
         ],
         "responses": {
           "200": {
-            "description": "CSV file (contracts/csv-export.md)",
+            "description": "RFC 4180 CSV (contracts/csv-export.md): UTF-8 without BOM, comma, CRLF, a header row; a field is quoted only if it contains a comma, a quote, a line break or `;`, and a quote inside is doubled. Confirmed expenses only, one row per line item, by date, then expense_id, then item position. Columns: `expense_id`, `date`, `merchant`, `currency`, `expense_total`, `item_description`, `item_normalized_name`, `item_amount`, `category`, `source`. Money has exactly 2 decimals; an empty field would mean null, but a confirmed expense has no empty column. A value in `merchant`, `item_description` or `item_normalized_name` gets a leading `'` (formula guard; strip exactly one to get the stored value) when it starts with a tab, a carriage return or `'`, or when its first character after leading whitespace is `=`, `+`, `-`, `@` or a full-width `＝`, `＋`, `－`, `＠`.",
             "content": {
               "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "headers": {
+              "Content-Disposition": {
+                "description": "attachment; filename=\"budgie-expenses_<from|all>_<to|all>.csv\"",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "no-store",
                 "schema": {
                   "type": "string"
                 }
