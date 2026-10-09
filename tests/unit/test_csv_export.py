@@ -131,7 +131,7 @@ def test_qty_is_plain_without_exponent_or_trailing_zeros(
         ("REWE", "REWE"),
         ("A=B", "A=B"),
         (" =x", " =x"),
-        ("'quoted", "'quoted"),
+        ("'t Hoekje", "''t Hoekje"),
         ("", ""),
         (None, ""),
     ],

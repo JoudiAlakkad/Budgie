@@ -957,11 +957,7 @@ table.expense-table {
   color: var(--error-border);
 }
 
-.expense-table .badge-ai {
-  margin-left: 0;
-}
-
-.source-manual {
+.source-label {
   font-size: 0.875rem;
 }
 

@@ -65,8 +65,8 @@ _CSV_DESCRIPTION = (
     + ", ".join(f"`{name}`" for name in CSV_COLUMNS)
     + ". Money has exactly 2 decimals; an empty field is null (only `item_qty` and "
     "`item_unit`). A value in `merchant`, `item_description`, `item_normalized_name` or "
-    "`item_unit` starting with `=`, `+`, `-`, `@`, a tab or a carriage return gets a "
-    "leading `'` (formula guard)."
+    "`item_unit` starting with `=`, `+`, `-`, `@`, a tab, a carriage return or `'` gets a "
+    "leading `'` (formula guard; strip exactly one to get the stored value)."
 )
 
 

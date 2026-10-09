@@ -45,6 +45,8 @@ FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 """First characters a spreadsheet may run as a formula (OWASP CSV injection)."""
 
 FORMULA_ESCAPE = "'"
+"""Also prefixed when it is already the first character, so stripping exactly one leading
+`'` from a guarded column always gives back the stored value."""
 
 MEDIA_TYPE = "text/csv; charset=utf-8"
 
@@ -93,10 +95,12 @@ def format_qty(value: Decimal | None) -> str:
 
 
 def guard(value: str | None) -> str:
-    """The formula guard: a leading `'` if the text starts like a formula."""
+    """The formula guard: a leading `'` if the text starts like a formula or with `'`."""
     if value is None:
         return ""
-    return FORMULA_ESCAPE + value if value.startswith(FORMULA_PREFIXES) else value
+    if value.startswith((*FORMULA_PREFIXES, FORMULA_ESCAPE)):
+        return FORMULA_ESCAPE + value
+    return value
 
 
 def row_values(row: ExportRow) -> tuple[str, ...]:

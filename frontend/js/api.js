@@ -127,7 +127,12 @@ async function download(path) {
   if (!response.ok) {
     throw await errorFrom(response);
   }
-  const blob = await response.blob();
+  let blob;
+  try {
+    blob = await response.blob();
+  } catch {
+    throw new ApiError(0, "network_error", "The download was interrupted. Please try again.", null);
+  }
   const filename = filenameFrom(response.headers.get("Content-Disposition")) || DEFAULT_DOWNLOAD_NAME;
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");

@@ -15,9 +15,11 @@ const CATEGORY_VALUES = new Set([...CATEGORIES, UNCATEGORIZED]);
 
 // Source as the page names it; AI values are always labelled as such (criterion 19).
 const SOURCE_TEXT = {
-  ai: { text: "AI-generated", ai: true },
-  ai_corrected: { text: "AI-extracted, corrected", ai: true },
-  manual: { text: "Manual", ai: false },
+  // Where the data came from, as plain text: not the review page's "AI-generated" badge,
+  // which disappears once the user confirms (0018).
+  ai: "AI-extracted",
+  ai_corrected: "AI-extracted, corrected",
+  manual: "Manual entry",
 };
 
 // Words first, icon second; colour is never the only signal.
@@ -49,6 +51,7 @@ const dialogWhat = document.getElementById("delete-what");
 const dialogPhoto = document.getElementById("delete-photo");
 
 const state = {
+  errorCount: 0, // bumped by every error shown, so an older list request doesn't clear it
   requestId: 0, // only the newest list request may draw
   pendingDelete: null, // the expense the dialog asks about
   downloading: false,
@@ -183,8 +186,7 @@ function statusCell(expense) {
 }
 
 function sourceCell(expense) {
-  const source = SOURCE_TEXT[expense.source] || { text: expense.source, ai: false };
-  return h("span", { className: source.ai ? "badge-ai" : "source-manual" }, source.text);
+  return h("span", { className: "source-label" }, SOURCE_TEXT[expense.source] || expense.source);
 }
 
 /** "REWE on 03.10.2026, 23,47 €", for screen-reader names and the delete dialog. */
@@ -277,11 +279,18 @@ function countText(count) {
   return count === 1 ? "1 expense" : `${count} expenses`;
 }
 
+/** `showError`, counted, so a list request that started earlier leaves it up. */
+function reportError(err) {
+  state.errorCount += 1;
+  showError(err);
+}
+
 async function loadList() {
   const filters = currentFilters();
   writeAddress(filters);
   updateHints(filters);
   const requestId = ++state.requestId;
+  const errorsBefore = state.errorCount;
   listContainer.setAttribute("aria-busy", "true");
   let expenses;
   try {
@@ -291,11 +300,11 @@ async function loadList() {
     listContainer.setAttribute("aria-busy", "false");
     listContainer.replaceChildren(h("p", { className: "hint" }, "The expenses could not be loaded."));
     listStatus.textContent = "";
-    showError(err);
+    reportError(err);
     return;
   }
   if (requestId !== state.requestId) return;
-  clearError();
+  if (state.errorCount === errorsBefore) clearError();
   listContainer.setAttribute("aria-busy", "false");
   const filtered = Object.keys(filters).length > 0;
   if (expenses.length === 0) {
@@ -323,15 +332,16 @@ function askDelete(expense) {
 async function deleteExpense(expense) {
   try {
     await api.delete(`/expenses/${encodeURIComponent(expense.id)}`);
-    listStatus.textContent = `Deleted: ${describe(expense)}.`;
   } catch (err) {
     // 404: someone (another tab, a retry) deleted it already; the reload shows that.
     if (!(err instanceof ApiError && err.status === 404)) {
-      showError(err);
+      reportError(err);
       return;
     }
   }
   await loadList();
+  // After the reload, which rewrites the live region with the count.
+  listStatus.textContent = `Deleted: ${describe(expense)}. ${listStatus.textContent}`.trim();
   listHeading.focus();
 }
 
@@ -355,7 +365,7 @@ async function downloadCsv() {
     exportStatus.textContent = `Downloaded ${filename}.`;
   } catch (err) {
     exportStatus.textContent = "";
-    showError(err);
+    reportError(err);
   } finally {
     state.downloading = false;
     exportButton.disabled = false;

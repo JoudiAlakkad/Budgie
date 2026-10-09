@@ -712,7 +712,7 @@
         ],
         "responses": {
           "200": {
-            "description": "RFC 4180 CSV (contracts/csv-export.md): UTF-8 without BOM, comma, CRLF, a header row; confirmed expenses only, one row per line item, by date, then expense_id, then item position. Columns: `expense_id`, `date`, `merchant`, `currency`, `expense_total`, `item_description`, `item_normalized_name`, `item_qty`, `item_unit`, `item_amount`, `category`, `source`. Money has exactly 2 decimals; an empty field is null (only `item_qty` and `item_unit`). A value in `merchant`, `item_description`, `item_normalized_name` or `item_unit` starting with `=`, `+`, `-`, `@`, a tab or a carriage return gets a leading `'` (formula guard).",
+            "description": "RFC 4180 CSV (contracts/csv-export.md): UTF-8 without BOM, comma, CRLF, a header row; confirmed expenses only, one row per line item, by date, then expense_id, then item position. Columns: `expense_id`, `date`, `merchant`, `currency`, `expense_total`, `item_description`, `item_normalized_name`, `item_qty`, `item_unit`, `item_amount`, `category`, `source`. Money has exactly 2 decimals; an empty field is null (only `item_qty` and `item_unit`). A value in `merchant`, `item_description`, `item_normalized_name` or `item_unit` starting with `=`, `+`, `-`, `@`, a tab, a carriage return or `'` gets a leading `'` (formula guard; strip exactly one to get the stored value).",
             "content": {
               "text/csv": {
                 "schema": {
