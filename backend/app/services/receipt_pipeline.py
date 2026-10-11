@@ -16,10 +16,13 @@
   the categorizer and the rules get them as plain values.
 - **Redaction** (decision 0017): `clean_merchant` on the merchant and `redact_text` on
   every description before the facts are built, and on the stored raw output.
-- **Non-items and deposit returns** (decision 0026): after redaction and before the
-  facts are built, an item `is_non_item` says is a payment, change or tax line is
-  dropped, and a positive item `is_deposit_return` says is money back is negated. Only
-  the stored items change; the raw output stays the model's answer.
+- **Non-items and deposit returns** (decisions 0026, 0027): after redaction and before
+  the facts are built, in this order: an item `is_non_item` says is a payment, change or
+  tax line, or that has no letter, is dropped, and a dropped `zu zahlen` / `gesamtbetrag`
+  line can replace the total (`paid_total`); quantity lines are merged into their
+  product (`merge_quantity_lines`); a positive item `is_deposit_return` says is money
+  back is negated. Only the stored items and total change; the raw output stays the
+  model's answer.
 - **Logs** use fixed templates with ids, codes, counts and exception type names only;
   never `logger.exception`, because a traceback can quote values.
 """
@@ -35,7 +38,7 @@ from decimal import Decimal
 from typing import Protocol
 
 from app.ai.extractor import ExtractionResult, InvalidOutput, load_json
-from app.ai.schema import LineItem, ReceiptExtraction
+from app.ai.schema import ReceiptExtraction
 from app.db.images import ImageStore
 from app.db.records import DuplicateCandidate, FlagRecord, NewExpense, NewLineItem
 from app.db.repositories.expenses import ExpenseRepository
@@ -46,7 +49,13 @@ from app.domain.categorize import CategoryTable
 from app.domain.confidence import assess, is_plausible_receipt
 from app.domain.duplicates import ExpenseKey
 from app.domain.facts import ItemFacts, ReceiptFacts
-from app.domain.non_items import is_deposit_return, is_non_item
+from app.domain.non_items import (
+    ItemLine,
+    is_deposit_return,
+    is_non_item,
+    merge_quantity_lines,
+    paid_total,
+)
 from app.domain.redaction import clean_merchant, redact_text
 from app.domain.validation import normalize_currency, parse_date
 from app.errors import (
@@ -251,12 +260,19 @@ class ReceiptPipeline:
         # stored; a real date or currency has nothing for redact_text to change.
         date_text = redact_text(ex.date) if ex.date is not None else None
         currency_text = redact_text(ex.currency) if ex.currency is not None else None
-        line_items, descriptions, amounts = self._kept_items(
+        lines, total = self._kept_items(
             receipt_id,
-            ex.line_items,
-            [redact_text(item.description) for item in ex.line_items],
-            amounts,
+            [
+                ItemLine(
+                    redact_text(item.description),
+                    amount,
+                    Decimal(str(item.qty)) if item.qty is not None else None,
+                )
+                for item, amount in zip(ex.line_items, amounts, strict=True)
+            ],
+            total,
         )
+        descriptions = [line.description for line in lines]
         facts = ReceiptFacts(
             merchant=merchant,
             date=date_text,
@@ -264,15 +280,13 @@ class ReceiptPipeline:
             subtotal=None,
             tax=None,
             total=total,
-            items=tuple(
-                ItemFacts(description, amount)
-                for description, amount in zip(descriptions, amounts, strict=True)
-            ),
+            items=tuple(ItemFacts(line.description, line.amount) for line in lines),
             unreadable_fields=tuple(ex.unreadable_fields),
         )
         # Plausibility needs no categories (merchant, total, item count), so a non-receipt
-        # never touches the database. The dropped lines still count as receipt lines.
-        if not is_plausible_receipt(facts, dropped=len(ex.line_items) - len(line_items)):
+        # never touches the database. The dropped and merged lines still count as receipt
+        # lines.
+        if not is_plausible_receipt(facts, dropped=len(ex.line_items) - len(lines)):
             raise NotAReceipt(
                 "plausibility rule", raw_output=result.raw_output, latency_s=result.latency_s
             )
@@ -295,20 +309,18 @@ class ReceiptPipeline:
         review_status, flags = assess(facts, self._today(), others)
 
         items = []
-        for item, description, amount, category in zip(
-            line_items, descriptions, amounts, categorized, strict=True
-        ):
-            # The model's qty wins over the normaliser's; it is stored unrounded. The
-            # normaliser's unit stays only with its own qty.
-            qty = Decimal(str(item.qty)) if item.qty is not None else category.qty
+        for line, category in zip(lines, categorized, strict=True):
+            # The model's qty (or a merged quantity line's N) wins over the normaliser's;
+            # it is stored unrounded. The normaliser's unit stays only with its own qty.
+            qty = line.qty if line.qty is not None else category.qty
             items.append(
                 NewLineItem(
-                    description=description,
+                    description=line.description,
                     normalized_name=category.normalized_name,
                     qty=qty,
                     unit=paired_unit(qty, category),
                     unit_price=None,
-                    amount=cents(amount),
+                    amount=cents(line.amount),
                     category=category.category,
                     category_source=category.category_source,
                 )
@@ -335,35 +347,35 @@ class ReceiptPipeline:
 
     @staticmethod
     def _kept_items(
-        receipt_id: int,
-        line_items: Sequence[LineItem],
-        descriptions: list[str],
-        amounts: list[Decimal],
-    ) -> tuple[list[LineItem], list[str], list[Decimal]]:
-        """Drop the non-items, then negate the positive deposit returns (decision 0026).
+        receipt_id: int, lines: Sequence[ItemLine], total: Decimal | None
+    ) -> tuple[list[ItemLine], Decimal | None]:
+        """The stored items and the total (decisions 0026, 0027).
 
-        Runs on the redacted descriptions; logs only the counts.
+        Drops the non-items and takes the total from a dropped paid line, merges the
+        quantity lines, then negates the positive deposit returns. Runs on the redacted
+        descriptions; logs only the counts.
         """
-        kept = [
-            (item, description, amount)
-            for item, description, amount in zip(line_items, descriptions, amounts, strict=True)
-            if not is_non_item(description)
-        ]
-        dropped = len(line_items) - len(kept)
+        kept: list[ItemLine] = []
+        dropped: list[ItemLine] = []
+        for line in lines:
+            (dropped if is_non_item(line.description) else kept).append(line)
         if dropped:
-            logger.info("Receipt %d: dropped %d non-item lines", receipt_id, dropped)
+            logger.info("Receipt %d: dropped %d non-item lines", receipt_id, len(dropped))
+        paid = paid_total(dropped, total)
+        if paid is not None:
+            total = paid
+            logger.info("Receipt %d: took the total from the paid line", receipt_id)
+        kept, merged = merge_quantity_lines(kept)
+        if merged:
+            logger.info("Receipt %d: merged %d quantity lines", receipt_id, merged)
         negated = 0
-        for index, (item, description, amount) in enumerate(kept):
-            if amount > 0 and is_deposit_return(description):
-                kept[index] = (item, description, -amount)
+        for index, line in enumerate(kept):
+            if line.amount > 0 and is_deposit_return(line.description):
+                kept[index] = dataclasses.replace(line, amount=-line.amount)
                 negated += 1
         if negated:
             logger.info("Receipt %d: negated %d deposit returns", receipt_id, negated)
-        return (
-            [item for item, _, _ in kept],
-            [description for _, description, _ in kept],
-            [amount for _, _, amount in kept],
-        )
+        return kept, total
 
     def _lookups(
         self, day: date | None, total: Decimal | None

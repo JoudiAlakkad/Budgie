@@ -1,6 +1,7 @@
 // Upload page: drag and drop or pick a photo, POST /receipts, then open the review page.
-import { api, clearError, formatMoney, showError } from "./api.js";
+import { ApiError, api, clearError, formatMoney, showError } from "./api.js";
 import { RECEIPT_STATUS_WORDS, formatDate, formatTimestamp, h } from "./dom.js";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, preparePhoto } from "./resize.js";
 
 const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("file-input");
@@ -10,23 +11,51 @@ const recentEmpty = document.getElementById("recent-empty");
 
 let uploading = false;
 
+const TOO_LARGE_MESSAGE = `This photo is larger than ${MAX_UPLOAD_MB} MB, the upload limit.`;
+
+/** The upload is over; the page accepts another file. */
+function resetUpload() {
+  uploading = false;
+  fileInput.disabled = false;
+  fileInput.value = "";
+  dropZone.removeAttribute("aria-busy");
+}
+
+/** Shows an error in the banner; a 413 says the limit, which the server's detail doesn't. */
+function showUploadError(err) {
+  if (err instanceof ApiError && err.error === "file_too_large") {
+    showError(new ApiError(err.status, err.error, TOO_LARGE_MESSAGE, null));
+  } else {
+    showError(err);
+  }
+}
+
 async function uploadFile(file) {
   if (!file || uploading) return;
   uploading = true;
   clearError();
   fileInput.disabled = true;
+  dropZone.setAttribute("aria-busy", "true");
+  // Downsizing a phone photo takes a moment (decision 0027); it never rejects.
+  statusLine.textContent = "Preparing photo…";
+  const upload = await preparePhoto(file);
+  if (upload.size > MAX_UPLOAD_BYTES) {
+    // Refused here, before the transfer; the same code the API would answer with.
+    statusLine.textContent = "";
+    showError(new ApiError(413, "file_too_large", TOO_LARGE_MESSAGE, null));
+    resetUpload();
+    return;
+  }
   statusLine.textContent = `Uploading ${file.name}…`;
   try {
-    const receipt = await api.upload(file);
+    const receipt = await api.upload(upload);
     statusLine.textContent = "Uploaded. Opening the review page…";
     window.location.href = `review.html?id=${encodeURIComponent(receipt.id)}`;
   } catch (err) {
-    // 413 file_too_large and 422 unsupported_file carry a readable detail.
+    // 422 unsupported_file carries a readable detail; 413 gets one that names the limit.
     statusLine.textContent = "";
-    showError(err);
-    uploading = false;
-    fileInput.disabled = false;
-    fileInput.value = "";
+    showUploadError(err);
+    resetUpload();
   }
 }
 

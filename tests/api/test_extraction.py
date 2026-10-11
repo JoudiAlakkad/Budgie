@@ -76,6 +76,7 @@ EXTRACTED_CASES = [
     "deposit_trailing_minus",
     "deposit_return_unsigned",
     "deposit_sign_suspect",
+    "quantity_lines_and_paid_total",
 ]
 
 
@@ -304,6 +305,47 @@ def test_a_plain_pfand_whose_flip_matches_is_flagged_not_changed(
             "flipped, the items match the total.",
         },
     ]
+
+
+def test_quantity_lines_merge_and_the_paid_line_sets_the_total(
+    api: TestClient, settings: Settings, model: ModelServer
+) -> None:
+    """Decision 0027, the student's ALDI receipt: `219,000` is dropped, ZU ZAHLEN sets the
+    total, the quantity lines merge into their product, `Pfand / Rückgabe` stays a charge."""
+    receipt = extract(api, settings, model, load_case("quantity_lines_and_paid_total"))
+    expense = receipt["expense"]
+
+    assert [(i["description"], i["qty"], i["amount"]) for i in expense["line_items"]] == [
+        ("RHNEIFELS WASSER M. AR", 24.0, 11.76),  # merged: 24 x 0,49 €
+        ("PFAND / RÜCKGABE 0,25", None, 6.0),  # a charge, not negated
+        ("3 x 0,89 €", 3.0, 2.67),  # both neighbours are deposits: it stays
+        ("PFAND / RÜCKGABE 0,25", None, 0.75),
+        ("LEERGUTRÜCKNAME 19%", 53.0, -13.25),  # merged: -53 x 0,25 €
+        ("CREMA", 1.0, 2.29),
+        ("MOZZARELLA STANGE", 1.0, 6.79),
+        ("BUTTER", 1.0, 1.99),
+        ("KAFFEE", 1.0, 7.49),
+        ("NUDELN", 1.0, 0.99),
+        ("TOMATEN", 1.0, 1.79),
+        ("BANANEN", 1.0, 1.29),
+        ("WASCHMITTEL", 1.0, 5.95),
+        ("SCHOKOLADE", 1.0, 1.29),
+        ("KAESE", 1.0, 3.99),
+        ("JOGHURT", 1.0, 2.61),
+        ("HANDY GUTHABEN", 1.0, 10.0),
+    ]
+    # The total is the paid amount, so the sum check passes and no deposit is suspect;
+    # only the names the seed doesn't know are flagged.
+    assert expense["total"] == 54.4
+    assert [(f["field"], f["code"]) for f in expense["flags"]] == [
+        (f"line_items[{i}]", "uncategorized_item") for i in (0, 2, 5, 6, 16)
+    ]
+    assert expense["review_status"] == "needs_review"
+    # The raw output keeps the model's answer: every line and its total.
+    raw = json.loads(stored(settings, receipt["id"]).raw_model_output)
+    assert raw["total"] == 219.0
+    assert len(raw["line_items"]) == 26
+    assert raw["line_items"][-1] == {"description": "219,000", "qty": None, "amount": 219.0}
 
 
 def test_the_deposit_sign_flag_clears_on_edit_and_never_blocks_confirm(

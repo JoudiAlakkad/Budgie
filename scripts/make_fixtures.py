@@ -246,6 +246,47 @@ SIGN_SUSPECT = lean_answer(
     payment_method="card",
 )
 
+# Decision 0027: modelled on the student's ALDI receipt (generic names, no personal data).
+# The model listed the quantity lines `24 x 0,49 €`, `3 x 0,89 €` and `-53 x 0,25 €` as
+# items, the Pfand charge as `PFAND / RÜCKGABE 0,25`, the payment and tax lines, and the
+# number `219,000`, which it also took as the total; the receipt says ZU ZAHLEN 54,40.
+# Stored: 11.76 + 6.00 + 2.67 + 0.75 - 13.25 + 2.29 + 6.79 + 27.39 + 10.00 = 54.40.
+QUANTITY_LINES = lean_answer(
+    merchant="Beispiel Discount",
+    date="17.09.26",
+    currency="EUR",
+    line_items=[
+        lean_item("24 x 0,49 €", 11.76, 24),
+        lean_item("RHNEIFELS WASSER M. AR", 0.25, 2),
+        lean_item("PFAND / RÜCKGABE 0,25", 6.0, None),
+        lean_item("3 x 0,89 €", 2.67, 3),
+        lean_item("PFAND / RÜCKGABE 0,25", 0.75, None),
+        lean_item("-53 x 0,25 €", -13.25, None),
+        lean_item("LEERGUTRÜCKNAME 19%", 0.99, None),
+        lean_item("CREMA", 2.29),
+        lean_item("MOZZARELLA STANGE", 6.79),
+        lean_item("BUTTER", 1.99),
+        lean_item("KAFFEE", 7.49),
+        lean_item("NUDELN", 0.99),
+        lean_item("TOMATEN", 1.79),
+        lean_item("BANANEN", 1.29),
+        lean_item("WASCHMITTEL", 5.95),
+        lean_item("SCHOKOLADE", 1.29),
+        lean_item("KAESE", 3.99),
+        lean_item("JOGHURT", 2.61),
+        lean_item("HANDY GUTHABEN", 10.0),
+        lean_item("ZU ZAHLEN", 54.4),
+        lean_item("BAR", 54.4),
+        lean_item("MwSt", 0.0, None),
+        lean_item("MwSt - BETRAG", 0.0, None),
+        lean_item("NETTO", 14.08, None),
+        lean_item("BRUTTO", 7.33, None),
+        lean_item("219,000", 219.0, None),
+    ],
+    total=219.0,
+    payment_method="cash",
+)
+
 CASES = [
     Case(
         "valid_receipt",
@@ -357,6 +398,12 @@ CASES = [
         "deposit_sign_suspect",
         "Pfand -0,25 copied as 0.25; flipped it matches the total, so it is flagged.",
         (Text(SIGN_SUSPECT),),
+    ),
+    Case(
+        "quantity_lines_and_paid_total",
+        "Quantity lines, a Pfand / Rückgabe charge and the number 219,000 as items and "
+        "total; the guard merges, keeps and drops them and takes ZU ZAHLEN as the total.",
+        (Text(QUANTITY_LINES),),
     ),
 ]
 

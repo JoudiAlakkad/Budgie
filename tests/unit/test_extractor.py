@@ -26,6 +26,7 @@ from app.ai.prompts import Prompts, UnknownPromptVersion, load_prompts
 from app.ai.schema import (
     EXAMPLE_JSON,
     EXAMPLE_JSON_V1,
+    EXAMPLE_JSON_V3,
     OUTPUT_SPECS,
     RESPONSE_FORMAT,
     RESPONSE_FORMAT_V1,
@@ -265,6 +266,7 @@ EXPECTED: dict[str, tuple[type, int]] = {
     "deposit_trailing_minus": (ExtractionResult, 1),
     "deposit_return_unsigned": (ExtractionResult, 1),
     "deposit_sign_suspect": (ExtractionResult, 1),
+    "quantity_lines_and_paid_total": (ExtractionResult, 1),
 }
 
 
@@ -533,7 +535,7 @@ def make_v1_extractor(transport: httpx.BaseTransport) -> Extractor:
     [
         (PROMPTS_V1, RESPONSE_FORMAT_V1, EXAMPLE_JSON_V1),
         (PROMPTS, RESPONSE_FORMAT, EXAMPLE_JSON),
-        (load_prompts("v3"), RESPONSE_FORMAT, EXAMPLE_JSON),
+        (load_prompts("v3"), RESPONSE_FORMAT, EXAMPLE_JSON_V3),  # its own example (0027)
     ],
     ids=["v1", "v2", "v3"],
 )

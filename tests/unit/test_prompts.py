@@ -35,7 +35,10 @@ def test_the_default_version_is_v3_and_exists() -> None:
     assert default == "v3"
     assert load_prompts(default).version == "v3"
     assert output_spec(default).model is ReceiptExtraction
-    assert output_spec("v3") == output_spec("v2")  # only the prompt text differs (0026)
+    # v2's schema (0026), with its own example without Pfand or Leergut (0027)
+    assert output_spec("v3").model is output_spec("v2").model
+    assert output_spec("v3").response_format == output_spec("v2").response_format
+    assert output_spec("v3").example_json != output_spec("v2").example_json
 
 
 @pytest.mark.parametrize("version", available_versions())
@@ -204,10 +207,22 @@ def test_v3_rules() -> None:
     # v2's keyword-only bullets are gone
     assert "its own item with a positive amount" not in system
     assert "its own item with a negative amount" not in system
-    # one example each: Pfand under its bottle, a trailing minus, a printed minus
-    assert "MINERALWASSER               0,99 € A\n   PFAND                       0,25 € A" in system
-    assert "LEERGUT                     3,00-\n   gives the item LEERGUT -3.00." in system
-    assert "Pfand                      -0,25\n   gives the item Pfand -0.25." in system
+    # no concrete Pfand example lines: gemma3:4b copied them into receipts without any
+    # deposit (0027); the rule text stays
+    assert "MINERALWASSER               0,99 € A" not in system
+    assert "LEERGUT                     3,00-" not in system
+    assert "Pfand                      -0,25" not in system
+    assert (
+        "List a Pfand or Leergut item only if that line is printed on this receipt; most "
+        "receipts have none."
+    ) in system
+    # a number alone is never an item, and the total is the paid amount (0027)
+    assert (
+        "- A line with only a number, such as an article number or 219,000, is never an item."
+    ) in system
+    assert (
+        "The total is the amount on the ZU ZAHLEN / SUMME line, never another number."
+    ) in system
     # the item area ends at the line with the amount paid, not at a ZWISCHENSUMME or a
     # column header, and Pfand zurück stays an item (F13 review)
     boundary = system[system.index("WHERE THE ITEMS END") : system.index("IMPORTANT:")]
@@ -254,6 +269,18 @@ def test_v3_rules() -> None:
         < system.index("WHERE THE ITEMS END")
         < system.index("{example}")
     )
+
+
+def test_v3_has_no_pfand_or_leergut_example_line() -> None:
+    """Decision 0027: no indented example line names a deposit, and neither does the
+    example answer."""
+    system = load_prompts("v3").system
+    for line in system.splitlines():
+        if line.startswith(" "):
+            assert "pfand" not in line.lower() and "leergut" not in line.lower(), line
+        assert not line.startswith(("PFAND ", "LEERGUT ")) or line == "PFAND AND LEERGUT", line
+    example = output_spec("v3").example_json.lower()
+    assert "pfand" not in example and "leergut" not in example
 
 
 def test_v3_user_and_repair_prompts_are_v2s() -> None:

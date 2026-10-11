@@ -64,6 +64,7 @@ item description.
 
 - The letter or digit after a price (A, B, 1, 2) is the tax class, not a quantity.
 - Discounts are items with a negative amount.
+- A line with only a number, such as an article number or 219,000, is never an item.
 
 PFAND AND LEERGUT
 
@@ -73,20 +74,11 @@ A Pfand or Leergut line is always its own item. Only when no sign is printed, it
 - Pfand, Einwegpfand or Mehrweg for bottles you bought is an extra cost: a positive amount.
 - Leergut, Pfandrückgabe, Pfandbon or Pfand zurück is money given back for returned bottles: a negative amount.
 
-Examples:
-   MINERALWASSER               0,99 € A
-   PFAND                       0,25 € A
-   gives two items: MINERALWASSER 0.99 and PFAND 0.25.
-
-   LEERGUT                     3,00-
-   gives the item LEERGUT -3.00.
-
-   Pfand                      -0,25
-   gives the item Pfand -0.25.
+List a Pfand or Leergut item only if that line is printed on this receipt; most receipts have none.
 
 WHERE THE ITEMS END
 
-The items end at the line with the amount paid: SUMME, ZU ZAHLEN or GESAMT followed by the total. Items are only the lines above it. A ZWISCHENSUMME line or a column header such as "Menge Artikel Preis Gesamt" is not that line: Pfand, Leergut and discount lines printed between a ZWISCHENSUMME and the amount paid are still items.
+The items end at the line with the amount paid: SUMME, ZU ZAHLEN or GESAMT followed by the total. Items are only the lines above it. The total is the amount on the ZU ZAHLEN / SUMME line, never another number. A ZWISCHENSUMME line or a column header such as "Menge Artikel Preis Gesamt" is not that line: Pfand, Leergut and discount lines printed between a ZWISCHENSUMME and the amount paid are still items.
 
 Nothing at or below the line with the amount paid is ever an item:
 - payment lines: BAR, Kartenzahlung, EC-Karte, girocard, VISA, Mastercard;

@@ -1,0 +1,31 @@
+{
+  "description": "Quantity lines, a Pfand / Rückgabe charge and the number 219,000 as items and total; the guard merges, keeps and drops them and takes ZU ZAHLEN as the total.",
+  "source": "synthetic",
+  "max_tokens": 2048,
+  "responses": [
+    {
+      "status_code": 200,
+      "body": {
+        "id": "chatcmpl-quantity_lines_and_paid_total-1",
+        "object": "chat.completion",
+        "created": 1790000000,
+        "model": "gemma3:4b",
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "stop",
+            "message": {
+              "role": "assistant",
+              "content": "{\n  \"is_receipt\": true,\n  \"merchant\": \"Beispiel Discount\",\n  \"date\": \"17.09.26\",\n  \"currency\": \"EUR\",\n  \"total\": 219.0,\n  \"payment_method\": \"cash\",\n  \"line_items\": [\n    {\n      \"description\": \"24 x 0,49 €\",\n      \"qty\": 24,\n      \"amount\": 11.76\n    },\n    {\n      \"description\": \"RHNEIFELS WASSER M. AR\",\n      \"qty\": 2,\n      \"amount\": 0.25\n    },\n    {\n      \"description\": \"PFAND / RÜCKGABE 0,25\",\n      \"qty\": null,\n      \"amount\": 6.0\n    },\n    {\n      \"description\": \"3 x 0,89 €\",\n      \"qty\": 3,\n      \"amount\": 2.67\n    },\n    {\n      \"description\": \"PFAND / RÜCKGABE 0,25\",\n      \"qty\": null,\n      \"amount\": 0.75\n    },\n    {\n      \"description\": \"-53 x 0,25 €\",\n      \"qty\": null,\n      \"amount\": -13.25\n    },\n    {\n      \"description\": \"LEERGUTRÜCKNAME 19%\",\n      \"qty\": null,\n      \"amount\": 0.99\n    },\n    {\n      \"description\": \"CREMA\",\n      \"qty\": 1,\n      \"amount\": 2.29\n    },\n    {\n      \"description\": \"MOZZARELLA STANGE\",\n      \"qty\": 1,\n      \"amount\": 6.79\n    },\n    {\n      \"description\": \"BUTTER\",\n      \"qty\": 1,\n      \"amount\": 1.99\n    },\n    {\n      \"description\": \"KAFFEE\",\n      \"qty\": 1,\n      \"amount\": 7.49\n    },\n    {\n      \"description\": \"NUDELN\",\n      \"qty\": 1,\n      \"amount\": 0.99\n    },\n    {\n      \"description\": \"TOMATEN\",\n      \"qty\": 1,\n      \"amount\": 1.79\n    },\n    {\n      \"description\": \"BANANEN\",\n      \"qty\": 1,\n      \"amount\": 1.29\n    },\n    {\n      \"description\": \"WASCHMITTEL\",\n      \"qty\": 1,\n      \"amount\": 5.95\n    },\n    {\n      \"description\": \"SCHOKOLADE\",\n      \"qty\": 1,\n      \"amount\": 1.29\n    },\n    {\n      \"description\": \"KAESE\",\n      \"qty\": 1,\n      \"amount\": 3.99\n    },\n    {\n      \"description\": \"JOGHURT\",\n      \"qty\": 1,\n      \"amount\": 2.61\n    },\n    {\n      \"description\": \"HANDY GUTHABEN\",\n      \"qty\": 1,\n      \"amount\": 10.0\n    },\n    {\n      \"description\": \"ZU ZAHLEN\",\n      \"qty\": 1,\n      \"amount\": 54.4\n    },\n    {\n      \"description\": \"BAR\",\n      \"qty\": 1,\n      \"amount\": 54.4\n    },\n    {\n      \"description\": \"MwSt\",\n      \"qty\": null,\n      \"amount\": 0.0\n    },\n    {\n      \"description\": \"MwSt - BETRAG\",\n      \"qty\": null,\n      \"amount\": 0.0\n    },\n    {\n      \"description\": \"NETTO\",\n      \"qty\": null,\n      \"amount\": 14.08\n    },\n    {\n      \"description\": \"BRUTTO\",\n      \"qty\": null,\n      \"amount\": 7.33\n    },\n    {\n      \"description\": \"219,000\",\n      \"qty\": null,\n      \"amount\": 219.0\n    }\n  ],\n  \"unreadable_fields\": []\n}"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 312,
+          "completion_tokens": 180,
+          "total_tokens": 492
+        }
+      }
+    }
+  ]
+}

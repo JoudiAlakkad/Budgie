@@ -32,6 +32,8 @@ ALLOWED_TEMPLATES = {
     "Receipt %d: extraction started",
     "Receipt %d: dropped %d non-item lines",
     "Receipt %d: negated %d deposit returns",
+    "Receipt %d: took the total from the paid line",
+    "Receipt %d: merged %d quantity lines",
     "Receipt %d: outcome not stored (%s); marking it failed",
     "Receipt %d: result discarded, the receipt is gone",
     "Receipt %d: extracted, %d items, %d flags, review %s",

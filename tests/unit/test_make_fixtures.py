@@ -35,6 +35,7 @@ CASES = {
     "deposit_trailing_minus",
     "deposit_return_unsigned",
     "deposit_sign_suspect",
+    "quantity_lines_and_paid_total",
 }
 
 
@@ -403,6 +404,13 @@ F13_CASES = [
     ("deposit_trailing_minus", 0.73, 0.99 + 0.25 + 2.49 + 3.0),
     ("deposit_return_unsigned", 3.47, 4.74 + 0.48 + 1.5 + 0.25),
     ("deposit_sign_suspect", 3.23, 0.99 + 2.49 + 0.25),
+    # 0027: the stored 54.40, the neighbours' own amounts the merges replace (0.25, 0.99),
+    # and the dropped ZU ZAHLEN, BAR, NETTO, BRUTTO and 219,000 (also the model's total)
+    (
+        "quantity_lines_and_paid_total",
+        219.0,
+        54.4 + 0.25 + 0.99 + 54.4 + 54.4 + 14.08 + 7.33 + 219.0,
+    ),
 ]
 
 

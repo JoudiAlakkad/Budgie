@@ -13,7 +13,7 @@ import pytest
 from app.ai.extractor import ExtractionResult
 from app.ai.schema import LineItem, ReceiptExtraction
 from app.db.images import ImageStore
-from app.db.records import ReceiptRecord
+from app.db.records import ExpenseRecord, ReceiptRecord
 from app.db.repositories.expenses import ExpenseRepository
 from app.db.repositories.receipts import ReceiptRepository
 from app.db.session import Database
@@ -471,4 +471,123 @@ def test_the_guard_reads_the_redacted_description(
     run_with(db, images, result)
 
     assert seen == ["KARTE [card]", "BROT"]
+    db.dispose()
+
+
+# ---------------------------------------------------------------- 0027 fixes
+
+
+def stored_expense(db: Database, receipt_id: int) -> ExpenseRecord:
+    with db.transaction() as session:
+        expense = ExpenseRepository(session).get_by_receipt(receipt_id)
+    assert expense is not None
+    return expense
+
+
+def review_flags(expense: ExpenseRecord) -> list[tuple[str, str]]:
+    """The flags but `uncategorized_item`: this database has no seed."""
+    return [(f.code, f.message) for f in expense.flags if f.code != "uncategorized_item"]
+
+
+def test_quantity_lines_merge_and_the_paid_line_sets_the_total(
+    db_url: str, images: ImageStore, caplog: pytest.LogCaptureFixture
+) -> None:
+    db = Database(db_url)
+    result = result_with(
+        [
+            ("24 x 0,49 €", 11.76),
+            ("WASSER", 0.25),
+            ("BROT", 2.49),
+            ("ZU ZAHLEN", 14.25),
+            ("219,000", 219.0),
+        ],
+        total=219.0,
+    )
+
+    receipt_id = run_with(db, images, result)
+
+    expense = stored_expense(db, receipt_id)
+    assert [(i.description, i.qty, i.amount) for i in expense.line_items] == [
+        ("WASSER", Decimal("24"), Decimal("11.76")),
+        ("BROT", None, Decimal("2.49")),
+    ]
+    # The sum check compares with the paid amount: nothing to flag.
+    assert expense.total == Decimal("14.25")
+    assert review_flags(expense) == []
+    raw = json.loads(get(db, receipt_id).raw_model_output or "")  # type: ignore[union-attr]
+    assert raw["total"] == 219.0 and len(raw["line_items"]) == 5
+    assert f"Receipt {receipt_id}: dropped 2 non-item lines" in caplog.messages
+    assert f"Receipt {receipt_id}: took the total from the paid line" in caplog.messages
+    assert f"Receipt {receipt_id}: merged 1 quantity lines" in caplog.messages
+    assert not any("WASSER" in m or "219" in m or "14.25" in m for m in caplog.messages)
+    db.dispose()
+
+
+def test_a_paid_line_equal_to_the_total_logs_nothing(
+    db_url: str, images: ImageStore, caplog: pytest.LogCaptureFixture
+) -> None:
+    db = Database(db_url)
+    result = result_with([("BROT", 2.49), ("ZU ZAHLEN", 2.49)], total=2.49)
+
+    receipt_id = run_with(db, images, result)
+
+    assert stored_expense(db, receipt_id).total == Decimal("2.49")
+    assert not any("paid line" in m or "merged" in m for m in caplog.messages)
+    db.dispose()
+
+
+def test_the_paid_total_is_used_for_the_duplicate_check(db_url: str, images: ImageStore) -> None:
+    db = Database(db_url)
+    first = run_with(db, images, result_with([("BROT", 2.49)], total=2.49))
+    second = run_with(
+        db, images, result_with([("BROT", 2.49), ("Gesamtbetrag", 2.49)], total=219.0)
+    )
+
+    expense_id = stored_expense(db, first).id
+    assert review_flags(stored_expense(db, second)) == [
+        (
+            "possible_duplicate",
+            f"Looks like a duplicate of expense {expense_id} (Beispiel Markt, 2026-10-01, 2.49).",
+        )
+    ]
+    db.dispose()
+
+
+def test_merged_lines_count_for_plausibility(db_url: str, images: ImageStore) -> None:
+    """A product and its quantity line, without merchant or total: one item is left, and
+    the merged line counts as a receipt line, like a dropped one (0026, 0027)."""
+    db = Database(db_url)
+    result = result_with([("2 x 0,95", 1.9), ("BROETCHEN", 0.95)], merchant=None, total=None)
+
+    receipt_id = run_with(db, images, result)
+
+    record = get(db, receipt_id)
+    assert record is not None and record.status == "extracted"
+    assert stored_items(db, receipt_id) == [("BROETCHEN", Decimal("1.90"))]
+    db.dispose()
+
+
+def test_returns_are_negated_after_the_merge(db_url: str, images: ImageStore) -> None:
+    """`-4 x 0,25` lost its sign (1.00 isn't N x price), so the return keeps its own
+    amount, which is then negated; `PFAND / RÜCKGABE` is a charge and stays positive."""
+    db = Database(db_url)
+    result = result_with(
+        [
+            ("PFAND / RÜCKGABE 0,25", 0.5),
+            ("-4 x 0,25", 1.0),
+            ("Pfandrückgabe", 1.0),
+            ("BROT", 2.49),
+        ],
+        total=1.99,
+    )
+
+    receipt_id = run_with(db, images, result)
+
+    expense = stored_expense(db, receipt_id)
+    assert [(i.description, i.qty, i.amount) for i in expense.line_items] == [
+        ("PFAND / RÜCKGABE 0,25", None, Decimal("0.50")),
+        ("Pfandrückgabe", Decimal("4"), Decimal("-1.00")),
+        ("BROT", None, Decimal("2.49")),
+    ]
+    assert review_flags(expense) == []
     db.dispose()

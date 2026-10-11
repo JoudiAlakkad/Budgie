@@ -17,8 +17,8 @@ payment, change or tax line, and negates a positive item that is a deposit retur
   total of returns (`SUMME LEERGUT`) is, or the returns would count twice.
 - `is_deposit_return(description)`: one of the `DEPOSIT_RETURN_WORDS` is a whole word
   anywhere in the folded description (`LEERGUT`, `Leergut-Bon`, `Pfandrückgabe`,
-  `Pfand-Rückgabe`, `Pfandbon`, `Pfand zurück`). A plain `Pfand` is not one: it can be a
-  cost or a return, so it is only flagged (`deposit_sign_suspect`), never changed.
+  `Pfandbon`, `Pfand zurück`). A plain `Pfand` is not one: it can be a cost or a return,
+  so it is only flagged (`deposit_sign_suspect`), never changed.
 
 Folding is `categorize.fold` (lowercase, `ä ö ü ß` -> `ae oe ue ss`, accents dropped);
 `-` counts as a space (`EC-Karte` = `EC Karte`) and whitespace runs become one space. A
@@ -26,11 +26,32 @@ word is a run of `a-z0-9`, so `.` ends one too.
 The input is cut to `MAX_DESCRIPTION_CHARS` first and both regexes are linear (fixed
 alternatives, no repeated groups), so a hostile description can't stall the pipeline; a
 fixed-size test guards this (workflow.md, CI checks).
+
+Since decision 0027 (the first v3 host test):
+- `is_non_item` is also true for a description with no letter at all (`219,000`,
+  `4711`, `-`, `12,99 €`). A blank description is kept (the user names it), and so is a
+  quantity line (`3 × 0,89`), which `merge_quantity_lines` handles.
+- `is_quantity_line(description)` reads a line that is only a quantity and a price
+  (`24 x 0,49 €`, `1,066 kg x 0,99 €/kg`, `-53 x 0,25 €`) as the signed `(N, price)`.
+- `merge_quantity_lines(lines)` merges each quantity line into the next item, else the
+  previous one, if that has a name and isn't a deposit (unless N x price is negative):
+  qty |N|, and the line's amount when it equals N x price within 0.02.
+- `paid_total(dropped, total)`: the agreed amount of the dropped `zu zahlen` /
+  `gesamtbetrag` lines replaces a null or different total.
+- A bare `rueckgabe` is no longer a return word: `Pfand / Rückgabe` (ALDI's charge line)
+  and `Pfand-Rückgabe` are a plain Pfand.
 """
 
 import re
+from collections.abc import Sequence
+from dataclasses import dataclass
+from decimal import Decimal
 
-from app.domain.categorize import MAX_DESCRIPTION_CHARS, fold
+from app.domain.categorize import MAX_DESCRIPTION_CHARS, fold, is_deposit
+from app.domain.money import cents
+
+MATCH_TOLERANCE = Decimal("0.02")
+"""How far two amounts may differ and still be the same (the sum check's 0.02)."""
 
 NON_ITEM_WORDS = (
     "summe",
@@ -72,7 +93,6 @@ AMOUNT_ONLY_WORDS = (
 DEPOSIT_RETURN_WORDS = (
     "leergut",
     "leergutbon",
-    "rueckgabe",
     "pfandrueckgabe",
     "pfandbon",
     "pfand zurueck",
@@ -113,11 +133,146 @@ def is_deposit_return(description: str) -> bool:
     return _DEPOSIT_RETURN.search(folded(description)) is not None
 
 
+def has_letter(text: str) -> bool:
+    """True if `text` has a letter of any script (`€`, `×`, `%` and digits are none)."""
+    return any(ch.isalpha() for ch in text[:MAX_DESCRIPTION_CHARS])
+
+
 def is_non_item(description: str) -> bool:
-    """True if the description starts with a payment, change or tax word."""
+    """True if the description starts with a payment, change or tax word, or has no
+    letter at all (decision 0027); a blank one and a quantity line are kept."""
     text = folded(description)
+    if not has_letter(text):
+        return bool(description[:MAX_DESCRIPTION_CHARS].strip()) and (
+            is_quantity_line(description) is None
+        )
     if not (_NON_ITEM.match(text) or _AMOUNT_ONLY.match(text) or _TAX_ROW.match(text)):
         return False
     # `Zurück Leergut` is money back for bottles, not the change; `SUMME LEERGUT` is
     # still a total.
     return not (_CHANGE.match(text) and _DEPOSIT_RETURN.search(text))
+
+
+# --- quantity lines, the paid total (decision 0027) -----------------------------------
+
+_NUMBER = r"[0-9]{1,6}(?:[.,][0-9]{1,3})?"
+_SIGN = "[-+\u2212]?"
+# `24 x 0,49 €`, `1,066 kg x 0,99 €/kg`, `-53 x 0,25 €`, `3 × 0,89`, `2 stk x 1.50 eur`.
+# Every part is optional or bounded and the alternatives are fixed, so a failed
+# fullmatch backtracks only a few steps per position.
+_QUANTITY_LINE = re.compile(
+    rf"(?P<qsign>{_SIGN}) ?(?P<qty>{_NUMBER}) ?(?:kg|g|l|stk|st)?\.? ?[x\u00d7] ?"
+    rf"(?P<psign>{_SIGN}) ?(?P<price>{_NUMBER}) ?(?:€|eur)? ?(?:/ ?(?:kg|stk|st))?"
+)
+_PAID_LINE = re.compile(r"(?:zu zahlen|gesamtbetrag)(?![a-z0-9])")
+
+
+def _signed(sign: str, number: str) -> Decimal:
+    value = Decimal(number.replace(",", "."))
+    return -value if sign in ("-", "\u2212") else value
+
+
+def is_quantity_line(description: str) -> tuple[Decimal, Decimal] | None:
+    """`(N, price)`, both signed as printed, if the description is only a quantity line;
+    else None. `-` keeps its meaning here (unlike `folded`), and N may not be 0."""
+    text = " ".join(fold(description[:MAX_DESCRIPTION_CHARS]).split())
+    found = _QUANTITY_LINE.fullmatch(text)
+    if found is None:
+        return None
+    qty = _signed(found["qsign"], found["qty"])
+    if qty == 0:
+        return None
+    return qty, _signed(found["psign"], found["price"])
+
+
+def is_deposit_line(description: str) -> bool:
+    """A Pfand or Leergut item: `categorize.is_deposit` (a word starting or ending with
+    `pfand` / `leergut`) or a deposit-return word (`Flaschenrückgabe`)."""
+    return is_deposit(description) or is_deposit_return(description)
+
+
+@dataclass(frozen=True)
+class ItemLine:
+    """One item as the guard sees it: the redacted description, the amount, the qty."""
+
+    description: str
+    amount: Decimal
+    qty: Decimal | None = None
+
+
+def _has_name(description: str) -> bool:
+    return (
+        has_letter(folded(description))
+        and is_quantity_line(description) is None
+        and not is_non_item(description)
+    )
+
+
+def merge_quantity_lines(lines: Sequence[ItemLine]) -> tuple[list[ItemLine], int]:
+    """The items with each quantity line merged into its product, and the merge count.
+
+    The neighbour is the next item, else the previous one; the previous one comes first
+    when its amount already is N x price within 0.02 (`RINDERHACK 4,17` / `3 x 1,39 €` /
+    `BANANEN`: the line belongs to the item above). It qualifies if it has a name
+    (a letter, not a quantity line, not a non-item), hasn't absorbed a line yet, and isn't
+    a deposit unless N x price is negative (`-53 x 0,25 €` before `LEERGUT`). The merged
+    item keeps the neighbour's description, takes qty |N|, and the line's amount if that
+    is N x price within 0.02, else keeps its own. A line without one stays an item.
+    """
+    parsed = [is_quantity_line(line.description) for line in lines]
+    result: list[ItemLine | None] = list(lines)
+    absorbed: set[int] = set()
+    merged = 0
+    for index, quantity in enumerate(parsed):
+        if quantity is None:
+            continue
+        n, price = quantity
+        product = n * price
+        line = lines[index]
+
+        def qualifies(neighbour: int, product: Decimal = product) -> bool:
+            if not 0 <= neighbour < len(lines) or neighbour in absorbed:
+                return False
+            target = result[neighbour]
+            if target is None or parsed[neighbour] is not None:
+                return False
+            if not _has_name(target.description):
+                return False
+            return product < 0 or not is_deposit_line(target.description)
+
+        before = index - 1
+        previous_matches = qualifies(before) and (
+            abs(lines[before].amount - product) <= MATCH_TOLERANCE
+        )
+        order = (before, index + 1) if previous_matches else (index + 1, before)
+        for neighbour in order:
+            if not qualifies(neighbour):
+                continue
+            target = result[neighbour]
+            if target is None:  # qualifies() checked it; this narrows the type
+                continue
+            matches = abs(line.amount - product) <= MATCH_TOLERANCE
+            result[neighbour] = ItemLine(
+                target.description, line.amount if matches else target.amount, abs(n)
+            )
+            result[index] = None
+            absorbed.add(neighbour)
+            merged += 1
+            break
+    return [line for line in result if line is not None], merged
+
+
+def paid_total(dropped: Sequence[ItemLine], total: Decimal | None) -> Decimal | None:
+    """The total to use instead of `total`, or None to keep it.
+
+    From the dropped lines, those starting with `zu zahlen` or `gesamtbetrag` (not
+    `summe`: tax tables print one too). If there is one, they agree within 0.02, and
+    `total` is null or off the first one by more than 0.02, the first one's amount in
+    cents is the total.
+    """
+    paid = [cents(line.amount) for line in dropped if _PAID_LINE.match(folded(line.description))]
+    if not paid or max(paid) - min(paid) > MATCH_TOLERANCE:
+        return None
+    if total is not None and abs(total - paid[0]) <= MATCH_TOLERANCE:
+        return None
+    return paid[0]

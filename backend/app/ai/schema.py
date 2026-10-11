@@ -19,7 +19,9 @@ stays out (never tried); `maxItems` on `unreadable_fields` bounds repeats instea
 Each prompt version has its own output spec (`OUTPUT_SPECS`): the model that validates
 the answer, the `response_format` sent with the request and the example answer for the
 system prompt. `v2` uses `ReceiptExtraction` (decision 0019), and `v3` reuses v2's
-schema and example, so only its prompt text differs (decision 0026). `v1` keeps the schema and
+schema (decision 0026) with its own example, `EXAMPLE_OUTPUT_V3`, which has no Pfand or
+Leergut line, because the model copied v2's into receipts without any (decision 0027).
+`v1` keeps the schema and
 example from before 0019, frozen as the F11 baseline; the extractor converts a valid v1
 answer to `ReceiptExtraction`, so nothing after the extractor sees the v1 shape.
 """
@@ -193,6 +195,28 @@ EXAMPLE_OUTPUT = ReceiptExtraction(
 )
 EXAMPLE_JSON = EXAMPLE_OUTPUT.model_dump_json(indent=2)
 
+# Prompt v3's example (decision 0027): the same made-up shop without any Pfand or Leergut
+# line, since gemma3:4b copied v2's PFAND and LEERGUT into receipts that had none.
+# 1.19 + 1.90 + 0.49 - 0.30 = 3.28
+EXAMPLE_OUTPUT_V3 = ReceiptExtraction(
+    is_receipt=True,
+    merchant="Beispiel Markt",
+    date="14.03.26",
+    currency="EUR",
+    line_items=[
+        LineItem(description="VOLLMILCH 3,5%", qty=1, amount=1.19),
+        # one block of two lines, "2 x 0,95" and "BROETCHEN": the amount is its total
+        LineItem(description="BROETCHEN", qty=2, amount=1.9),
+        LineItem(description="MINERALWASSER", qty=1, amount=0.49),
+        # a discount: a negative amount
+        LineItem(description="RABATT", qty=None, amount=-0.3),
+    ],
+    total=3.28,
+    payment_method="card",
+    unreadable_fields=[],
+)
+EXAMPLE_JSON_V3 = EXAMPLE_OUTPUT_V3.model_dump_json(indent=2)
+
 
 # ---------------------------------------------------------------- prompt v1 (frozen)
 # FROZEN for the F11 prompt comparison: prompt v1's output schema and example exactly as
@@ -287,5 +311,5 @@ class OutputSpec:
 OUTPUT_SPECS: dict[str, OutputSpec] = {
     "v1": OutputSpec(ReceiptExtractionV1, RESPONSE_FORMAT_V1, EXAMPLE_JSON_V1),
     "v2": OutputSpec(ReceiptExtraction, RESPONSE_FORMAT, EXAMPLE_JSON),
-    "v3": OutputSpec(ReceiptExtraction, RESPONSE_FORMAT, EXAMPLE_JSON),
+    "v3": OutputSpec(ReceiptExtraction, RESPONSE_FORMAT, EXAMPLE_JSON_V3),
 }
