@@ -1,6 +1,6 @@
 # 0013 — Deterministic item categorisation by lookup
 
-**Status:** Accepted (2026-09-28)
+**Status:** Accepted (2026-09-28); the category list was revised by [0025](0025-category-revision.md)
 
 ## Context
 A single supermarket receipt mixes groceries, snacks, alcohol and household goods. To find budget leaks, spending has to be categorised per line item, not per receipt. The user reviews every receipt before confirming it.

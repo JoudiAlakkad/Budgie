@@ -44,6 +44,7 @@ Sets the review status from the flags ([0008](../decisions/0008-rule-based-revie
 | Code | Field | Set when |
 |---|---|---|
 | `sum_mismatch` | `subtotal` and/or `total` | the items' sum is off that value by more than 0.02 |
+| `deposit_sign_suspect` | `line_items[i]` | (F13, [0026](../decisions/0026-prompt-v3-non-item-guard-and-pfand-sign.md)) the item is `deposit`, its description is not a return word, a total exists, the items miss the total by more than 0.02, and with this one item's sign flipped they match within 0.02 |
 | `date_unparseable` | `date` | a date is present but matches neither format |
 | `date_in_future` | `date` | the date is after `today` |
 | `date_too_old` | `date` | the date is more than 2 years before `today` |
@@ -55,7 +56,12 @@ Sets the review status from the flags ([0008](../decisions/0008-rule-based-revie
 | `uncategorized_item` | `line_items[i]` | the item has no category yet (not in the lookup table and none sent) |
 | `possible_duplicate` | `null` field | another expense has the same normalised merchant, date and total ±0.01 |
 
-`assess` returns them in this order: `sum_mismatch` (subtotal, then total), the date flag, `currency_unknown`, the `missing_*` flags, `unreadable` in the model's order, `uncategorized_item` by index. `possible_duplicate` comes last (F07).
+`assess` returns them in this order: `sum_mismatch` (subtotal, then total), `deposit_sign_suspect` by index, the date flag, `currency_unknown`, the `missing_*` flags, `unreadable` in the model's order, `uncategorized_item` by index. `possible_duplicate` comes last (F07).
+
+## `non_items.py` (F13)
+Implements [0026](../decisions/0026-prompt-v3-non-item-guard-and-pfand-sign.md). Pure, linear regexes on the folded description (lowercase, umlauts and ß folded).
+- `is_non_item(description)`: whole words at the start: `summe`, `zu zahlen`, `gesamt`, `bar`, `gegeben`, `rueckgeld`, `zurueck` (not `pfand zurueck`), `ec-karte`, `kartenzahlung`, `girocard`, `visa`, `mastercard`, `mwst`, `ust`, `netto`, `brutto`, `steuer`. The pipeline drops those items.
+- `is_deposit_return(description)`: whole words `leergut`, `leergutbon`, `rueckgabe`, `pfandbon`, `pfand zurueck`. The pipeline negates such an item when its amount is positive; a plain `pfand` is never changed, only flagged (`deposit_sign_suspect`).
 
 ## `categorize.py` (F07)
 Implements [0013](../decisions/0013-deterministic-item-categorisation-by-lookup.md) and [0020](../decisions/0020-user-category-choices-and-duplicate-rule.md).
@@ -81,7 +87,9 @@ Implements [0013](../decisions/0013-deterministic-item-categorisation-by-lookup.
 - **Known limits:** a misread name (`BIO ELITER`) or an unknown token (`BIO EIER OKT 12 STK.` → `eier okt`) misses the seed and the user is asked; a saved choice doesn't recategorise other open drafts.
 
 ### Categories
-`groceries.fresh`, `groceries.staples`, `snacks_sweets`, `drinks`, `alcohol`, `tobacco`, `household`, `personal_care`, `health`, `eating_out`, `transport`, `clothing`, `electronics`, `other`, plus the special categories `deposit` and `discount`, which aren't counted as spending.
+`groceries`, `snacks_sweets`, `drinks`, `tobacco`, `household`, `personal_care`, `health`, `eating_out`, `transport`, `clothing`, `electronics`, `pet`, `other`, plus the special categories `deposit` and `discount`, which aren't counted as spending.
+
+Since [0025](../decisions/0025-category-revision.md) (F13): `groceries.fresh` and `groceries.staples` are one `groceries`, `alcohol` is part of `drinks`, and `pet` is new. Old databases are reset, not migrated.
 
 The API mirrors this list as Literals in `app/api/schemas.py` (`SpendingCategory`, `Category`), because `api` doesn't import `domain`. A test parses this section and checks that the Literals match it.
 
