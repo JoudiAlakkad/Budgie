@@ -261,6 +261,10 @@ EXPECTED: dict[str, tuple[type, int]] = {
     "injection_prose_reply": (MalformedOutput, 2),
     "http_model_not_found": (LLMError, 1),
     "http_unreadable_image": (UnreadableImage, 1),
+    "payment_lines_as_items": (ExtractionResult, 1),
+    "deposit_trailing_minus": (ExtractionResult, 1),
+    "deposit_return_unsigned": (ExtractionResult, 1),
+    "deposit_sign_suspect": (ExtractionResult, 1),
 }
 
 
@@ -526,8 +530,12 @@ def make_v1_extractor(transport: httpx.BaseTransport) -> Extractor:
 
 @pytest.mark.parametrize(
     ("prompts", "response_format", "example"),
-    [(PROMPTS_V1, RESPONSE_FORMAT_V1, EXAMPLE_JSON_V1), (PROMPTS, RESPONSE_FORMAT, EXAMPLE_JSON)],
-    ids=["v1", "v2"],
+    [
+        (PROMPTS_V1, RESPONSE_FORMAT_V1, EXAMPLE_JSON_V1),
+        (PROMPTS, RESPONSE_FORMAT, EXAMPLE_JSON),
+        (load_prompts("v3"), RESPONSE_FORMAT, EXAMPLE_JSON),
+    ],
+    ids=["v1", "v2", "v3"],
 )
 def test_request_carries_the_versions_response_format_and_example(
     prompts: Prompts, response_format: dict, example: str

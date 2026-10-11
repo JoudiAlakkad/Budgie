@@ -261,23 +261,23 @@ def test_spike_text_counts_the_counted_months(count: int, phrase: str) -> None:
 
 
 def test_spike_median_of_three_months_and_amount() -> None:
-    # The middle month counts (it has drinks) and gives alcohol 0: median of 0, 4.74, 10.
-    history = [{"alcohol": D("4.74")}, {"drinks": D("1")}, {"alcohol": D("10")}]
+    # The middle month counts (it has drinks) and gives pet 0: median of 0, 4.74, 10.
+    history = [{"pet": D("4.74")}, {"drinks": D("1")}, {"pet": D("10")}]
 
-    (leak,) = detect({"alcohol": "7.99"}, history=history)
+    (leak,) = detect({"pet": "7.99"}, history=history)
 
     assert leak.amount == D("3.25")  # 7.99 − median 4.74
     assert "+69 %" in leak.explanation
 
 
 def test_spike_in_a_past_month() -> None:
-    found = detect({"alcohol": "10"}, month=Month(2026, 8), history=[{"alcohol": D("4")}] * 2)
+    found = detect({"pet": "10"}, month=Month(2026, 8), history=[{"pet": D("4")}] * 2)
 
-    assert kinds(found) == [("spike", "alcohol")]
+    assert kinds(found) == [("spike", "pet")]
 
 
 def test_spike_helper_with_too_little_history() -> None:
-    assert spike("alcohol", D("100"), [{"alcohol": D("1")}]) is None
+    assert spike("pet", D("100"), [{"pet": D("1")}]) is None
 
 
 # ---------------------------------------------------------------- helpers
@@ -382,7 +382,7 @@ def test_over_budget_and_spike_together() -> None:
 
 
 def test_order_by_type_then_amount_then_category() -> None:
-    history = [{"alcohol": D("2"), "drinks": D("2"), "tobacco": D("2")}] * 2
+    history = [{"pet": D("2"), "drinks": D("2"), "tobacco": D("2")}] * 2
     found = detect(
         {
             "electronics": "60",  # over by 35
@@ -390,7 +390,7 @@ def test_order_by_type_then_amount_then_category() -> None:
             "household": "35",  # over by 10
             "eating_out": "44.50",  # burn
             "health": "9.80",  # burn
-            "alcohol": "10",  # spike 8
+            "pet": "10",  # spike 8
             "drinks": "5",  # spike 3
             "tobacco": "5",  # spike 3
         },
@@ -410,7 +410,7 @@ def test_order_by_type_then_amount_then_category() -> None:
         ("over_budget", "household"),
         ("on_pace_to_overrun", "eating_out"),  # 48.54
         ("on_pace_to_overrun", "health"),  # 11.70
-        ("spike", "alcohol"),
+        ("spike", "pet"),
         ("spike", "drinks"),
         ("spike", "tobacco"),
     ]
@@ -421,9 +421,9 @@ def test_amounts_are_clamped_to_the_money_limit() -> None:
     huge = "50000000000"
 
     found = detect(
-        {"electronics": huge, "alcohol": huge},
+        {"electronics": huge, "pet": huge},
         {"electronics": "1"},
-        history=[{"alcohol": D("1")}] * 2,
+        history=[{"pet": D("1")}] * 2,
     )
 
     assert [leak.amount for leak in found] == [MONEY_LIMIT, MONEY_LIMIT]

@@ -508,11 +508,9 @@
               "anyOf": [
                 {
                   "enum": [
-                    "groceries.fresh",
-                    "groceries.staples",
+                    "groceries",
                     "snacks_sweets",
                     "drinks",
-                    "alcohol",
                     "tobacco",
                     "household",
                     "personal_care",
@@ -521,6 +519,7 @@
                     "transport",
                     "clothing",
                     "electronics",
+                    "pet",
                     "other",
                     "deposit",
                     "discount",
@@ -1533,11 +1532,9 @@
           "category": {
             "type": "string",
             "enum": [
-              "groceries.fresh",
-              "groceries.staples",
+              "groceries",
               "snacks_sweets",
               "drinks",
-              "alcohol",
               "tobacco",
               "household",
               "personal_care",
@@ -1546,6 +1543,7 @@
               "transport",
               "clothing",
               "electronics",
+              "pet",
               "other"
             ],
             "title": "Category"
@@ -1570,11 +1568,9 @@
           "category": {
             "type": "string",
             "enum": [
-              "groceries.fresh",
-              "groceries.staples",
+              "groceries",
               "snacks_sweets",
               "drinks",
-              "alcohol",
               "tobacco",
               "household",
               "personal_care",
@@ -1583,6 +1579,7 @@
               "transport",
               "clothing",
               "electronics",
+              "pet",
               "other"
             ],
             "title": "Category"
@@ -2189,11 +2186,9 @@
           "category": {
             "type": "string",
             "enum": [
-              "groceries.fresh",
-              "groceries.staples",
+              "groceries",
               "snacks_sweets",
               "drinks",
-              "alcohol",
               "tobacco",
               "household",
               "personal_care",
@@ -2202,6 +2197,7 @@
               "transport",
               "clothing",
               "electronics",
+              "pet",
               "other",
               "deposit",
               "discount"
@@ -2237,11 +2233,9 @@
           "category": {
             "type": "string",
             "enum": [
-              "groceries.fresh",
-              "groceries.staples",
+              "groceries",
               "snacks_sweets",
               "drinks",
-              "alcohol",
               "tobacco",
               "household",
               "personal_care",
@@ -2250,6 +2244,7 @@
               "transport",
               "clothing",
               "electronics",
+              "pet",
               "other",
               "deposit",
               "discount"
@@ -2283,11 +2278,9 @@
               {
                 "type": "string",
                 "enum": [
-                  "groceries.fresh",
-                  "groceries.staples",
+                  "groceries",
                   "snacks_sweets",
                   "drinks",
-                  "alcohol",
                   "tobacco",
                   "household",
                   "personal_care",
@@ -2296,6 +2289,7 @@
                   "transport",
                   "clothing",
                   "electronics",
+                  "pet",
                   "other"
                 ]
               },
@@ -2389,11 +2383,9 @@
           "category": {
             "type": "string",
             "enum": [
-              "groceries.fresh",
-              "groceries.staples",
+              "groceries",
               "snacks_sweets",
               "drinks",
-              "alcohol",
               "tobacco",
               "household",
               "personal_care",
@@ -2402,6 +2394,7 @@
               "transport",
               "clothing",
               "electronics",
+              "pet",
               "other",
               "deposit",
               "discount",
@@ -2492,11 +2485,9 @@
               {
                 "type": "string",
                 "enum": [
-                  "groceries.fresh",
-                  "groceries.staples",
+                  "groceries",
                   "snacks_sweets",
                   "drinks",
-                  "alcohol",
                   "tobacco",
                   "household",
                   "personal_care",
@@ -2505,6 +2496,7 @@
                   "transport",
                   "clothing",
                   "electronics",
+                  "pet",
                   "other",
                   "deposit",
                   "discount"

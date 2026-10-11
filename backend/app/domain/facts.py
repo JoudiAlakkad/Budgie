@@ -8,10 +8,12 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Literal
 
-# Every code the rules produce (F04, plus `possible_duplicate` from F07); the "Flag codes"
-# table in domain-logic.md lists the same set. A test checks the two match.
+# Every code the rules produce (F04, `possible_duplicate` from F07, `deposit_sign_suspect`
+# from F13); the "Flag codes" table in domain-logic.md lists the same set. A test checks
+# the two match.
 FlagCode = Literal[
     "sum_mismatch",
+    "deposit_sign_suspect",
     "date_unparseable",
     "date_in_future",
     "date_too_old",

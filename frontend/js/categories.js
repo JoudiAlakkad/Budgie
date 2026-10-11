@@ -1,11 +1,9 @@
 // Mirrors the `Category` Literal in backend/app/api/schemas.py, in the same order.
 // Keep one `"name",` per line: tests/unit/test_frontend_static.py parses this list.
 export const CATEGORIES = [
-  "groceries.fresh",
-  "groceries.staples",
+  "groceries",
   "snacks_sweets",
   "drinks",
-  "alcohol",
   "tobacco",
   "household",
   "personal_care",
@@ -14,6 +12,7 @@ export const CATEGORIES = [
   "transport",
   "clothing",
   "electronics",
+  "pet",
   "other",
   "deposit",
   "discount",
@@ -28,11 +27,9 @@ export const SPENDING_CATEGORIES = CATEGORIES.filter(
 export const UNCATEGORIZED = "uncategorized";
 
 export const CATEGORY_LABELS = {
-  "groceries.fresh": "Groceries: fresh",
-  "groceries.staples": "Groceries: staples",
+  groceries: "Groceries",
   snacks_sweets: "Snacks and sweets",
   drinks: "Drinks",
-  alcohol: "Alcohol",
   tobacco: "Tobacco",
   household: "Household",
   personal_care: "Personal care",
@@ -41,6 +38,7 @@ export const CATEGORY_LABELS = {
   transport: "Transport",
   clothing: "Clothing",
   electronics: "Electronics",
+  pet: "Pet supplies",
   other: "Other",
   deposit: "Deposit (Pfand)",
   discount: "Discount",

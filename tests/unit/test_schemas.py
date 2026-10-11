@@ -218,7 +218,7 @@ def test_missing_response_key_is_an_error() -> None:
 )
 def test_timestamps_serialise_in_utc_with_offset(value: dt.datetime, expected: str) -> None:
     item = ItemCategory(
-        normalized_name="banane", category="groceries.fresh", source="seed", updated_at=value
+        normalized_name="banane", category="groceries", source="seed", updated_at=value
     )
 
     assert json.loads(item.model_dump_json())["updated_at"] == expected

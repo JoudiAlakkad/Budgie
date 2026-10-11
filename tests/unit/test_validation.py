@@ -30,8 +30,8 @@ def facts(**overrides: object) -> ReceiptFacts:
         "tax": None,
         "total": Decimal("3.00"),
         "items": (
-            ItemFacts("MILCH", Decimal("1.00"), "groceries.staples"),
-            ItemFacts("BROT", Decimal("2.00"), "groceries.staples"),
+            ItemFacts("MILCH", Decimal("1.00"), "groceries"),
+            ItemFacts("BROT", Decimal("2.00"), "groceries"),
         ),
         "unreadable_fields": (),
     }
@@ -497,3 +497,133 @@ def test_validate_order_is_sum_date_currency() -> None:
     bad = facts(items=items("1.00"), total=Decimal("5.00"), date="2030-01-01", currency="$$")
 
     assert codes(validate(bad, TODAY)) == ["sum_mismatch", "date_in_future", "currency_unknown"]
+
+
+# --- deposit_sign_suspect (F13, decision 0026) ---------------------------------------
+
+
+def deposit_receipt(*lines: tuple[str, str, str | None], total: str | None) -> ReceiptFacts:
+    """`lines` are (description, amount, category)."""
+    return facts(
+        items=tuple(ItemFacts(d, Decimal(a), c) for d, a, c in lines),
+        total=None if total is None else Decimal(total),
+    )
+
+
+WATER = ("MINERALWASSER", "0.99", "drinks")
+
+DEPOSIT_SIGN = [
+    # Pfand charged and the sum matches: nothing to say
+    ("pfand matches", [WATER, ("PFAND", "0.25", "deposit")], "1.24", []),
+    # a printed return, already negative and matching: nothing
+    ("pfand -0.25 matches", [WATER, ("Pfand", "-0.25", "deposit")], "0.74", []),
+    # the model dropped the minus: flipping the Pfand makes the items match
+    ("pfand flipped matches", [WATER, ("Pfand", "0.25", "deposit")], "0.74", [1]),
+    # a negative Pfand that should have been a cost
+    ("negative pfand flipped matches", [WATER, ("PFAND", "-0.25", "deposit")], "1.24", [1]),
+    # within the tolerance after the flip (0.74 against 0.76)
+    ("flip within 0.02", [WATER, ("Pfand", "0.25", "deposit")], "0.76", [1]),
+    # 0.03 off after the flip: no flag
+    ("flip off by 0.03", [WATER, ("Pfand", "0.25", "deposit")], "0.77", []),
+    # the items miss the total by 0.02 only: no sum_mismatch, so no flag
+    ("sum within 0.02", [WATER, ("Pfand", "0.25", "deposit")], "1.26", []),
+    # flipping doesn't help: only sum_mismatch
+    ("flip does not match", [WATER, ("Pfand", "0.25", "deposit")], "5.00", []),
+    # no total: never
+    ("no total", [WATER, ("Pfand", "0.25", "deposit")], None, []),
+    # not a deposit category: never, even if a flip would match
+    ("not deposit", [WATER, ("Pfand", "0.25", "drinks")], "0.74", []),
+    ("uncategorised", [WATER, ("Pfand", "0.25", None)], "0.74", []),
+    # the category is compared without case or spaces
+    ("category case", [WATER, ("Pfand", "0.25", " Deposit ")], "0.74", [1]),
+    # a return word: the pipeline already negated it, so it is never suspect
+    ("leergut", [WATER, ("LEERGUT", "0.25", "deposit")], "0.74", []),
+    ("pfandbon", [WATER, ("Pfandbon", "0.25", "deposit")], "0.74", []),
+    ("pfand zurueck", [WATER, ("Pfand zurück", "0.25", "deposit")], "0.74", []),
+    # two deposit lines: only the one whose flip matches is flagged
+    (
+        "two deposits, the first flip matches",
+        [WATER, ("PFAND", "0.25", "deposit"), ("PFAND", "1.50", "deposit")],
+        "2.24",  # the items sum to 2.74; flipping 0.25 gives 2.24, flipping 1.50 gives -0.26
+        [1],
+    ),
+    (
+        "two deposits, the second flip matches",
+        [WATER, ("PFAND", "0.25", "deposit"), ("PFAND", "1.50", "deposit")],
+        "-0.26",
+        [2],
+    ),
+    # two equal deposits: either flip matches, so both are flagged; the user decides
+    (
+        "two equal deposits",
+        [WATER, ("PFAND", "0.25", "deposit"), ("PFAND", "0.25", "deposit")],
+        "0.99",
+        [1, 2],
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("lines", "total", "flagged"),
+    [case[1:] for case in DEPOSIT_SIGN],
+    ids=[case[0] for case in DEPOSIT_SIGN],
+)
+def test_deposit_sign_suspect(lines: list, total: str | None, flagged: list[int]) -> None:
+    flags = validate(deposit_receipt(*lines, total=total), TODAY)
+
+    suspects = [f for f in flags if f.code == "deposit_sign_suspect"]
+    assert [f.field for f in suspects] == [f"line_items[{i}]" for i in flagged]
+    if flagged:
+        assert codes(flags) == ["sum_mismatch"] + ["deposit_sign_suspect"] * len(flagged)
+
+
+def test_deposit_sign_message() -> None:
+    receipt = deposit_receipt(WATER, ("Pfand", "0.25", "deposit"), total="0.74")
+
+    assert [(f.field, f.code, f.message) for f in validate(receipt, TODAY)] == [
+        ("total", "sum_mismatch", "Items sum to 1.24 but total is 0.74."),
+        (
+            "line_items[1]",
+            "deposit_sign_suspect",
+            "This deposit line may be a return (money back): with its sign flipped, the "
+            "items match the total.",
+        ),
+    ]
+
+
+def test_deposit_sign_uses_cents_like_the_sum_check() -> None:
+    """Float-born amounts (Decimal(0.99) = 0.98999…) are compared in cents."""
+    receipt = facts(
+        items=(
+            ItemFacts("WASSER", Decimal(0.99), "drinks"),
+            ItemFacts("PFAND", Decimal(0.25), "deposit"),
+        ),
+        total=Decimal("0.74"),
+    )
+
+    assert codes(validate(receipt, TODAY)) == ["sum_mismatch", "deposit_sign_suspect"]
+
+
+def test_deposit_sign_with_a_huge_amount_does_not_crash() -> None:
+    receipt = facts(items=(ItemFacts("PFAND", Decimal("1e30"), "deposit"),), total=Decimal("-1e30"))
+
+    assert codes(validate(receipt, TODAY)) == ["sum_mismatch", "deposit_sign_suspect"]
+
+
+def test_validate_order_is_sum_deposit_sign_date_currency() -> None:
+    bad = facts(
+        items=(
+            ItemFacts("WASSER", Decimal("0.99"), "drinks"),
+            ItemFacts("PFAND", Decimal("0.25"), "deposit"),
+        ),
+        total=Decimal("0.74"),
+        date="2030-01-01",
+        currency="$$",
+    )
+
+    assert codes(validate(bad, TODAY)) == [
+        "sum_mismatch",
+        "deposit_sign_suspect",
+        "date_in_future",
+        "currency_unknown",
+    ]

@@ -257,7 +257,7 @@ BUILT: list[tuple[str, str, dict[str, Any]]] = [
     ("POST", "/api/expenses/1/confirm", {}),
     ("DELETE", "/api/expenses/1", {}),
     ("GET", "/api/item-categories?q=ban", {}),
-    ("PUT", "/api/item-categories/banane", {"json": {"category": "groceries.fresh"}}),
+    ("PUT", "/api/item-categories/banane", {"json": {"category": "groceries"}}),
     ("DELETE", "/api/item-categories/banane", {}),
     ("GET", "/api/budgets", {}),
     ("PUT", "/api/budgets", {"json": [{"category": "snacks_sweets", "monthly_limit": 40}]}),

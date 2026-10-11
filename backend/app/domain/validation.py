@@ -1,8 +1,9 @@
 """Deterministic checks of a receipt (docs/wiki/backend/domain-logic.md#validationpy-f4).
 
 Parsers for German numbers, currencies and dates, and `validate`: the item-sum check
-(tolerance 0.02) and the date and currency checks. There is no tax check: German
-receipts print VAT as included (decision 0008, amendment F04).
+(tolerance 0.02), the deposit-sign check (decision 0026) and the date and currency
+checks. There is no tax check: German receipts print VAT as included (decision 0008,
+amendment F04).
 """
 
 import re
@@ -11,12 +12,18 @@ from decimal import Decimal, localcontext
 
 from app.domain.facts import Flag, ReceiptFacts, is_blank
 from app.domain.money import cents
+from app.domain.non_items import is_deposit_return
 
 SUM_TOLERANCE = Decimal("0.02")
 # Sums are rounded in a context wide enough for any float-built amount: a float's
 # integer part has at most 309 digits, and 100 items add at most 3 more. The default
 # 28 digits would make `quantize` raise InvalidOperation on e.g. Decimal(1e30).
 SUM_PRECISION = 400
+DEPOSIT_CATEGORY = "deposit"
+DEPOSIT_SIGN_MESSAGE = (
+    "This deposit line may be a return (money back): with its sign flipped, the items "
+    "match the total."
+)
 MAX_AGE_YEARS = 2
 
 # parse_number, in this order (ASCII digits only, optional leading "-", no spaces):
@@ -134,6 +141,35 @@ def check_sum(facts: ReceiptFacts) -> list[Flag]:
     return flags
 
 
+def check_deposit_sign(facts: ReceiptFacts) -> list[Flag]:
+    """`deposit_sign_suspect` on each deposit item whose flipped sign makes the items
+    match the total (decision 0026), by index.
+
+    Only when a total exists and the items miss it by more than 0.02; only for an item in
+    `deposit` whose description is not a return word (the pipeline already made those
+    negative). Rounded to cents in the wide context, like `check_sum`. A plain Pfand is
+    never changed: the rules flag, the user decides (decision 0008).
+    """
+    if facts.total is None or not facts.items:
+        return []
+    flags = []
+    with localcontext(prec=SUM_PRECISION):
+        raw_sum = sum((item.amount for item in facts.items), Decimal(0))
+        target = cents(facts.total)
+        if abs(cents(raw_sum) - target) <= SUM_TOLERANCE:
+            return []
+        for index, item in enumerate(facts.items):
+            category = (item.category or "").strip().lower()
+            if category != DEPOSIT_CATEGORY or is_deposit_return(item.description):
+                continue
+            flipped = cents(raw_sum - 2 * item.amount)
+            if abs(flipped - target) <= SUM_TOLERANCE:
+                flags.append(
+                    Flag(f"line_items[{index}]", "deposit_sign_suspect", DEPOSIT_SIGN_MESSAGE)
+                )
+    return flags
+
+
 def check_date(text: str | None, today: date) -> list[Flag]:
     """`date_unparseable`, `date_in_future` or `date_too_old`; a missing date is not checked."""
     if is_blank(text):
@@ -160,5 +196,10 @@ def check_currency(text: str | None) -> list[Flag]:
 
 
 def validate(facts: ReceiptFacts, today: date) -> list[Flag]:
-    """The arithmetic, date and currency flags, in that order."""
-    return [*check_sum(facts), *check_date(facts.date, today), *check_currency(facts.currency)]
+    """The arithmetic, deposit-sign, date and currency flags, in that order."""
+    return [
+        *check_sum(facts),
+        *check_deposit_sign(facts),
+        *check_date(facts.date, today),
+        *check_currency(facts.currency),
+    ]

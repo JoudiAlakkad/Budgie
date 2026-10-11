@@ -18,7 +18,8 @@ stays out (never tried); `maxItems` on `unreadable_fields` bounds repeats instea
 
 Each prompt version has its own output spec (`OUTPUT_SPECS`): the model that validates
 the answer, the `response_format` sent with the request and the example answer for the
-system prompt. `v2` uses `ReceiptExtraction` (decision 0019). `v1` keeps the schema and
+system prompt. `v2` uses `ReceiptExtraction` (decision 0019), and `v3` reuses v2's
+schema and example, so only its prompt text differs (decision 0026). `v1` keeps the schema and
 example from before 0019, frozen as the F11 baseline; the extractor converts a valid v1
 answer to `ReceiptExtraction`, so nothing after the extractor sees the v1 shape.
 """
@@ -286,4 +287,5 @@ class OutputSpec:
 OUTPUT_SPECS: dict[str, OutputSpec] = {
     "v1": OutputSpec(ReceiptExtractionV1, RESPONSE_FORMAT_V1, EXAMPLE_JSON_V1),
     "v2": OutputSpec(ReceiptExtraction, RESPONSE_FORMAT, EXAMPLE_JSON),
+    "v3": OutputSpec(ReceiptExtraction, RESPONSE_FORMAT, EXAMPLE_JSON),
 }

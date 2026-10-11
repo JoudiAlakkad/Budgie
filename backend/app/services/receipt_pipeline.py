@@ -16,6 +16,10 @@
   the categorizer and the rules get them as plain values.
 - **Redaction** (decision 0017): `clean_merchant` on the merchant and `redact_text` on
   every description before the facts are built, and on the stored raw output.
+- **Non-items and deposit returns** (decision 0026): after redaction and before the
+  facts are built, an item `is_non_item` says is a payment, change or tax line is
+  dropped, and a positive item `is_deposit_return` says is money back is negated. Only
+  the stored items change; the raw output stays the model's answer.
 - **Logs** use fixed templates with ids, codes, counts and exception type names only;
   never `logger.exception`, because a traceback can quote values.
 """
@@ -24,14 +28,14 @@ import dataclasses
 import json
 import logging
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from typing import Protocol
 
 from app.ai.extractor import ExtractionResult, InvalidOutput, load_json
-from app.ai.schema import ReceiptExtraction
+from app.ai.schema import LineItem, ReceiptExtraction
 from app.db.images import ImageStore
 from app.db.records import DuplicateCandidate, FlagRecord, NewExpense, NewLineItem
 from app.db.repositories.expenses import ExpenseRepository
@@ -42,6 +46,7 @@ from app.domain.categorize import CategoryTable
 from app.domain.confidence import assess, is_plausible_receipt
 from app.domain.duplicates import ExpenseKey
 from app.domain.facts import ItemFacts, ReceiptFacts
+from app.domain.non_items import is_deposit_return, is_non_item
 from app.domain.redaction import clean_merchant, redact_text
 from app.domain.validation import normalize_currency, parse_date
 from app.errors import (
@@ -246,7 +251,12 @@ class ReceiptPipeline:
         # stored; a real date or currency has nothing for redact_text to change.
         date_text = redact_text(ex.date) if ex.date is not None else None
         currency_text = redact_text(ex.currency) if ex.currency is not None else None
-        descriptions = [redact_text(item.description) for item in ex.line_items]
+        line_items, descriptions, amounts = self._kept_items(
+            receipt_id,
+            ex.line_items,
+            [redact_text(item.description) for item in ex.line_items],
+            amounts,
+        )
         facts = ReceiptFacts(
             merchant=merchant,
             date=date_text,
@@ -286,7 +296,7 @@ class ReceiptPipeline:
 
         items = []
         for item, description, amount, category in zip(
-            ex.line_items, descriptions, amounts, categorized, strict=True
+            line_items, descriptions, amounts, categorized, strict=True
         ):
             # The model's qty wins over the normaliser's; it is stored unrounded. The
             # normaliser's unit stays only with its own qty.
@@ -322,6 +332,38 @@ class ReceiptPipeline:
         )
         latency_ms = round(result.latency_s * 1000)
         return Extracted(expense, latency_ms, redact_raw_output(result.raw_output))
+
+    @staticmethod
+    def _kept_items(
+        receipt_id: int,
+        line_items: Sequence[LineItem],
+        descriptions: list[str],
+        amounts: list[Decimal],
+    ) -> tuple[list[LineItem], list[str], list[Decimal]]:
+        """Drop the non-items, then negate the positive deposit returns (decision 0026).
+
+        Runs on the redacted descriptions; logs only the counts.
+        """
+        kept = [
+            (item, description, amount)
+            for item, description, amount in zip(line_items, descriptions, amounts, strict=True)
+            if not is_non_item(description)
+        ]
+        dropped = len(line_items) - len(kept)
+        if dropped:
+            logger.info("Receipt %d: dropped %d non-item lines", receipt_id, dropped)
+        negated = 0
+        for index, (item, description, amount) in enumerate(kept):
+            if amount > 0 and is_deposit_return(description):
+                kept[index] = (item, description, -amount)
+                negated += 1
+        if negated:
+            logger.info("Receipt %d: negated %d deposit returns", receipt_id, negated)
+        return (
+            [item for item, _, _ in kept],
+            [description for _, description, _ in kept],
+            [amount for _, _, amount in kept],
+        )
 
     def _lookups(
         self, day: date | None, total: Decimal | None

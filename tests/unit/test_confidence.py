@@ -290,6 +290,33 @@ def test_an_edit_clears_the_fixed_flags() -> None:
     assert assess(fully_edited, TODAY) == ("accepted", [])
 
 
+def test_deposit_sign_suspect_order_and_an_edit_clears_it() -> None:
+    """Decision 0026: right after `sum_mismatch`, before the date flag and the item flags;
+    recomputed on every assess, so fixing the sign clears both flags. Never blocks
+    anything by itself: it is only a flag that makes the receipt need review."""
+    extracted = facts(
+        date="2030-01-01",
+        items=(item("MILCH", "1.00", None), item("PFAND", "0.25", "deposit")),
+        total=Decimal("0.75"),
+    )
+
+    status, flags = assess(extracted, TODAY)
+    assert status == "needs_review"
+    assert pairs(flags) == [
+        ("total", "sum_mismatch"),
+        ("line_items[1]", "deposit_sign_suspect"),
+        ("date", "date_in_future"),
+        ("line_items[0]", "uncategorized_item"),
+    ]
+
+    edited = replace(
+        extracted,
+        date="2026-10-01",
+        items=(item("MILCH", "1.00"), item("PFAND", "-0.25", "deposit")),
+    )
+    assert assess(edited, TODAY) == ("accepted", [])
+
+
 def test_categorising_an_item_clears_its_flag() -> None:
     extracted = facts(items=(item("MILCH", "1.00", None), item("BROT", "2.00", None)))
     assert pairs(assess(extracted, TODAY)[1]) == [
@@ -432,6 +459,7 @@ TWIN = ExpenseKey(7, "REWE", date(2026, 10, 1), Decimal("3.00"))
 # Facts (and other expenses) that together raise every code the rules know.
 EVERY_FLAG: list[tuple[ReceiptFacts, tuple[ExpenseKey, ...]]] = [
     (facts(items=(item(amount="1.00", category=None),), total=Decimal("9.00")), ()),
+    (facts(items=(item(), item("PFAND", "0.25", "deposit")), total=Decimal("0.75")), ()),
     (facts(date="2030-01-01"), ()),
     (facts(date="2020-01-01"), ()),
     (facts(date="soon", currency="$"), ()),

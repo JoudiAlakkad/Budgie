@@ -1,0 +1,1 @@
+Transcribe this receipt into the JSON schema.

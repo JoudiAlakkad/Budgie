@@ -72,6 +72,10 @@ EXTRACTED_CASES = [
     "missing_fields",
     "non_receipt_claimed_receipt",
     "injection_text_as_data",
+    "payment_lines_as_items",
+    "deposit_trailing_minus",
+    "deposit_return_unsigned",
+    "deposit_sign_suspect",
 ]
 
 
@@ -98,7 +102,7 @@ def test_extracted_receipt_has_an_unconfirmed_ai_expense(
         assert (item["category"], item["category_source"]) == expected
     assert expense["review_status"] == ("needs_review" if expense["flags"] else "accepted")
     row = stored(settings, receipt["id"])
-    assert (row.model_name, row.prompt_version) == ("gemma3:4b", "v2")
+    assert (row.model_name, row.prompt_version) == ("gemma3:4b", "v3")
     assert row.latency_ms is not None and row.latency_ms >= 0
     assert row.raw_model_output == redact_raw_output(answers(case)[-1])
 
@@ -116,7 +120,7 @@ def test_valid_receipt_is_converted_and_assessed(
     # The recording has subtotal 14.16, tax 0.99 and unit prices; none is read (0019).
     assert (expense["subtotal"], expense["tax"], expense["total"]) == (None, None, 15.15)
     items = expense["line_items"]
-    assert len(items) == 11
+    assert len(items) == 8  # the model's ZU ZAHLEN, BAR and ZURÜCK are dropped (0026)
     assert items[0] == {
         "id": items[0]["id"],
         "description": "RISPENTOMATEN KG-WARE",
@@ -125,23 +129,26 @@ def test_valid_receipt_is_converted_and_assessed(
         "unit": None,
         "unit_price": None,
         "amount": 1.51,
-        "category": "groceries.fresh",
+        "category": "groceries",
         "category_source": "seed",
     }
     assert items[1]["qty"] == 2.0
-    assert [item["description"] for item in items[-3:]] == ["ZU ZAHLEN", "BAR", "ZURÜCK"]
+    assert items[-1]["description"] == "PFLÜCKSALAT"
     assert all(item["unit_price"] is None for item in items)
-    # The payment lines listed as items make the sum wrong (domain-logic.md).
+    # The raw output keeps the model's answer, payment lines included (0026).
+    raw = json.loads(stored(settings, expense["receipt_id"]).raw_model_output)
+    assert [i["description"] for i in raw["line_items"][-3:]] == ["ZU ZAHLEN", "BAR", "ZURÜCK"]
+    # Without the payment lines the items still miss the total by 0.26: a misread price.
     assert [(f["field"], f["code"]) for f in expense["flags"]] == [
         ("total", "sum_mismatch"),
         ("merchant", "unreadable"),
         ("date", "unreadable"),
         ("total", "unreadable"),
         ("currency", "unreadable"),
-        # Not in the seed: a misread name, `eier okt`, and the three payment lines.
-        *[(f"line_items[{i}]", "uncategorized_item") for i in (1, 2, 8, 9, 10)],
+        # Not in the seed: a misread name and `eier okt`.
+        *[(f"line_items[{i}]", "uncategorized_item") for i in (1, 2)],
     ]
-    assert expense["flags"][0]["message"] == "Items sum to 54.89 but total is 15.15."
+    assert expense["flags"][0]["message"] == "Items sum to 14.89 but total is 15.15."
 
 
 def test_missing_fields_are_null_and_flagged(
@@ -200,6 +207,129 @@ def test_a_retried_receipt_is_not_a_duplicate_of_its_old_expense(
     again = api.get(f"/api/receipts/{receipt['id']}").json()["expense"]
     assert again["id"] != receipt["expense"]["id"]
     assert [f for f in again["flags"] if f["code"] == "possible_duplicate"] == []
+
+
+# ---------------------------------------------------------------- F13 guard (0026)
+
+
+def summary(expense: dict) -> list[tuple[str, float, str]]:
+    return [(i["description"], i["amount"], i["category"]) for i in expense["line_items"]]
+
+
+def raw_items(settings: Settings, receipt: dict) -> list[tuple[str, float]]:
+    raw = json.loads(stored(settings, receipt["id"]).raw_model_output)
+    return [(i["description"], i["amount"]) for i in raw["line_items"]]
+
+
+def test_payment_and_tax_lines_are_dropped(
+    api: TestClient, settings: Settings, model: ModelServer
+) -> None:
+    receipt = extract(api, settings, model, load_case("payment_lines_as_items"))
+    expense = receipt["expense"]
+
+    assert summary(expense) == [
+        ("BROT", 2.49, "groceries"),
+        ("VOLLMILCH 3,5%", 1.19, "groceries"),
+        ("BIO BANANE 1 KG", 1.99, "groceries"),
+    ]
+    # With the junk gone the items match the total: nothing left to review.
+    assert (expense["total"], expense["review_status"], expense["flags"]) == (
+        5.67,
+        "accepted",
+        [],
+    )
+    # The stored raw output is the model's answer, payment lines included.
+    assert [d for d, _ in raw_items(settings, receipt)][3:] == [
+        "SUMME",
+        "BAR",
+        "RÜCKGELD",
+        "MwSt 19%",
+        "EC-Karte",
+    ]
+
+
+def test_a_return_that_lost_its_trailing_minus_is_negated(
+    api: TestClient, settings: Settings, model: ModelServer
+) -> None:
+    receipt = extract(api, settings, model, load_case("deposit_trailing_minus"))
+    expense = receipt["expense"]
+
+    assert summary(expense) == [
+        ("MINERALWASSER", 0.99, "drinks"),
+        ("PFAND", 0.25, "deposit"),  # a Pfand charged stays positive
+        ("BROT", 2.49, "groceries"),
+        ("LEERGUT", -3.0, "deposit"),
+    ]
+    assert (expense["review_status"], expense["flags"]) == ("accepted", [])
+    assert ("LEERGUT", 3.0) in raw_items(settings, receipt)  # the model's sign is kept there
+
+
+def test_unsigned_returns_are_negated(
+    api: TestClient, settings: Settings, model: ModelServer
+) -> None:
+    receipt = extract(api, settings, model, load_case("deposit_return_unsigned"))
+    expense = receipt["expense"]
+
+    assert summary(expense) == [
+        ("BIER", 4.74, "drinks"),
+        ("PFAND", 0.48, "deposit"),
+        ("PFANDBON", -1.5, "deposit"),
+        ("Pfand zurück", -0.25, "deposit"),
+    ]
+    assert (expense["total"], expense["review_status"], expense["flags"]) == (
+        3.47,
+        "accepted",
+        [],
+    )
+    assert raw_items(settings, receipt)[2:] == [("PFANDBON", 1.5), ("Pfand zurück", 0.25)]
+
+
+def test_a_plain_pfand_whose_flip_matches_is_flagged_not_changed(
+    api: TestClient, settings: Settings, model: ModelServer
+) -> None:
+    expense = extract(api, settings, model, load_case("deposit_sign_suspect"))["expense"]
+
+    assert summary(expense)[-1] == ("Pfand", 0.25, "deposit")  # never changed by code
+    assert expense["review_status"] == "needs_review"
+    assert expense["flags"] == [
+        {
+            "field": "total",
+            "code": "sum_mismatch",
+            "message": "Items sum to 3.73 but total is 3.23.",
+        },
+        {
+            "field": "line_items[2]",
+            "code": "deposit_sign_suspect",
+            "message": "This deposit line may be a return (money back): with its sign "
+            "flipped, the items match the total.",
+        },
+    ]
+
+
+def test_the_deposit_sign_flag_clears_on_edit_and_never_blocks_confirm(
+    api: TestClient, settings: Settings, model: ModelServer
+) -> None:
+    expense = extract(api, settings, model, load_case("deposit_sign_suspect"))["expense"]
+
+    def with_pfand(amount: float) -> dict:
+        # The whole list is sent: an item left out of `line_items` is deleted.
+        items = [
+            {"id": i["id"], "description": i["description"], "amount": i["amount"]}
+            for i in expense["line_items"]
+        ]
+        items[2]["amount"] = amount
+        return {"line_items": items}
+
+    edited = api.patch(f"/api/expenses/{expense['id']}", json=with_pfand(-0.25))
+    assert edited.status_code == 200, edited.text
+    assert (edited.json()["review_status"], edited.json()["flags"]) == ("accepted", [])
+
+    # Back to the model's sign: the flag is recomputed, and confirming still works.
+    again = api.patch(f"/api/expenses/{expense['id']}", json=with_pfand(0.25))
+    assert [f["code"] for f in again.json()["flags"]] == ["sum_mismatch", "deposit_sign_suspect"]
+    confirmed = api.post(f"/api/expenses/{expense['id']}/confirm")
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()["confirmed"] is True
 
 
 def test_injected_text_stays_an_item(
@@ -568,7 +698,8 @@ def test_prompt_v1_extracts_the_recorded_receipt_with_its_frozen_schema(
     expense = receipt["expense"]
     # The recording has subtotal 14.16, tax 0.99 and unit prices; none is stored (0019).
     assert (expense["subtotal"], expense["tax"], expense["total"]) == (None, None, 15.15)
-    assert len(expense["line_items"]) == 11
+    # The guard drops the three payment lines under every prompt version (0026).
+    assert len(expense["line_items"]) == 8
     assert all(item["unit_price"] is None for item in expense["line_items"])
     assert expense["merchant"] == "ALDI"
     row = stored(settings, receipt_id)
@@ -578,6 +709,7 @@ def test_prompt_v1_extracts_the_recorded_receipt_with_its_frozen_schema(
     raw = json.loads(row.raw_model_output)
     assert (raw["subtotal"], raw["tax"]) == (14.16, 0.99)
     assert raw["line_items"][0]["unit_price"] == 1.51
+    assert len(raw["line_items"]) == 11
 
 
 class VanishedImages(ImageStore):

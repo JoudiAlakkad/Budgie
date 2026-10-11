@@ -8,7 +8,7 @@
 #
 # Loaded with yaml.safe_load only.
 
-groceries.fresh:
+groceries:
   # fruit
   - banane
   - bananen
@@ -129,8 +129,7 @@ groceries.fresh:
   - baguette
   - croissant
   - tofu
-
-groceries.staples:
+  # staples
   - nudeln
   - spaghetti
   - penne
@@ -212,8 +211,7 @@ drinks:
   - hafermilch
   - sojamilch
   - mandelmilch
-
-alcohol:
+  # alcohol
   - bier
   - pils
   - weizenbier
@@ -317,6 +315,18 @@ electronics:
   - ladekabel
   - kopfhoerer
   - usb kabel
+
+pet:
+  - hundefutter
+  - katzenfutter
+  - katzenstreu
+  - nassfutter
+  - trockenfutter
+  - tierfutter
+  - vogelfutter
+  - kauknochen
+  - hundesnacks
+  - katzensnacks
 
 deposit:
   - pfand

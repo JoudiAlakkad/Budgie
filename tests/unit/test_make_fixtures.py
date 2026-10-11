@@ -31,6 +31,10 @@ CASES = {
     "injection_prose_reply",
     "http_model_not_found",
     "http_unreadable_image",
+    "payment_lines_as_items",
+    "deposit_trailing_minus",
+    "deposit_return_unsigned",
+    "deposit_sign_suspect",
 }
 
 
@@ -390,6 +394,36 @@ def test_synthetic_cases_add_up(script: ModuleType, spike_dir: Path, tmp_path: P
         data = json.loads(contents(load(out, case))[-1])
         assert data["total"] == total
         assert sum(i["amount"] for i in data["line_items"]) == pytest.approx(total)
+
+
+# F13 (decision 0026): the total, and the items' sum as the model answered, before the
+# pipeline drops the payment lines and negates the return words.
+F13_CASES = [
+    ("payment_lines_as_items", 5.67, 5.67 + 5.67 + 10.0 + 4.33 + 0.4 + 5.67),
+    ("deposit_trailing_minus", 0.73, 0.99 + 0.25 + 2.49 + 3.0),
+    ("deposit_return_unsigned", 3.47, 4.74 + 0.48 + 1.5 + 0.25),
+    ("deposit_sign_suspect", 3.23, 0.99 + 2.49 + 0.25),
+]
+
+
+@pytest.mark.parametrize(("case", "total", "answered_sum"), F13_CASES)
+def test_f13_cases_are_lean_and_miss_the_total_as_answered(
+    script: ModuleType,
+    spike_dir: Path,
+    tmp_path: Path,
+    case: str,
+    total: float,
+    answered_sum: float,
+) -> None:
+    out = tmp_path / "out"
+    run(script, spike_dir, out)
+    data = json.loads(contents(load(out, case))[-1])
+
+    assert data["total"] == total
+    assert sum(i["amount"] for i in data["line_items"]) == pytest.approx(answered_sum)
+    assert answered_sum != pytest.approx(total)  # the guard or the flag has work to do
+    assert {"subtotal", "tax"}.isdisjoint(data)
+    assert all(set(i) == {"description", "qty", "amount"} for i in data["line_items"])
 
 
 def test_second_run_is_identical(script: ModuleType, spike_dir: Path, tmp_path: Path) -> None:

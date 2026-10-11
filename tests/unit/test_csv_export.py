@@ -38,7 +38,7 @@ ROW = ExportRow(
     item_description="BIO BANANE 1 KG",
     item_normalized_name="banane",
     item_amount=Decimal("1.99"),
-    category="groceries.fresh",
+    category="groceries",
     source="ai_corrected",
 )
 
@@ -194,7 +194,7 @@ def test_row_values_in_column_order() -> None:
         "BIO BANANE 1 KG",
         "banane",
         "1.99",
-        "groceries.fresh",
+        "groceries",
         "ai_corrected",
     )
 
@@ -203,9 +203,7 @@ def test_null_is_an_empty_field() -> None:
     # Not possible for a confirmed expense (confirm requires them), but still written empty.
     row = replace(ROW, merchant=None, expense_total=None)
 
-    assert line(row) == (
-        "42,2026-10-03,,EUR,,BIO BANANE 1 KG,banane,1.99,groceries.fresh,ai_corrected"
-    )
+    assert line(row) == ("42,2026-10-03,,EUR,,BIO BANANE 1 KG,banane,1.99,groceries,ai_corrected")
 
 
 def test_a_confirmed_row_has_no_empty_field() -> None:
@@ -281,7 +279,7 @@ def test_semicolon_field_is_quoted_once_with_inner_quotes_doubled() -> None:
 
     assert line(row) == (
         '42,2026-10-03,"REWE;=HYPERLINK(""x"")",EUR,-0.25,BIO BANANE 1 KG,banane,1.99,'
-        "groceries.fresh,ai_corrected"
+        "groceries,ai_corrected"
     )
     assert parse(render([row]))[1][COLUMNS.index("merchant")] == 'REWE;=HYPERLINK("x")'
 

@@ -593,6 +593,8 @@ def test_output_specs() -> None:
         ReceiptExtractionV1, RESPONSE_FORMAT_V1, EXAMPLE_JSON_V1
     )
     assert OUTPUT_SPECS["v2"] == OutputSpec(ReceiptExtraction, RESPONSE_FORMAT, EXAMPLE_JSON)
+    # v3 changes only the prompt text (decision 0026)
+    assert OUTPUT_SPECS["v3"] == OUTPUT_SPECS["v2"]
     with pytest.raises(dataclasses.FrozenInstanceError):
         OUTPUT_SPECS["v1"].example_json = "{}"  # type: ignore[misc]
 

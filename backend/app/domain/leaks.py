@@ -43,11 +43,9 @@ SPIKE_MIN_MONTHS = 2
 """History months with any spend needed before a spike can fire."""
 
 CATEGORY_LABELS: dict[str, str] = {
-    "groceries.fresh": "Groceries: fresh",
-    "groceries.staples": "Groceries: staples",
+    "groceries": "Groceries",
     "snacks_sweets": "Snacks and sweets",
     "drinks": "Drinks",
-    "alcohol": "Alcohol",
     "tobacco": "Tobacco",
     "household": "Household",
     "personal_care": "Personal care",
@@ -56,6 +54,7 @@ CATEGORY_LABELS: dict[str, str] = {
     "transport": "Transport",
     "clothing": "Clothing",
     "electronics": "Electronics",
+    "pet": "Pet supplies",
     "other": "Other",
     "deposit": "Deposit (Pfand)",
     "discount": "Discount",

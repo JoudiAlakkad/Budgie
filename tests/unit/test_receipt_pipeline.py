@@ -1,17 +1,20 @@
 """`ReceiptPipeline` directly: the lock, guarded transitions and storage errors."""
 
 import datetime as dt
+import json
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
 from app.ai.extractor import ExtractionResult
-from app.ai.schema import ReceiptExtraction
+from app.ai.schema import LineItem, ReceiptExtraction
 from app.db.images import ImageStore
 from app.db.records import ReceiptRecord
+from app.db.repositories.expenses import ExpenseRepository
 from app.db.repositories.receipts import ReceiptRepository
 from app.db.session import Database
 from app.errors import LLMTimeout, StorageError
@@ -340,4 +343,118 @@ def test_today_is_read_inside_the_task_when_the_rules_run(db_url: str, images: I
     task.run(receipt_id)
 
     assert events == ["extract", "today"]
+    db.dispose()
+
+
+# ---------------------------------------------------------------- F13 guard (0026)
+
+
+def result_with(items: list[tuple[str, float]], **fields: object) -> ExtractionResult:
+    extraction = VALID.model_copy(
+        update={
+            "line_items": [
+                LineItem(description=description, qty=None, amount=amount)
+                for description, amount in items
+            ],
+            **fields,
+        }
+    )
+    return ExtractionResult(
+        extraction, "fake-model", "v3", 0.25, extraction.model_dump_json(), False, 10
+    )
+
+
+def run_with(db: Database, images: ImageStore, result: ExtractionResult) -> int:
+    receipt_id = new_receipt(db, images)
+    pipeline(db, images, FakeExtractor(result)).run(receipt_id)
+    return receipt_id
+
+
+def stored_items(db: Database, receipt_id: int) -> list[tuple[str, Decimal]]:
+    with db.transaction() as session:
+        expense = ExpenseRepository(session).get_by_receipt(receipt_id)
+    assert expense is not None
+    return [(item.description, item.amount) for item in expense.line_items]
+
+
+def test_non_items_are_dropped_and_returns_negated_after_redaction(
+    db_url: str, images: ImageStore, caplog: pytest.LogCaptureFixture
+) -> None:
+    db = Database(db_url)
+    result = result_with(
+        [
+            ("BROT", 2.49),
+            ("SUMME", 1.24),
+            ("LEERGUT", 1.25),
+            ("Pfand", 0.25),  # never changed by code
+            ("Pfand -0,25", -0.25),  # already negative: unchanged
+            ("BAR", 5.0),
+            ("Rückgeld", 3.76),
+            ("MwSt 19%", 0.2),
+        ],
+        total=1.24,
+    )
+
+    receipt_id = run_with(db, images, result)
+
+    assert stored_items(db, receipt_id) == [
+        ("BROT", Decimal("2.49")),
+        ("LEERGUT", Decimal("-1.25")),
+        ("Pfand", Decimal("0.25")),
+        ("Pfand -0,25", Decimal("-0.25")),
+    ]
+    record = get(db, receipt_id)
+    assert record is not None and record.status == "extracted"
+    # The raw output is the model's answer: every line, LEERGUT positive.
+    raw = json.loads(record.raw_model_output or "")
+    assert len(raw["line_items"]) == 8
+    assert raw["line_items"][2] == {"description": "LEERGUT", "qty": None, "amount": 1.25}
+    # Only the counts are logged, through fixed templates.
+    assert f"Receipt {receipt_id}: dropped 4 non-item lines" in caplog.messages
+    assert f"Receipt {receipt_id}: negated 1 deposit returns" in caplog.messages
+    assert not any("SUMME" in m or "LEERGUT" in m for m in caplog.messages)
+    db.dispose()
+
+
+def test_nothing_to_drop_or_negate_logs_nothing_extra(
+    db_url: str, images: ImageStore, caplog: pytest.LogCaptureFixture
+) -> None:
+    db = Database(db_url)
+
+    receipt_id = run_with(db, images, ok_result())
+
+    assert stored_items(db, receipt_id) == [("BROT", Decimal("2.49"))]
+    assert not any("dropped" in m or "negated" in m for m in caplog.messages)
+    db.dispose()
+
+
+def test_plausibility_never_sees_the_dropped_lines(db_url: str, images: ImageStore) -> None:
+    """Two payment lines without merchant or total would pass as two items; dropped,
+    nothing is left, so the receipt is `not_a_receipt` (0015)."""
+    db = Database(db_url)
+    result = result_with([("SUMME", 2.49), ("BAR", 5.0)], merchant=None, total=None)
+
+    receipt_id = run_with(db, images, result)
+
+    record = get(db, receipt_id)
+    assert record is not None and (record.status, record.error) == ("failed", "not_a_receipt")
+    db.dispose()
+
+
+def test_the_guard_reads_the_redacted_description(
+    db_url: str, images: ImageStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db = Database(db_url)
+    seen: list[str] = []
+
+    def spy(description: str) -> bool:
+        seen.append(description)
+        return False
+
+    monkeypatch.setattr(receipt_pipeline, "is_non_item", spy)
+    result = result_with([("KARTE 4111111111111111", 2.49), ("BROT", 1.0)])
+
+    run_with(db, images, result)
+
+    assert seen == ["KARTE [card]", "BROT"]
     db.dispose()
