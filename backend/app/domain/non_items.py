@@ -48,9 +48,9 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from app.domain.categorize import MAX_DESCRIPTION_CHARS, fold, is_deposit
-from app.domain.money import cents
+from app.domain.money import SUM_TOLERANCE, cents
 
-MATCH_TOLERANCE = Decimal("0.02")
+MATCH_TOLERANCE = SUM_TOLERANCE
 """How far two amounts may differ and still be the same (the sum check's 0.02)."""
 
 NON_ITEM_WORDS = (
@@ -99,6 +99,10 @@ DEPOSIT_RETURN_WORDS = (
     "zurueck pfand",
     "leergutrueckgabe",
     "flaschenrueckgabe",
+    "flaschen rueckgabe",
+    "leergutruecknahme",
+    "leergutrueckname",
+    "pfandruecknahme",
 )
 """Words that always mean money back for returned bottles."""
 
@@ -161,8 +165,10 @@ _SIGN = "[-+\u2212]?"
 # Every part is optional or bounded and the alternatives are fixed, so a failed
 # fullmatch backtracks only a few steps per position.
 _QUANTITY_LINE = re.compile(
-    rf"(?P<qsign>{_SIGN}) ?(?P<qty>{_NUMBER}) ?(?:kg|g|l|stk|st)?\.? ?[x\u00d7] ?"
+    rf"(?P<qsign>{_SIGN}) ?(?P<qty>{_NUMBER}) ?(?P<unit>kg|g|l|stueck|stk|st)?\.? ?[x\u00d7] ?"
     rf"(?P<psign>{_SIGN}) ?(?P<price>{_NUMBER}) ?(?:€|eur)? ?(?:/ ?(?:kg|stk|st))?"
+    # a tax class the model copied after the price (`2 x 0,49 € A`, `3 x 0,89 1`)
+    r"(?: [a-d0-9])?"
 )
 _PAID_LINE = re.compile(r"(?:zu zahlen|gesamtbetrag)(?![a-z0-9])")
 
@@ -185,6 +191,15 @@ def is_quantity_line(description: str) -> tuple[Decimal, Decimal] | None:
     return qty, _signed(found["psign"], found["price"])
 
 
+def quantity_unit(description: str) -> str | None:
+    """The weight or volume unit of a quantity line (`1,066 kg x 0,99 €/kg` -> `kg`);
+    None for pieces (`stk`, `st`, none) or a line that isn't one."""
+    found = _QUANTITY_LINE.fullmatch(" ".join(fold(description[:MAX_DESCRIPTION_CHARS]).split()))
+    if found is None or found["unit"] not in ("kg", "g", "l"):
+        return None
+    return found["unit"]
+
+
 def is_deposit_line(description: str) -> bool:
     """A Pfand or Leergut item: `categorize.is_deposit` (a word starting or ending with
     `pfand` / `leergut`) or a deposit-return word (`Flaschenrückgabe`)."""
@@ -198,6 +213,15 @@ class ItemLine:
     description: str
     amount: Decimal
     qty: Decimal | None = None
+    unit: str | None = None
+
+
+def is_non_item_line(line: ItemLine) -> bool:
+    """`is_non_item`, except that a negative line without letters is kept: it is a
+    discount printed as `-0,50` or `-30%` (found by `/code-review`)."""
+    if line.amount < 0 and not has_letter(folded(line.description)):
+        return False
+    return is_non_item(line.description)
 
 
 def _has_name(description: str) -> bool:
@@ -211,11 +235,12 @@ def _has_name(description: str) -> bool:
 def merge_quantity_lines(lines: Sequence[ItemLine]) -> tuple[list[ItemLine], int]:
     """The items with each quantity line merged into its product, and the merge count.
 
-    The neighbour is the next item, else the previous one; the previous one comes first
-    when its amount already is N x price within 0.02 (`RINDERHACK 4,17` / `3 x 1,39 €` /
-    `BANANEN`: the line belongs to the item above). It qualifies if it has a name
-    (a letter, not a quantity line, not a non-item), hasn't absorbed a line yet, and isn't
-    a deposit unless N x price is negative (`-53 x 0,25 €` before `LEERGUT`). The merged
+    The neighbour is the previous item when its amount already is N x price within 0.02
+    (`RINDERHACK 4,17` / `3 x 1,39 €` / `BANANEN`: the line belongs to the item above),
+    else the next item, else the previous one if its amount is the unit price. It
+    qualifies if it has a name (a letter, not a quantity line, not a non-item), hasn't
+    absorbed a line yet, and is a deposit exactly when N x price is negative (`-53 x 0,25
+    €` goes only into `LEERGUT`, a positive line never into a deposit). The merged
     item keeps the neighbour's description, takes qty |N|, and the line's amount if that
     is N x price within 0.02, else keeps its own. A line without one stays an item.
     """
@@ -238,13 +263,27 @@ def merge_quantity_lines(lines: Sequence[ItemLine]) -> tuple[list[ItemLine], int
                 return False
             if not _has_name(target.description):
                 return False
-            return product < 0 or not is_deposit_line(target.description)
+            # A negative line (`-53 x 0,25 €`) is a return: only into a deposit line. A
+            # positive one never goes into a deposit line.
+            return is_deposit_line(target.description) == (product < 0)
 
+        # The previous item only when its amount already is N x price (it comes first then)
+        # or the unit price; any other amount of it is a real item's and must not be
+        # replaced (found by the reviewer: BROT 2.49 / 3 x 0,89 / PFAND lost the 2.49).
         before = index - 1
-        previous_matches = qualifies(before) and (
-            abs(lines[before].amount - product) <= MATCH_TOLERANCE
+        previous_amount = lines[before].amount if before >= 0 else None
+        previous_is_line_total = previous_amount is not None and (
+            abs(previous_amount - product) <= MATCH_TOLERANCE
         )
-        order = (before, index + 1) if previous_matches else (index + 1, before)
+        previous_is_price = previous_amount is not None and (
+            abs(previous_amount - price) <= MATCH_TOLERANCE
+        )
+        if previous_is_line_total:
+            order: tuple[int, ...] = (before, index + 1)
+        elif previous_is_price:
+            order = (index + 1, before)
+        else:
+            order = (index + 1,)
         for neighbour in order:
             if not qualifies(neighbour):
                 continue
@@ -253,7 +292,10 @@ def merge_quantity_lines(lines: Sequence[ItemLine]) -> tuple[list[ItemLine], int
                 continue
             matches = abs(line.amount - product) <= MATCH_TOLERANCE
             result[neighbour] = ItemLine(
-                target.description, line.amount if matches else target.amount, abs(n)
+                target.description,
+                line.amount if matches else target.amount,
+                abs(n),
+                quantity_unit(line.description),
             )
             result[index] = None
             absorbed.add(neighbour)
@@ -262,17 +304,32 @@ def merge_quantity_lines(lines: Sequence[ItemLine]) -> tuple[list[ItemLine], int
     return [line for line in result if line is not None], merged
 
 
-def paid_total(dropped: Sequence[ItemLine], total: Decimal | None) -> Decimal | None:
+def paid_total(
+    dropped: Sequence[ItemLine], total: Decimal | None, items_sum: Decimal | None = None
+) -> Decimal | None:
     """The total to use instead of `total`, or None to keep it.
 
-    From the dropped lines, those starting with `zu zahlen` or `gesamtbetrag` (not
-    `summe`: tax tables print one too). If there is one, they agree within 0.02, and
-    `total` is null or off the first one by more than 0.02, the first one's amount in
-    cents is the total.
+    From the dropped lines with a positive amount, those starting with `zu zahlen` or
+    `gesamtbetrag` (not `summe`: tax tables print one too), in cents. They must agree
+    within 0.02. A null `total` takes the first one; another `total` only when the kept
+    items (`items_sum`) add up to the paid amount and not to `total`.
     """
-    paid = [cents(line.amount) for line in dropped if _PAID_LINE.match(folded(line.description))]
+    paid = [
+        cents(line.amount)
+        for line in dropped
+        if line.amount > 0 and _PAID_LINE.match(folded(line.description))
+    ]
     if not paid or max(paid) - min(paid) > MATCH_TOLERANCE:
         return None
-    if total is not None and abs(total - paid[0]) <= MATCH_TOLERANCE:
+    if total is None:
+        return paid[0]
+    if abs(total - paid[0]) <= MATCH_TOLERANCE:
         return None
-    return paid[0]
+    # A model total replaced only when the kept items add up to the paid line and not to
+    # the model's total (found by the reviewer: a misread ZU ZAHLEN 219.0 or 0.0 must not
+    # overwrite a correct 54.40).
+    if items_sum is None:
+        return None
+    matches_paid = abs(cents(items_sum) - paid[0]) <= MATCH_TOLERANCE
+    matches_model = abs(cents(items_sum) - cents(total)) <= MATCH_TOLERANCE
+    return paid[0] if matches_paid and not matches_model else None

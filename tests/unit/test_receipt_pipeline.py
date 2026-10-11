@@ -17,6 +17,7 @@ from app.db.records import ExpenseRecord, ReceiptRecord
 from app.db.repositories.expenses import ExpenseRepository
 from app.db.repositories.receipts import ReceiptRepository
 from app.db.session import Database
+from app.domain.non_items import ItemLine
 from app.errors import LLMTimeout, StorageError
 from app.services import receipt_pipeline
 from app.services.categorization import LookupCategorizer
@@ -441,6 +442,19 @@ def test_only_payment_lines_are_not_a_receipt(db_url: str, images: ImageStore) -
     db.dispose()
 
 
+def test_a_paid_line_alone_does_not_make_a_receipt(db_url: str, images: ImageStore) -> None:
+    """Only a ZU ZAHLEN line, no merchant, no total: the paid line would give a total, but
+    plausibility sees the model's own (null) one, so it is `not_a_receipt` (0027)."""
+    db = Database(db_url)
+    result = result_with([("ZU ZAHLEN", 5.0)], merchant=None, total=None)
+
+    receipt_id = run_with(db, images, result)
+
+    record = get(db, receipt_id)
+    assert record is not None and (record.status, record.error) == ("failed", "not_a_receipt")
+    db.dispose()
+
+
 def test_a_dropped_line_still_counts_for_plausibility(db_url: str, images: ImageStore) -> None:
     """One item and a SUMME line without merchant or total: the SUMME line is evidence of a
     receipt, so the receipt is kept for review with its one real item (0026)."""
@@ -461,11 +475,11 @@ def test_the_guard_reads_the_redacted_description(
     db = Database(db_url)
     seen: list[str] = []
 
-    def spy(description: str) -> bool:
-        seen.append(description)
+    def spy(line: ItemLine) -> bool:
+        seen.append(line.description)
         return False
 
-    monkeypatch.setattr(receipt_pipeline, "is_non_item", spy)
+    monkeypatch.setattr(receipt_pipeline, "is_non_item_line", spy)
     result = result_with([("KARTE 4111111111111111", 2.49), ("BROT", 1.0)])
 
     run_with(db, images, result)

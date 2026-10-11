@@ -52,7 +52,7 @@ from app.domain.facts import ItemFacts, ReceiptFacts
 from app.domain.non_items import (
     ItemLine,
     is_deposit_return,
-    is_non_item,
+    is_non_item_line,
     merge_quantity_lines,
     paid_total,
 )
@@ -260,6 +260,7 @@ class ReceiptPipeline:
         # stored; a real date or currency has nothing for redact_text to change.
         date_text = redact_text(ex.date) if ex.date is not None else None
         currency_text = redact_text(ex.currency) if ex.currency is not None else None
+        model_total = total
         lines, total = self._kept_items(
             receipt_id,
             [
@@ -285,8 +286,10 @@ class ReceiptPipeline:
         )
         # Plausibility needs no categories (merchant, total, item count), so a non-receipt
         # never touches the database. The dropped and merged lines still count as receipt
-        # lines.
-        if not is_plausible_receipt(facts, dropped=len(ex.line_items) - len(lines)):
+        # lines. It sees the model's own total: a total taken only from a dropped paid line
+        # mustn't make an itemless non-receipt plausible.
+        plausibility_facts = dataclasses.replace(facts, total=model_total)
+        if not is_plausible_receipt(plausibility_facts, dropped=len(ex.line_items) - len(lines)):
             raise NotAReceipt(
                 "plausibility rule", raw_output=result.raw_output, latency_s=result.latency_s
             )
@@ -318,7 +321,7 @@ class ReceiptPipeline:
                     description=line.description,
                     normalized_name=category.normalized_name,
                     qty=qty,
-                    unit=paired_unit(qty, category),
+                    unit=line.unit if line.unit is not None else paired_unit(qty, category),
                     unit_price=None,
                     amount=cents(line.amount),
                     category=category.category,
@@ -351,23 +354,25 @@ class ReceiptPipeline:
     ) -> tuple[list[ItemLine], Decimal | None]:
         """The stored items and the total (decisions 0026, 0027).
 
-        Drops the non-items and takes the total from a dropped paid line, merges the
-        quantity lines, then negates the positive deposit returns. Runs on the redacted
+        Drops the non-items, merges the quantity lines, takes the total from a dropped
+        paid line unless the model's total matches the kept items, then negates the
+        positive deposit returns. Runs on the redacted
         descriptions; logs only the counts.
         """
         kept: list[ItemLine] = []
         dropped: list[ItemLine] = []
         for line in lines:
-            (dropped if is_non_item(line.description) else kept).append(line)
+            (dropped if is_non_item_line(line) else kept).append(line)
         if dropped:
             logger.info("Receipt %d: dropped %d non-item lines", receipt_id, len(dropped))
-        paid = paid_total(dropped, total)
-        if paid is not None:
-            total = paid
-            logger.info("Receipt %d: took the total from the paid line", receipt_id)
         kept, merged = merge_quantity_lines(kept)
         if merged:
             logger.info("Receipt %d: merged %d quantity lines", receipt_id, merged)
+        # After the merge, so a model total that the merged items add up to is kept.
+        paid = paid_total(dropped, total, sum((line.amount for line in kept), Decimal(0)))
+        if paid is not None:
+            total = paid
+            logger.info("Receipt %d: took the total from the paid line", receipt_id)
         negated = 0
         for index, line in enumerate(kept):
             if line.amount > 0 and is_deposit_return(line.description):

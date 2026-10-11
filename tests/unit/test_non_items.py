@@ -19,9 +19,11 @@ from app.domain.non_items import (
     is_deposit_line,
     is_deposit_return,
     is_non_item,
+    is_non_item_line,
     is_quantity_line,
     merge_quantity_lines,
     paid_total,
+    quantity_unit,
 )
 
 # --- is_non_item ----------------------------------------------------------------------
@@ -182,6 +184,11 @@ RETURNS = [
     "EINWEG LEERGUT",
     "Leergutrückgabe",
     "Flaschenrückgabe 2,00",
+    "Flaschen Rückgabe 3,00",
+    "LEERGUTRÜCKNAHME",
+    "LEERGUTRÜCKNAME 19%",  # the model's misspelling of the ALDI line
+    "Pfandrücknahme",
+    "Flaschen-Rückgabe",
     "Zurück Pfand",
     "zurück pfand 0,25",
 ]
@@ -330,6 +337,10 @@ QUANTITY_LINES = [
     ("3 × 0,89", (D("3"), D("0.89"))),
     ("2x0,95", (D("2"), D("0.95"))),
     ("2 X 0.95 EUR", (D("2"), D("0.95"))),
+    ("2 x 0,49 € A", (D("2"), D("0.49"))),  # a tax class copied after the price
+    ("2 x 0,49 B", (D("2"), D("0.49"))),
+    ("3 x 0,89 1", (D("3"), D("0.89"))),
+    ("2 Stück x 0,49", (D("2"), D("0.49"))),
     ("1,066 kg x 0,99 €/kg", (D("1.066"), D("0.99"))),
     ("0,512 KG X 2,99 EUR/KG", (D("0.512"), D("2.99"))),
     ("500 g x 1,20 €/kg", (D("500"), D("1.20"))),
@@ -412,7 +423,7 @@ MERGES = [
     ),
     pytest.param(
         [line("BANANEN", "1.06"), line("1,066 kg x 0,99 €/kg", "1.06"), line("BROT", "2.49")],
-        [line("BANANEN", "1.06", "1.066"), line("BROT", "2.49")],
+        [ItemLine("BANANEN", Decimal("1.06"), Decimal("1.066"), "kg"), line("BROT", "2.49")],
         1,
         id="between: the previous item wins when its amount is N x price",
     ),
@@ -460,9 +471,9 @@ MERGES = [
     ),
     pytest.param(
         [line("BROT", "2.49"), line("3 x 0,89 €", "2.67"), line("PFAND", "0.75")],
-        [line("BROT", "2.67", "3"), line("PFAND", "0.75")],
-        1,
-        id="deposit next: the previous item",
+        [line("BROT", "2.49"), line("3 x 0,89 €", "2.67"), line("PFAND", "0.75")],
+        0,
+        id="deposit next, previous is another product: kept, BROT keeps 2.49",
     ),
     pytest.param(
         [line("-53 x 0,25 €", "-13.25"), line("LEERGUT", "0.99")],
@@ -483,6 +494,18 @@ MERGES = [
         id="negative with the sign lost: the neighbour's amount",
     ),
     pytest.param(
+        [line("LEERGUT", "0.25"), line("-53 x 0,25 €", "-13.25"), line("CREMA", "2.29")],
+        [line("LEERGUT", "-13.25", "53"), line("CREMA", "2.29")],
+        1,
+        id="negative: never into a product, so the deposit before it",
+    ),
+    pytest.param(
+        [line("-53 x 0,25 €", "-13.25"), line("CREMA", "2.29")],
+        [line("-53 x 0,25 €", "-13.25"), line("CREMA", "2.29")],
+        0,
+        id="negative without a deposit neighbour: kept as is",
+    ),
+    pytest.param(
         [line("24 x 0,49 €", "11.76")],
         [line("24 x 0,49 €", "11.76")],
         0,
@@ -495,7 +518,25 @@ MERGES = [
         id="two in a row: the first has no qualifying neighbour",
     ),
     pytest.param(
-        [line("MILCH", "1.19"), line("2 x 0,95", "1.90"), line("3 x 1,00", "3.00")],
+        [line("RINDERHACK", "1.39"), line("3 x 1,39 €", "4.17"), line("PFAND", "0.25")],
+        [line("RINDERHACK", "4.17", "3"), line("PFAND", "0.25")],
+        1,
+        id="previous amount is the unit price: the previous item",
+    ),
+    pytest.param(
+        [line("MILCH", "1.19"), line("53 x 0,25 €", "13.25"), line("LEERGUT", "13.25")],
+        [line("MILCH", "1.19"), line("53 x 0,25 €", "13.25"), line("LEERGUT", "13.25")],
+        0,
+        id="sign lost before a deposit: MILCH is not overwritten",
+    ),
+    pytest.param(
+        [line("2 x 0,95", "1.90"), line("3 x 0,89", "2.67"), line("BROT", "2.67")],
+        [line("2 x 0,95", "1.90"), line("BROT", "2.67", "3")],
+        1,
+        id="next already a quantity line: the first stays",
+    ),
+    pytest.param(
+        [line("MILCH", "1.90"), line("2 x 0,95", "1.90"), line("3 x 1,00", "3.00")],
         [line("MILCH", "1.90", "2"), line("3 x 1,00", "3.00")],
         1,
         id="two in a row after: the item absorbs only one",
@@ -544,17 +585,30 @@ def test_merge_keeps_the_input_unchanged() -> None:
 # --- paid_total (0027) ----------------------------------------------------------------
 
 PAID = [
-    pytest.param([], D("219.00"), None, id="no paid line: keep"),
-    pytest.param([line("SUMME", "54.40")], D("219.00"), None, id="summe doesn't count"),
-    pytest.param([line("BAR", "54.40")], None, None, id="payment line doesn't count"),
-    pytest.param([line("ZU ZAHLEN", "54.4")], D("219.0"), D("54.40"), id="one, differs"),
-    pytest.param([line("Gesamtbetrag 54,40", "54.40")], None, D("54.40"), id="total null"),
-    pytest.param([line("ZU ZAHLEN", "54.40")], D("54.40"), None, id="total equal"),
-    pytest.param([line("ZU ZAHLEN", "15.17")], D("15.15"), None, id="within 0.02: keep"),
-    pytest.param([line("ZU ZAHLEN", "15.18")], D("15.15"), D("15.18"), id="0.03 off"),
+    pytest.param([], D("219.00"), None, None, id="no paid line: keep"),
+    pytest.param([line("SUMME", "54.40")], D("219.00"), None, None, id="summe doesn't count"),
+    pytest.param([line("BAR", "54.40")], None, None, None, id="payment line doesn't count"),
+    pytest.param(
+        [line("ZU ZAHLEN", "54.4")],
+        D("219.0"),
+        D("54.40"),
+        D("54.40"),
+        id="one, differs, items match it",
+    ),
+    pytest.param([line("Gesamtbetrag 54,40", "54.40")], None, D("54.40"), None, id="total null"),
+    pytest.param([line("ZU ZAHLEN", "54.40")], D("54.40"), None, None, id="total equal"),
+    pytest.param([line("ZU ZAHLEN", "15.17")], D("15.15"), None, None, id="within 0.02: keep"),
+    pytest.param(
+        [line("ZU ZAHLEN", "15.18")],
+        D("15.15"),
+        D("15.18"),
+        D("15.18"),
+        id="0.03 off, items match it",
+    ),
     pytest.param(
         [line("ZU ZAHLEN", "54.40"), line("Gesamtbetrag", "54.41")],
         D("219.00"),
+        D("54.40"),
         D("54.40"),
         id="two agreeing: the first",
     ),
@@ -562,21 +616,85 @@ PAID = [
         [line("ZU ZAHLEN", "54.40"), line("GESAMTBETRAG", "60.00")],
         D("219.00"),
         None,
+        None,
         id="two disagreeing: keep",
     ),
     pytest.param(
         [line("ZU ZAHLEN", "54.40"), line("GESAMTBETRAG", "60.00")],
         None,
         None,
+        None,
         id="two disagreeing, total null: stays null",
     ),
-    pytest.param([line("zu zahlen", "1.005")], None, D("1.01"), id="rounded to cents"),
-    pytest.param([line("zu zahlenx", "54.40")], None, None, id="whole words only"),
+    pytest.param([line("zu zahlen", "1.005")], None, D("1.01"), None, id="rounded to cents"),
+    pytest.param([line("zu zahlenx", "54.40")], None, None, None, id="whole words only"),
+    pytest.param([line("ZU ZAHLEN", "0.0")], D("54.40"), None, None, id="zero is ignored"),
+    pytest.param([line("ZU ZAHLEN", "0.0")], None, None, None, id="zero, total null"),
+    pytest.param([line("ZU ZAHLEN", "-5.00")], None, None, None, id="negative ignored"),
+    pytest.param(
+        [line("ZU ZAHLEN", "219.00")], D("54.40"), None, D("54.40"), id="misread paid line"
+    ),
+    pytest.param([line("ZU ZAHLEN", "54.4")], D("219.0"), None, None, id="no items sum: keep"),
 ]
 
 
-@pytest.mark.parametrize(("dropped", "total", "expected"), PAID)
+@pytest.mark.parametrize(("dropped", "total", "expected", "items_sum"), PAID)
 def test_paid_total(
-    dropped: list[ItemLine], total: Decimal | None, expected: Decimal | None
+    dropped: list[ItemLine],
+    total: Decimal | None,
+    expected: Decimal | None,
+    items_sum: Decimal | None,
 ) -> None:
-    assert paid_total(dropped, total) == expected
+    assert paid_total(dropped, total, items_sum) == expected
+
+
+PAID_WITH_ITEMS = [
+    # the model's total matches the kept items: a misread paid line doesn't replace it
+    pytest.param("54.40", "54.40", "54.90", None, id="items match the model's total"),
+    pytest.param("54.40", "54.41", "54.90", None, id="items within 0.02"),
+    # the items don't match the model's total: the paid line wins (the ALDI case)
+    pytest.param("219.00", "54.40", "54.40", Decimal("54.40"), id="items match the paid line"),
+    pytest.param("219.00", "60.00", "54.40", None, id="items match neither: keep"),
+    # no model total: the paid line, whatever the items say
+    pytest.param(None, "54.40", "54.90", Decimal("54.90"), id="no model total"),
+]
+
+
+@pytest.mark.parametrize(("total", "items_sum", "paid", "expected"), PAID_WITH_ITEMS)
+def test_paid_total_keeps_a_total_the_items_add_up_to(
+    total: str | None, items_sum: str, paid: str, expected: Decimal | None
+) -> None:
+    dropped = [ItemLine("ZU ZAHLEN", Decimal(paid))]
+    model_total = None if total is None else Decimal(total)
+
+    assert paid_total(dropped, model_total, Decimal(items_sum)) == expected
+
+
+NON_ITEM_LINES = [
+    pytest.param(line("-0,50", "-0.50"), False, id="a discount without letters is kept"),
+    pytest.param(line("-30%", "-0.60"), False, id="a percent discount is kept"),
+    pytest.param(line("219,000", "219.00"), True, id="a positive number is dropped"),
+    pytest.param(line("4711", "0"), True, id="zero counts as not negative"),
+    pytest.param(line("SUMME", "-5.00"), True, id="a word line is dropped whatever its sign"),
+    pytest.param(line("BROT", "2.49"), False, id="an item"),
+]
+
+
+@pytest.mark.parametrize(("item", "expected"), NON_ITEM_LINES)
+def test_is_non_item_line(item: ItemLine, expected: bool) -> None:
+    assert is_non_item_line(item) is expected
+
+
+@pytest.mark.parametrize(
+    ("description", "expected"),
+    [
+        ("1,066 kg x 0,99 €/kg", "kg"),
+        ("500 g x 1,20", "g"),
+        ("2 l x 0,89", "l"),
+        ("24 x 0,49 €", None),
+        ("3 stk x 1,00", None),
+        ("BROT", None),
+    ],
+)
+def test_quantity_unit(description: str, expected: str | None) -> None:
+    assert quantity_unit(description) == expected

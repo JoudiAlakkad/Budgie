@@ -73,6 +73,7 @@ Copy every amount's sign exactly as printed. A trailing minus is a minus: 0,75- 
 A Pfand or Leergut line is always its own item. Only when no sign is printed, its words decide the sign:
 - Pfand, Einwegpfand or Mehrweg for bottles you bought is an extra cost: a positive amount.
 - Leergut, Pfandrückgabe, Pfandbon or Pfand zurück is money given back for returned bottles: a negative amount.
+- A line labelled "Pfand / Rückgabe" with a positive amount is the Pfand charged: a positive amount.
 
 List a Pfand or Leergut item only if that line is printed on this receipt; most receipts have none.
 

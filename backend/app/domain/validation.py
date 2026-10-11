@@ -11,10 +11,9 @@ from datetime import date
 from decimal import Decimal, localcontext
 
 from app.domain.facts import Flag, ReceiptFacts, is_blank
-from app.domain.money import cents
+from app.domain.money import SUM_TOLERANCE, cents
 from app.domain.non_items import is_deposit_return
 
-SUM_TOLERANCE = Decimal("0.02")
 # Sums are rounded in a context wide enough for any float-built amount: a float's
 # integer part has at most 309 digits, and 100 items add at most 3 more. The default
 # 28 digits would make `quantize` raise InvalidOperation on e.g. Decimal(1e30).

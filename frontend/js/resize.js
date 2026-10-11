@@ -12,6 +12,8 @@ export const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
 const RESIZE_ABOVE_BYTES = 2 * 1024 * 1024;
 const MAX_LONG_SIDE = 2000;
 const JPEG_QUALITY = 0.85;
+/** The types the API accepts as they are (contracts: jpeg, png, webp). */
+const ACCEPTED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 /** The file's name with a `.jpg` extension instead of its own. */
 function jpegName(name) {
@@ -61,14 +63,18 @@ export async function preparePhoto(file) {
     bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
     const longSide = Math.max(bitmap.width, bitmap.height);
     if (!longSide) return file;
-    if (file.size <= RESIZE_ABOVE_BYTES && longSide <= MAX_LONG_SIDE) return file;
+    // jpeg, png and webp under the thresholds go up as they are; any other type the
+    // browser can decode (HEIC on Safari, BMP, GIF) is always converted, so the result
+    // doesn't depend on its size (found by /code-review).
+    const accepted = ACCEPTED_TYPES.has(file.type);
+    if (accepted && file.size <= RESIZE_ABOVE_BYTES && longSide <= MAX_LONG_SIDE) return file;
     const scale = Math.min(1, MAX_LONG_SIDE / longSide);
     const width = Math.max(1, Math.round(bitmap.width * scale));
     const height = Math.max(1, Math.round(bitmap.height * scale));
     const blob = await encodeJpeg(bitmap, width, height);
     if (!blob || !blob.size) return file;
     // Re-encoding a photo that needed no scaling can come out bigger; keep the original then.
-    if (scale === 1 && blob.size >= file.size) return file;
+    if (accepted && scale === 1 && blob.size >= file.size) return file;
     return new File([blob], jpegName(file.name), {
       type: "image/jpeg",
       lastModified: file.lastModified,

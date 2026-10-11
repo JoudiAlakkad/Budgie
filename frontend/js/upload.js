@@ -30,15 +30,20 @@ function showUploadError(err) {
   }
 }
 
-async function uploadFile(file) {
+async function uploadFile(file, note = "") {
   if (!file || uploading) return;
   uploading = true;
   clearError();
   fileInput.disabled = true;
   dropZone.setAttribute("aria-busy", "true");
   // Downsizing a phone photo takes a moment (decision 0027); it never rejects.
-  statusLine.textContent = "Preparing photo…";
-  const upload = await preparePhoto(file);
+  statusLine.textContent = `${note}Preparing photo…`;
+  let upload = file;
+  try {
+    upload = await preparePhoto(file);
+  } catch {
+    // preparePhoto never rejects; if it ever does, the original still goes up.
+  }
   if (upload.size > MAX_UPLOAD_BYTES) {
     // Refused here, before the transfer; the same code the API would answer with.
     statusLine.textContent = "";
@@ -46,7 +51,7 @@ async function uploadFile(file) {
     resetUpload();
     return;
   }
-  statusLine.textContent = `Uploading ${file.name}…`;
+  statusLine.textContent = `${note}Uploading ${file.name}…`;
   try {
     const receipt = await api.upload(upload);
     statusLine.textContent = "Uploaded. Opening the review page…";
@@ -76,10 +81,9 @@ dropZone.addEventListener("drop", (e) => {
   e.preventDefault();
   dropZone.classList.remove("drag-over");
   const files = e.dataTransfer && e.dataTransfer.files;
-  if (files && files.length > 1) {
-    statusLine.textContent = "Only the first file is uploaded.";
-  }
-  uploadFile(files && files[0]);
+  // Kept in front of the progress text, so it isn't overwritten at once.
+  const note = files && files.length > 1 ? "Only the first file is uploaded. " : "";
+  uploadFile(files && files[0], note);
 });
 // A file dropped next to the zone would otherwise open in the browser tab.
 window.addEventListener("dragover", (e) => e.preventDefault());
