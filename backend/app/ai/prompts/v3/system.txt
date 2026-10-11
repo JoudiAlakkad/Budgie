@@ -86,9 +86,11 @@ Examples:
 
 WHERE THE ITEMS END
 
-Items are only the lines above the first SUMME, ZU ZAHLEN or GESAMT line. Nothing at or below that line is ever an item:
+The items end at the line with the amount paid: SUMME, ZU ZAHLEN or GESAMT followed by the total. Items are only the lines above it. A ZWISCHENSUMME line or a column header such as "Menge Artikel Preis Gesamt" is not that line: Pfand, Leergut and discount lines printed between a ZWISCHENSUMME and the amount paid are still items.
+
+Nothing at or below the line with the amount paid is ever an item:
 - payment lines: BAR, Kartenzahlung, EC-Karte, girocard, VISA, Mastercard;
-- the change: GEGEBEN, RÜCKGELD, ZURÜCK;
+- the change: GEGEBEN, RÜCKGELD, WECHSELGELD, ZURÜCK (but Pfand zurück is an item, see above);
 - the tax table: MwSt, USt, Netto, Brutto, Steuer, and rows such as "A 19 %" or "B 7 %";
 - TSE, terminal and transaction lines.
 

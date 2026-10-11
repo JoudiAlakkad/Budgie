@@ -252,6 +252,26 @@ def test_is_plausible_receipt(overrides: dict, expected: bool) -> None:
     assert is_plausible_receipt(facts(**overrides)) is expected
 
 
+DROPPED_LINES = [
+    # (kept items, dropped lines, expected) without merchant and total (decision 0026)
+    ("one item and a dropped SUMME", 1, 1, True),
+    ("one item, nothing dropped", 1, 0, False),
+    ("only dropped lines", 0, 2, False),
+    ("two items and dropped lines", 2, 3, True),
+]
+
+
+@pytest.mark.parametrize(
+    ("kept", "dropped", "expected"),
+    [case[1:] for case in DROPPED_LINES],
+    ids=[case[0] for case in DROPPED_LINES],
+)
+def test_dropped_lines_count_but_need_a_real_item(kept: int, dropped: int, expected: bool) -> None:
+    receipt = facts(merchant=None, total=None, items=tuple(item() for _ in range(kept)))
+
+    assert is_plausible_receipt(receipt, dropped=dropped) is expected
+
+
 # --- assess -------------------------------------------------------------------------
 
 

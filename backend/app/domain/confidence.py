@@ -63,9 +63,16 @@ def review_status(facts: ReceiptFacts, flags: list[Flag]) -> ReviewStatus:
     return "accepted"
 
 
-def is_plausible_receipt(facts: ReceiptFacts) -> bool:
-    """False iff there is no merchant, no total and at most one item (decision 0015)."""
-    return not (is_blank(facts.merchant) and facts.total is None and len(facts.items) <= 1)
+def is_plausible_receipt(facts: ReceiptFacts, dropped: int = 0) -> bool:
+    """False iff there is no merchant, no total and at most one item (decision 0015).
+
+    `dropped` counts the model's lines the non-item guard removed (decision 0026): a SUMME
+    or BAR line is still a sign of a receipt, so it counts as a line, but without merchant
+    and total at least one real item must be left.
+    """
+    if not is_blank(facts.merchant) or facts.total is not None:
+        return True
+    return bool(facts.items) and len(facts.items) + dropped > 1
 
 
 def assess(

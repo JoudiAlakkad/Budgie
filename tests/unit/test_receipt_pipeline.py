@@ -428,9 +428,9 @@ def test_nothing_to_drop_or_negate_logs_nothing_extra(
     db.dispose()
 
 
-def test_plausibility_never_sees_the_dropped_lines(db_url: str, images: ImageStore) -> None:
-    """Two payment lines without merchant or total would pass as two items; dropped,
-    nothing is left, so the receipt is `not_a_receipt` (0015)."""
+def test_only_payment_lines_are_not_a_receipt(db_url: str, images: ImageStore) -> None:
+    """Two payment lines without merchant or total: dropped, no real item is left, so the
+    receipt is `not_a_receipt` (0015, 0026)."""
     db = Database(db_url)
     result = result_with([("SUMME", 2.49), ("BAR", 5.0)], merchant=None, total=None)
 
@@ -438,6 +438,20 @@ def test_plausibility_never_sees_the_dropped_lines(db_url: str, images: ImageSto
 
     record = get(db, receipt_id)
     assert record is not None and (record.status, record.error) == ("failed", "not_a_receipt")
+    db.dispose()
+
+
+def test_a_dropped_line_still_counts_for_plausibility(db_url: str, images: ImageStore) -> None:
+    """One item and a SUMME line without merchant or total: the SUMME line is evidence of a
+    receipt, so the receipt is kept for review with its one real item (0026)."""
+    db = Database(db_url)
+    result = result_with([("BROT", 2.49), ("SUMME", 2.49)], merchant=None, total=None)
+
+    receipt_id = run_with(db, images, result)
+
+    record = get(db, receipt_id)
+    assert record is not None and record.status == "extracted"
+    assert stored_items(db, receipt_id) == [("BROT", Decimal("2.49"))]
     db.dispose()
 
 

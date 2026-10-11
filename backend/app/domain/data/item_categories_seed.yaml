@@ -327,10 +327,17 @@ pet:
   - kauknochen
   - hundesnacks
   - katzensnacks
+  - katzensnack
+  - leckerli
+  - hundeleckerli
+  - katzenmilch
+  - nagerstreu
+  - vogelsand
 
 deposit:
   - pfand
   - leergut
+  - flaschenrueckgabe
 
 discount:
   - rabatt

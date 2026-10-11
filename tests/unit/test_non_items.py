@@ -9,9 +9,9 @@ import pytest
 from app.domain import non_items
 from app.domain.categorize import MAX_DESCRIPTION_CHARS
 from app.domain.non_items import (
+    AMOUNT_ONLY_WORDS,
     DEPOSIT_RETURN_WORDS,
     NON_ITEM_WORDS,
-    TAX_AMOUNT_WORDS,
     folded,
     is_deposit_return,
     is_non_item,
@@ -32,6 +32,25 @@ DROPPED = [
     "GESAMTSUMME",
     "Zwischensumme 9,99",
     "EC-Kartenzahlung",
+    "EC KARTE 5,67",
+    "EC-Karten-Zahlung",
+    "ec zahlung",
+    "Wechselgeld 4,83",
+    "Gesamtbetrag 15,15",
+    "TOTAL",
+    "Total EUR 15,15",
+    "EC-Cash",
+    "Kreditkarte",
+    "Zw.-Summe 9,99",
+    "Zw-Summe",
+    "Netto EUR 12,62",
+    "VISA ****1234",
+    "Mastercard kontaktlos",
+    "A 19 %",
+    "A 19,0% 1,66 0,32",
+    "B 7% 0,93 0,07 1,00",
+    "SUMME LEERGUT",  # a total of returns: the returns are items already
+    "Gesamt Leergut 0,50-",
     "BAR",
     "Bar EUR",
     "BAR-Zahlung",
@@ -55,6 +74,10 @@ DROPPED = [
     "Netto 12,62 €",
     "Brutto",
     "Brutto: 15,15",
+    "Brutto 19% A 15,02",
+    "Netto A 12,62",
+    "BAR 20,00 EUR",
+    "Bar Euro",
     "Steuer",
     "Steuer A 19%",
 ]
@@ -75,10 +98,22 @@ KEPT = [
     "Ustersbacher Bier",
     "Bruttoeinkommen Ratgeber",
     "NETTO Spülmittel",  # Netto is also a shop name
+    "Bar-Riegel",  # so is Bar a product word
+    "BAR NUSS SCHOKO",
+    "Bar Eis",
+    "BAR-B-Q Sauce",
+    "Bar Mix Cocktail",
+    "VISA Geschenkkarte 50",
+    "Mastercard Prepaid",
+    "Steuer-Spar-Erklaerung 2026",
+    "Total Cola",
+    "A 4 Hefte",  # a class letter and a number, but no rate
+    "Netto Apfel",
     "Netto Marken-Discount Kaffee",
     "Brutto Ratgeber",
     "Mastercardhalter",
     "Zurück Leergut",  # a deposit return is never a non-item
+    "Zurück Pfand 0,25",
     "BIO BANANE 1 KG",
     "Schokolade Zartbitter",
     "Sauce zu Zahlen",  # a word not at the start
@@ -102,10 +137,11 @@ def test_every_listed_word_alone_is_a_non_item() -> None:
         assert is_non_item(word), word
         assert is_non_item(word.upper()), word
         assert not is_non_item(f"{word}x"), word  # whole words only
-    for word in TAX_AMOUNT_WORDS:
+    for word in AMOUNT_ONLY_WORDS:
         assert is_non_item(word), word
         assert is_non_item(f"{word.upper()} 1,23"), word
         assert not is_non_item(f"{word} Kaffee"), word
+        assert not is_non_item(f"{word}x 1,23"), word
 
 
 # --- is_deposit_return ----------------------------------------------------------------
@@ -124,6 +160,9 @@ RETURNS = [
     "Pfand zurück",
     "pfand  zurueck",
     "EINWEG LEERGUT",
+    "Leergutrückgabe",
+    "Flaschenrückgabe 2,00",
+    "Zurück Pfand",
 ]
 
 NOT_RETURNS = [
@@ -223,7 +262,7 @@ def test_the_guard_finishes_on_hostile_input(size: int) -> None:
 
 def test_every_regex_finishes_on_hostile_input_of_the_bounded_size() -> None:
     patterns = [value for value in vars(non_items).values() if isinstance(value, re.Pattern)]
-    assert len(patterns) == 3
+    assert len(patterns) == 5
     for pattern in patterns:
         for text in hostile_runs(MAX_DESCRIPTION_CHARS):
             start = time.perf_counter()

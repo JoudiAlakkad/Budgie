@@ -208,12 +208,17 @@ def test_v3_rules() -> None:
     assert "MINERALWASSER               0,99 € A\n   PFAND                       0,25 € A" in system
     assert "LEERGUT                     3,00-\n   gives the item LEERGUT -3.00." in system
     assert "Pfand                      -0,25\n   gives the item Pfand -0.25." in system
-    # the item area ends at the first SUMME / ZU ZAHLEN / GESAMT line
+    # the item area ends at the line with the amount paid, not at a ZWISCHENSUMME or a
+    # column header, and Pfand zurück stays an item (F13 review)
     boundary = system[system.index("WHERE THE ITEMS END") : system.index("IMPORTANT:")]
     assert (
-        "Items are only the lines above the first SUMME, ZU ZAHLEN or GESAMT line. Nothing at "
-        "or below that line is ever an item:"
+        "The items end at the line with the amount paid: SUMME, ZU ZAHLEN or GESAMT followed "
+        "by the total. Items are only the lines above it."
     ) in boundary
+    assert "A ZWISCHENSUMME line or a column header" in boundary
+    assert "Pfand, Leergut and discount lines printed between a ZWISCHENSUMME" in boundary
+    assert "Nothing at or below the line with the amount paid is ever an item:" in boundary
+    assert "ZURÜCK (but Pfand zurück is an item, see above)" in boundary
     for word in (
         "BAR",
         "Kartenzahlung",

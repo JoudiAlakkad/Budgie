@@ -24,6 +24,14 @@ DEPOSIT_SIGN_MESSAGE = (
     "This deposit line may be a return (money back): with its sign flipped, the items "
     "match the total."
 )
+DEPOSIT_SIGN_MESSAGE_CHARGE = (
+    "This deposit line may be a charge (Pfand paid): with its sign flipped, the items "
+    "match the total."
+)
+DEPOSIT_SIGN_MESSAGE_SEVERAL = (
+    "One of these deposit lines may have the wrong sign: flipping one of them makes the "
+    "items match the total."
+)
 MAX_AGE_YEARS = 2
 
 # parse_number, in this order (ASCII digits only, optional leading "-", no spaces):
@@ -146,13 +154,15 @@ def check_deposit_sign(facts: ReceiptFacts) -> list[Flag]:
     match the total (decision 0026), by index.
 
     Only when a total exists and the items miss it by more than 0.02; only for an item in
-    `deposit` whose description is not a return word (the pipeline already made those
-    negative). Rounded to cents in the wide context, like `check_sum`. A plain Pfand is
-    never changed: the rules flag, the user decides (decision 0008).
+    `deposit` that isn't a negative return word (its sign is certain; a positive one can
+    still come from a manual entry or an edit). The message says which way the flip goes,
+    or, when several lines would match, that one of them may be wrong. Rounded to cents in
+    the wide context, like `check_sum`. A plain Pfand is never changed: the rules flag,
+    the user decides (decision 0008).
     """
     if facts.total is None or not facts.items:
         return []
-    flags = []
+    suspects = []
     with localcontext(prec=SUM_PRECISION):
         raw_sum = sum((item.amount for item in facts.items), Decimal(0))
         target = cents(facts.total)
@@ -160,14 +170,26 @@ def check_deposit_sign(facts: ReceiptFacts) -> list[Flag]:
             return []
         for index, item in enumerate(facts.items):
             category = (item.category or "").strip().lower()
-            if category != DEPOSIT_CATEGORY or is_deposit_return(item.description):
+            if category != DEPOSIT_CATEGORY:
+                continue
+            if item.amount < 0 and is_deposit_return(item.description):
                 continue
             flipped = cents(raw_sum - 2 * item.amount)
             if abs(flipped - target) <= SUM_TOLERANCE:
-                flags.append(
-                    Flag(f"line_items[{index}]", "deposit_sign_suspect", DEPOSIT_SIGN_MESSAGE)
-                )
-    return flags
+                suspects.append((index, item.amount))
+    if len(suspects) > 1:
+        return [
+            Flag(f"line_items[{index}]", "deposit_sign_suspect", DEPOSIT_SIGN_MESSAGE_SEVERAL)
+            for index, _ in suspects
+        ]
+    return [
+        Flag(
+            f"line_items[{index}]",
+            "deposit_sign_suspect",
+            DEPOSIT_SIGN_MESSAGE if amount > 0 else DEPOSIT_SIGN_MESSAGE_CHARGE,
+        )
+        for index, amount in suspects
+    ]
 
 
 def check_date(text: str | None, today: date) -> list[Flag]:

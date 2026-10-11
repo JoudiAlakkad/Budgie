@@ -271,8 +271,8 @@ class ReceiptPipeline:
             unreadable_fields=tuple(ex.unreadable_fields),
         )
         # Plausibility needs no categories (merchant, total, item count), so a non-receipt
-        # never touches the database.
-        if not is_plausible_receipt(facts):
+        # never touches the database. The dropped lines still count as receipt lines.
+        if not is_plausible_receipt(facts, dropped=len(ex.line_items) - len(line_items)):
             raise NotAReceipt(
                 "plausibility rule", raw_output=result.raw_output, latency_s=result.latency_s
             )

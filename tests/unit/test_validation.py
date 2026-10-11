@@ -536,10 +536,13 @@ DEPOSIT_SIGN = [
     ("uncategorised", [WATER, ("Pfand", "0.25", None)], "0.74", []),
     # the category is compared without case or spaces
     ("category case", [WATER, ("Pfand", "0.25", " Deposit ")], "0.74", [1]),
-    # a return word: the pipeline already negated it, so it is never suspect
-    ("leergut", [WATER, ("LEERGUT", "0.25", "deposit")], "0.74", []),
-    ("pfandbon", [WATER, ("Pfandbon", "0.25", "deposit")], "0.74", []),
-    ("pfand zurueck", [WATER, ("Pfand zurück", "0.25", "deposit")], "0.74", []),
+    # a negative return word: its sign is certain, so it is never suspect
+    ("leergut negative", [WATER, ("LEERGUT", "-0.25", "deposit")], "1.24", []),
+    ("pfandbon negative", [WATER, ("Pfandbon", "-0.25", "deposit")], "1.24", []),
+    ("pfand zurueck negative", [WATER, ("Pfand zurück", "-0.25", "deposit")], "1.24", []),
+    # a positive return word (a manual entry or an edit; the pipeline negates its own)
+    ("leergut positive", [WATER, ("LEERGUT", "0.25", "deposit")], "0.74", [1]),
+    ("pfandbon positive", [WATER, ("Pfandbon", "0.25", "deposit")], "0.74", [1]),
     # two deposit lines: only the one whose flip matches is flagged
     (
         "two deposits, the first flip matches",
@@ -553,7 +556,8 @@ DEPOSIT_SIGN = [
         "-0.26",
         [2],
     ),
-    # two equal deposits: either flip matches, so both are flagged; the user decides
+    # two equal deposits: either flip matches, so both are flagged with the "one of
+    # these" message; the user decides
     (
         "two equal deposits",
         [WATER, ("PFAND", "0.25", "deposit"), ("PFAND", "0.25", "deposit")],
@@ -588,6 +592,32 @@ def test_deposit_sign_message() -> None:
             "This deposit line may be a return (money back): with its sign flipped, the "
             "items match the total.",
         ),
+    ]
+
+
+def test_deposit_sign_message_for_a_negative_line_says_charge() -> None:
+    receipt = deposit_receipt(WATER, ("PFAND", "-0.25", "deposit"), total="1.24")
+
+    suspects = [f for f in validate(receipt, TODAY) if f.code == "deposit_sign_suspect"]
+    assert [f.message for f in suspects] == [
+        "This deposit line may be a charge (Pfand paid): with its sign flipped, the items "
+        "match the total."
+    ]
+
+
+def test_deposit_sign_message_when_several_lines_would_match() -> None:
+    receipt = deposit_receipt(
+        WATER, ("PFAND", "0.25", "deposit"), ("PFAND", "0.25", "deposit"), total="0.99"
+    )
+
+    suspects = [f for f in validate(receipt, TODAY) if f.code == "deposit_sign_suspect"]
+    assert [(f.field, f.message) for f in suspects] == [
+        (
+            field,
+            "One of these deposit lines may have the wrong sign: flipping one of them makes "
+            "the items match the total.",
+        )
+        for field in ("line_items[1]", "line_items[2]")
     ]
 
 
