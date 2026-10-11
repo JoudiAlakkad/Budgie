@@ -11,6 +11,7 @@ The pages are planned and built in F6 (Upload, Review), F8 and F9 (Dashboard, Se
 | Settings | `settings.html` | monthly budgets and the savings goal (no item-category table, the student's decision in F08) | `GET/PUT /budgets`, `GET/PUT /goal` |
 
 ## Upload page rules
+- **Photo size** ([0027](../decisions/0027-host-test-fixes-for-v3-and-upload.md)): a photo over 2 MB, or with a long side over 2,000 px, is downsized before upload to a JPEG with the long side at most 2,000 px (quality 0.85, EXIF orientation kept). If that fails, the original goes up. A file still over 10 MB is refused on the page before upload, naming the limit.
 - **Recent** (F08, the student's request) lists receipts and manual expenses together. `GET /receipts` and `GET /expenses?has_receipt=false` load in parallel; if one fails, the error banner shows and whatever did load is still listed.
 - Manual expenses are the expenses with `receipt_id: null`. An expense with a receipt is only listed through its receipt, so nothing appears twice.
 - A receipt row shows its merchant and total, its status in words and the upload time, and links to `review.html?id=`. A manual row shows merchant (or "unknown merchant"), total, "Manual entry · draft" or "Manual entry · confirmed" and its date, and links to `review.html?expense=`. Neither row type shows `review_status`.
