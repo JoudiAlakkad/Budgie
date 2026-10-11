@@ -30,7 +30,7 @@ def test_the_seed_is_listed_sorted_by_name(client: TestClient) -> None:
     assert names == sorted(load_seed())
     assert {entry["source"] for entry in listed} == {"seed"}
     banane = next(entry for entry in listed if entry["normalized_name"] == "banane")
-    assert banane["category"] == "groceries.fresh"
+    assert banane["category"] == "groceries"
     # Timestamps are UTC (naive in the database, read as UTC by the DTO).
     assert dt.datetime.fromisoformat(banane["updated_at"].replace("Z", "+00:00")).tzinfo
 
@@ -85,7 +85,7 @@ def test_delete_of_a_user_entry_restores_the_seed(client: TestClient) -> None:
 
     assert response.status_code == 204
     [banane] = [e for e in entries(client, "banane") if e["normalized_name"] == "banane"]
-    assert (banane["category"], banane["source"]) == ("groceries.fresh", "seed")
+    assert (banane["category"], banane["source"]) == ("groceries", "seed")
 
 
 def test_delete_of_a_user_entry_without_a_seed_value_removes_it(client: TestClient) -> None:

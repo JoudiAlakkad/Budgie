@@ -218,16 +218,16 @@ def test_is_deposit(name: str, expected: bool) -> None:
 # ---------------------------------------------------------------- lookup
 
 TABLE = {
-    "banane": ("groceries.fresh", "seed"),
-    "zwiebeln": ("groceries.fresh", "user"),
+    "banane": ("groceries", "seed"),
+    "zwiebeln": ("groceries", "user"),
 }
 
 
 @pytest.mark.parametrize(
     ("name", "expected"),
     [
-        ("banane", ("groceries.fresh", "seed")),
-        ("zwiebeln", ("groceries.fresh", "user")),
+        ("banane", ("groceries", "seed")),
+        ("zwiebeln", ("groceries", "user")),
         ("bananen", ("uncategorized", "none")),  # exact match only
         ("banan", ("uncategorized", "none")),
         ("", ("uncategorized", "none")),
@@ -257,7 +257,7 @@ def test_lookup_categorizer_normalises_then_looks_up() -> None:
         normalized_name="banane",
         qty=Decimal("1"),
         unit="kg",
-        category="groceries.fresh",
+        category="groceries",
         category_source="seed",
     )
 
@@ -319,6 +319,28 @@ def test_the_seed_has_the_deposit_and_discount_entries() -> None:
         "rabatt": "discount",
         "preisvorteil": "discount",
     }
+
+
+@pytest.mark.parametrize(
+    "description",
+    [
+        "Hundefutter",
+        "KATZENFUTTER 400G",
+        "Katzenstreu 10 kg",
+        "Nassfutter",
+        "BIO Trockenfutter 1,5kg",
+        "Tierfutter",
+        "Vogelfutter",
+        "Kauknochen 2 Stk",
+        "Hundesnacks",
+        "Katzensnacks",
+    ],
+)
+def test_pet_supplies_categorise_as_pet(description: str) -> None:
+    """Decision 0025: the new `pet` section of the seed, reached through `normalize`."""
+    table = {name: (category, "seed") for name, category in load_seed().items()}
+
+    assert lookup(normalize(description).name, table) == ("pet", "seed")
 
 
 def test_no_seed_name_is_listed_twice() -> None:

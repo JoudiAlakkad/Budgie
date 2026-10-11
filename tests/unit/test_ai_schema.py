@@ -13,8 +13,10 @@ from pydantic import BaseModel, Field, ValidationError
 from app.ai.schema import (
     EXAMPLE_JSON,
     EXAMPLE_JSON_V1,
+    EXAMPLE_JSON_V3,
     EXAMPLE_OUTPUT,
     EXAMPLE_OUTPUT_V1,
+    EXAMPLE_OUTPUT_V3,
     MAX_LINE_ITEMS,
     MAX_UNREADABLE_FIELDS,
     MAX_UNREADABLE_FIELDS_V1,
@@ -248,6 +250,47 @@ def test_example_content() -> None:
     payment_words = ("SUMME", "BAR", "KARTE", "EC", "VISA", "ZAHLEN")
     for entry in example.line_items:
         assert not any(word in entry.description.upper().split() for word in payment_words)
+
+
+# The v3 example (decision 0027): v2's shop without any deposit line.
+EXPECTED_EXAMPLE_V3 = {
+    "is_receipt": True,
+    "merchant": "Beispiel Markt",
+    "date": "14.03.26",
+    "currency": "EUR",
+    "line_items": [
+        {"description": "VOLLMILCH 3,5%", "qty": 1.0, "amount": 1.19},
+        {"description": "BROETCHEN", "qty": 2.0, "amount": 1.9},
+        {"description": "MINERALWASSER", "qty": 1.0, "amount": 0.49},
+        {"description": "RABATT", "qty": None, "amount": -0.3},
+    ],
+    "total": 3.28,
+    "payment_method": "card",
+    "unreadable_fields": [],
+}
+
+
+def test_v3_example_is_the_golden_example() -> None:
+    assert json.dumps(EXPECTED_EXAMPLE_V3, indent=2, ensure_ascii=False) == EXAMPLE_JSON_V3
+    assert ReceiptExtraction.model_validate_json(EXAMPLE_JSON_V3) == EXAMPLE_OUTPUT_V3
+
+
+def test_v3_example_sums_to_its_total() -> None:
+    amounts = [entry.amount for entry in EXAMPLE_OUTPUT_V3.line_items]
+    assert sum(amounts) == pytest.approx(EXAMPLE_OUTPUT_V3.total)
+
+
+def test_v3_example_has_no_deposit_line() -> None:
+    """gemma3:4b copied v2's PFAND and LEERGUT into receipts without any (0027)."""
+    for entry in EXAMPLE_OUTPUT_V3.line_items:
+        words = entry.description.lower()
+        assert "pfand" not in words and "leergut" not in words, entry.description
+    assert "pfand" not in EXAMPLE_JSON_V3.lower() and "leergut" not in EXAMPLE_JSON_V3.lower()
+    # still a multi-line block and a discount, and no payment line
+    by_name = {e.description: e for e in EXAMPLE_OUTPUT_V3.line_items}
+    assert (by_name["BROETCHEN"].qty, by_name["BROETCHEN"].amount) == (2, 1.9)
+    assert by_name["RABATT"].amount < 0
+    assert "unit_price" not in EXAMPLE_JSON_V3
 
 
 def _nullable(annotation: Any) -> bool:
@@ -593,6 +636,8 @@ def test_output_specs() -> None:
         ReceiptExtractionV1, RESPONSE_FORMAT_V1, EXAMPLE_JSON_V1
     )
     assert OUTPUT_SPECS["v2"] == OutputSpec(ReceiptExtraction, RESPONSE_FORMAT, EXAMPLE_JSON)
+    # v3 has v2's schema (0026) and its own example (0027)
+    assert OUTPUT_SPECS["v3"] == OutputSpec(ReceiptExtraction, RESPONSE_FORMAT, EXAMPLE_JSON_V3)
     with pytest.raises(dataclasses.FrozenInstanceError):
         OUTPUT_SPECS["v1"].example_json = "{}"  # type: ignore[misc]
 

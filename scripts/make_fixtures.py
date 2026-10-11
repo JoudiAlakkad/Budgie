@@ -170,6 +170,123 @@ INJECTION = answer(
     payment_method="cash",
 )
 
+
+def lean_answer(**fields: object) -> str:
+    """A v2/v3 answer (decision 0019): no subtotal, tax or unit price."""
+    nulls = dict.fromkeys(("merchant", "date", "currency", "total", "payment_method"))
+    data = {"is_receipt": True, **nulls, "line_items": [], "unreadable_fields": []}
+    return json.dumps({**data, **fields}, indent=2, ensure_ascii=False)
+
+
+def lean_item(description: str, amount: float, qty: float | None = 1) -> dict:
+    return {"description": description, "qty": qty, "amount": amount}
+
+
+# F13 (decision 0026). Every item but the payment and tax lines is a seed name.
+# 2.49 + 1.19 + 1.99 = 5.67; the model also listed SUMME, the cash lines and a tax row.
+PAYMENT_LINES = lean_answer(
+    merchant="Beispiel Markt",
+    date="17.09.26",
+    currency="EUR",
+    line_items=[
+        lean_item("BROT", 2.49),
+        lean_item("VOLLMILCH 3,5%", 1.19),
+        lean_item("BIO BANANE 1 KG", 1.99),
+        lean_item("SUMME", 5.67),
+        lean_item("BAR", 10.0),
+        lean_item("RÜCKGELD", 4.33),
+        lean_item("MwSt 19%", 0.4, None),
+        lean_item("EC-Karte", 5.67, None),
+    ],
+    total=5.67,
+    payment_method="cash",
+)
+# The receipt prints `LEERGUT 3,00-`; the model dropped the trailing minus.
+# 0.99 + 0.25 + 2.49 - 3.00 = 0.73
+TRAILING_MINUS = lean_answer(
+    merchant="Beispiel Markt",
+    date="17.09.26",
+    currency="EUR",
+    line_items=[
+        lean_item("MINERALWASSER", 0.99),
+        lean_item("PFAND", 0.25),
+        lean_item("BROT", 2.49),
+        lean_item("LEERGUT", 3.0),
+    ],
+    total=0.73,
+    payment_method="card",
+)
+# Returns printed without a sign, copied as positive amounts.
+# 4.74 + 0.48 - 1.50 - 0.25 = 3.47
+RETURN_UNSIGNED = lean_answer(
+    merchant="Beispiel Getränke",
+    date="17.09.26",
+    currency="EUR",
+    line_items=[
+        lean_item("BIER", 4.74),
+        lean_item("PFAND", 0.48),
+        lean_item("PFANDBON", 1.5),
+        lean_item("Pfand zurück", 0.25),
+    ],
+    total=3.47,
+    payment_method="cash",
+)
+# The receipt prints `Pfand -0,25` (a return without a return word); the model dropped
+# the minus. 0.99 + 2.49 + 0.25 = 3.73, the total is 3.23; flipped, the Pfand matches.
+SIGN_SUSPECT = lean_answer(
+    merchant="Beispiel Markt",
+    date="17.09.26",
+    currency="EUR",
+    line_items=[
+        lean_item("MINERALWASSER", 0.99),
+        lean_item("BROT", 2.49),
+        lean_item("Pfand", 0.25),
+    ],
+    total=3.23,
+    payment_method="card",
+)
+
+# Decision 0027: modelled on the student's ALDI receipt (generic names, no personal data).
+# The model listed the quantity lines `24 x 0,49 €`, `3 x 0,89 €` and `-53 x 0,25 €` as
+# items, the Pfand charge as `PFAND / RÜCKGABE 0,25`, the payment and tax lines, and the
+# number `219,000`, which it also took as the total; the receipt says ZU ZAHLEN 54,40.
+# Stored: 11.76 + 6.00 + 2.67 + 0.75 - 13.25 + 2.29 + 6.79 + 27.39 + 10.00 = 54.40.
+QUANTITY_LINES = lean_answer(
+    merchant="Beispiel Discount",
+    date="17.09.26",
+    currency="EUR",
+    line_items=[
+        lean_item("24 x 0,49 €", 11.76, 24),
+        lean_item("RHNEIFELS WASSER M. AR", 0.25, 2),
+        lean_item("PFAND / RÜCKGABE 0,25", 6.0, None),
+        lean_item("3 x 0,89 €", 2.67, 3),
+        lean_item("PFAND / RÜCKGABE 0,25", 0.75, None),
+        lean_item("-53 x 0,25 €", -13.25, None),
+        lean_item("LEERGUTRÜCKNAME 19%", 0.99, None),
+        lean_item("CREMA", 2.29),
+        lean_item("MOZZARELLA STANGE", 6.79),
+        lean_item("BUTTER", 1.99),
+        lean_item("KAFFEE", 7.49),
+        lean_item("NUDELN", 0.99),
+        lean_item("TOMATEN", 1.79),
+        lean_item("BANANEN", 1.29),
+        lean_item("WASCHMITTEL", 5.95),
+        lean_item("SCHOKOLADE", 1.29),
+        lean_item("KAESE", 3.99),
+        lean_item("JOGHURT", 2.61),
+        lean_item("HANDY GUTHABEN", 10.0),
+        lean_item("ZU ZAHLEN", 54.4),
+        lean_item("BAR", 54.4),
+        lean_item("MwSt", 0.0, None),
+        lean_item("MwSt - BETRAG", 0.0, None),
+        lean_item("NETTO", 14.08, None),
+        lean_item("BRUTTO", 7.33, None),
+        lean_item("219,000", 219.0, None),
+    ],
+    total=219.0,
+    payment_method="cash",
+)
+
 CASES = [
     Case(
         "valid_receipt",
@@ -261,6 +378,32 @@ CASES = [
             ),
         ),
         source="captured from Ollama 0.35.1 (gemma3:4b) on 2026-10-04 with a broken JPEG",
+    ),
+    Case(
+        "payment_lines_as_items",
+        "SUMME, BAR, RÜCKGELD, a MwSt row and EC-Karte listed as items; the guard drops them.",
+        (Text(PAYMENT_LINES),),
+    ),
+    Case(
+        "deposit_trailing_minus",
+        "LEERGUT printed as 3,00- and copied as 3.0; the pipeline negates it.",
+        (Text(TRAILING_MINUS),),
+    ),
+    Case(
+        "deposit_return_unsigned",
+        "PFANDBON and Pfand zurück printed without a sign, copied positive; both are negated.",
+        (Text(RETURN_UNSIGNED),),
+    ),
+    Case(
+        "deposit_sign_suspect",
+        "Pfand -0,25 copied as 0.25; flipped it matches the total, so it is flagged.",
+        (Text(SIGN_SUSPECT),),
+    ),
+    Case(
+        "quantity_lines_and_paid_total",
+        "Quantity lines, a Pfand / Rückgabe charge and the number 219,000 as items and "
+        "total; the guard merges, keeps and drops them and takes ZU ZAHLEN as the total.",
+        (Text(QUANTITY_LINES),),
     ),
 ]
 

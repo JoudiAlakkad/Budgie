@@ -129,7 +129,7 @@ def test_rows_order_states_and_budget_only_categories(api: TestClient) -> None:
         "/api/budgets",
         json=[
             {"category": "electronics", "monthly_limit": 25},
-            {"category": "groceries.fresh", "monthly_limit": 120},
+            {"category": "groceries", "monthly_limit": 120},
             {"category": "health", "monthly_limit": 15},
         ],
     )
@@ -141,7 +141,7 @@ def test_rows_order_states_and_budget_only_categories(api: TestClient) -> None:
 
     assert [(r["category"], r["state"]) for r in body["categories"]] == [
         ("electronics", "over"),
-        ("groceries.fresh", "under"),
+        ("groceries", "under"),
         ("drinks", "under"),  # 1.89 < 3.08; no budget is under
         ("health", "under"),
     ]
@@ -303,10 +303,10 @@ def test_leaks_of_a_past_month_have_no_burn_but_over_and_spike(api: TestClient) 
 
     assert [(leak["type"], leak["category"], leak["amount"]) for leak in found] == [
         ("over_budget", "electronics", 34.99),
-        ("spike", "alcohol", 2.5),
+        ("spike", "drinks", 2.5),
     ]
     assert found[1]["explanation"] == (
-        "Alcohol: 6,50 € this month, +63 % vs. your median of 4,00 € over the last 2 months."
+        "Drinks: 6,50 € this month, +63 % vs. your median of 4,00 € over the last 2 months."
     )
 
 

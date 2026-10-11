@@ -252,6 +252,26 @@ def test_is_plausible_receipt(overrides: dict, expected: bool) -> None:
     assert is_plausible_receipt(facts(**overrides)) is expected
 
 
+DROPPED_LINES = [
+    # (kept items, dropped lines, expected) without merchant and total (decision 0026)
+    ("one item and a dropped SUMME", 1, 1, True),
+    ("one item, nothing dropped", 1, 0, False),
+    ("only dropped lines", 0, 2, False),
+    ("two items and dropped lines", 2, 3, True),
+]
+
+
+@pytest.mark.parametrize(
+    ("kept", "dropped", "expected"),
+    [case[1:] for case in DROPPED_LINES],
+    ids=[case[0] for case in DROPPED_LINES],
+)
+def test_dropped_lines_count_but_need_a_real_item(kept: int, dropped: int, expected: bool) -> None:
+    receipt = facts(merchant=None, total=None, items=tuple(item() for _ in range(kept)))
+
+    assert is_plausible_receipt(receipt, dropped=dropped) is expected
+
+
 # --- assess -------------------------------------------------------------------------
 
 
@@ -288,6 +308,33 @@ def test_an_edit_clears_the_fixed_flags() -> None:
 
     fully_edited = replace(edited, unreadable_fields=())
     assert assess(fully_edited, TODAY) == ("accepted", [])
+
+
+def test_deposit_sign_suspect_order_and_an_edit_clears_it() -> None:
+    """Decision 0026: right after `sum_mismatch`, before the date flag and the item flags;
+    recomputed on every assess, so fixing the sign clears both flags. Never blocks
+    anything by itself: it is only a flag that makes the receipt need review."""
+    extracted = facts(
+        date="2030-01-01",
+        items=(item("MILCH", "1.00", None), item("PFAND", "0.25", "deposit")),
+        total=Decimal("0.75"),
+    )
+
+    status, flags = assess(extracted, TODAY)
+    assert status == "needs_review"
+    assert pairs(flags) == [
+        ("total", "sum_mismatch"),
+        ("line_items[1]", "deposit_sign_suspect"),
+        ("date", "date_in_future"),
+        ("line_items[0]", "uncategorized_item"),
+    ]
+
+    edited = replace(
+        extracted,
+        date="2026-10-01",
+        items=(item("MILCH", "1.00"), item("PFAND", "-0.25", "deposit")),
+    )
+    assert assess(edited, TODAY) == ("accepted", [])
 
 
 def test_categorising_an_item_clears_its_flag() -> None:
@@ -432,6 +479,7 @@ TWIN = ExpenseKey(7, "REWE", date(2026, 10, 1), Decimal("3.00"))
 # Facts (and other expenses) that together raise every code the rules know.
 EVERY_FLAG: list[tuple[ReceiptFacts, tuple[ExpenseKey, ...]]] = [
     (facts(items=(item(amount="1.00", category=None),), total=Decimal("9.00")), ()),
+    (facts(items=(item(), item("PFAND", "0.25", "deposit")), total=Decimal("0.75")), ()),
     (facts(date="2030-01-01"), ()),
     (facts(date="2020-01-01"), ()),
     (facts(date="soon", currency="$"), ()),

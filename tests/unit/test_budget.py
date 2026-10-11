@@ -128,13 +128,13 @@ def test_spend_state(spent: str, projected: str, budget: str | None, expected: s
 
 def test_rows_drop_non_spending_and_order_by_spend_then_name() -> None:
     spend = {
-        "groceries.fresh": D("20.00"),
+        "groceries": D("20.00"),
         "drinks": D("20.00"),
         "eating_out": D("31.30"),
         "deposit": D("2.25"),
         "discount": D("-1.00"),
         "uncategorized": D("5.00"),
-        "alcohol": D("0.00"),  # no spend, no budget: not listed
+        "pet": D("0.00"),  # no spend, no budget: not listed
     }
     budgets = {"eating_out": D("60"), "health": D("15")}
 
@@ -143,7 +143,7 @@ def test_rows_drop_non_spending_and_order_by_spend_then_name() -> None:
     assert [row.category for row in summary.categories] == [
         "eating_out",
         "drinks",
-        "groceries.fresh",
+        "groceries",
         "health",  # budget only, spent 0
     ]
     health = summary.categories[-1]
@@ -160,15 +160,15 @@ def test_negative_spend_is_listed() -> None:
 
 
 def test_states_in_the_current_month() -> None:
-    spend = {"electronics": D("59.99"), "eating_out": D("31.30"), "groceries.fresh": D("21.60")}
-    budgets = {"electronics": D("25"), "eating_out": D("60"), "groceries.fresh": D("120")}
+    spend = {"electronics": D("59.99"), "eating_out": D("31.30"), "groceries": D("21.60")}
+    budgets = {"electronics": D("25"), "eating_out": D("60"), "groceries": D("120")}
 
     rows = {r.category: r for r in summarize(OCT, MID_OCT, spend, budgets, None).categories}
 
     assert rows["electronics"].state == "over"
     assert rows["eating_out"].state == "on_pace_to_overrun"
     assert rows["eating_out"].projected == D("64.69")
-    assert rows["groceries.fresh"].state == "under"
+    assert rows["groceries"].state == "under"
 
 
 def test_a_past_month_is_never_on_pace() -> None:
@@ -182,7 +182,7 @@ def test_a_past_month_is_never_on_pace() -> None:
 
 def test_projected_total_is_the_sum_of_rounded_rows() -> None:
     # Each row: 1.00 / 3 * 31 = 10.333… -> 10.33; the unrounded sum would be 20.67.
-    spend = {"drinks": D("1.00"), "alcohol": D("1.00")}
+    spend = {"drinks": D("1.00"), "pet": D("1.00")}
 
     summary = summarize(OCT, dt.date(2026, 10, 3), spend, {}, None)
 

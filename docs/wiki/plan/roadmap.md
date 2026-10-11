@@ -32,6 +32,7 @@ Each feature is one issue, one branch (`feat/F<NN>-<slug>`) and one PR. The proc
 | F10 | CSV export + OpenAPI export, Expenses page (list, filter, delete, export) | F5, F6 | `backend-dev` ∥ `frontend-dev` |
 | F11 | Evaluation dataset, runner, comparisons, report | F5 | `backend-dev` + `eval-runner`; the student labels the ground truth and interprets the results |
 | F12 | README, responsible design, compose file, slides | all | main session |
+| F13 | Prompt v3 (no payment/tax lines as items, Pfand sign), non-item guard and Pfand sign check in code, category revision ([0025](../decisions/0025-category-revision.md), [0026](../decisions/0026-prompt-v3-non-item-guard-and-pfand-sign.md)) | F10 | `backend-dev` ∥ `frontend-dev` |
 
 ## Acceptance criteria, by feature (summary)
 - **F1:**
@@ -65,6 +66,11 @@ Each feature is one issue, one branch (`feat/F<NN>-<slug>`) and one PR. The proc
 - **F11:**
   - There are at least 10 cases (target about 20), with aggregated metrics, at least 2 comparisons, and a failure discussion in `docs/evaluation.md`.
   - `docs/evaluation.md` has an uncertainty section with the precision and recall of `needs_review` ([uncertainty](../backend/uncertainty.md)).
+- **F13:**
+  - With v3 on the problem receipts, no SUMME, payment, change or tax-table line is an item; the code guard drops them when the model still emits them, and Pfand/Leergut items survive.
+  - A return printed `3,00-` or `-3,00` is stored negative; a Leergut/Pfandbon line with a positive amount is negated by code; a plain Pfand whose flipped sign would explain a `sum_mismatch` gets `deposit_sign_suspect`.
+  - v1 and v2 are byte-frozen; v3 is the default and loads in the image.
+  - The new category list agrees everywhere (Literals, domain, frontend, labels, seed, OpenAPI); the demo seed still shows scenarios 2 and 3; pet food is categorised as `pet`.
 - **F12:**
   - The README covers every item of criterion 18 in the brief.
   - The README explains uncertainty handling (criterion 13) and links to [uncertainty](../backend/uncertainty.md).

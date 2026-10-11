@@ -1,6 +1,6 @@
 # 0019 — Lean extraction: line totals, date as printed, Pfand
 
-**Status:** Accepted (2026-10-06)
+**Status:** Accepted (2026-10-06); the Pfand rule is amended by [0026](0026-prompt-v3-non-item-guard-and-pfand-sign.md) (printed sign first, checked in code)
 
 ## Context
 In the first run of F06 on the host, the student found the review page showed more than a user needs (subtotal, tax, unit, unit price), and the model mixed up per-unit and per-line prices. The user cares what was bought, how many, and what the line cost: "Kuchen, qty 3, 4,99 €". The prompt also asked the small model to transcribe *and* reformat the date, and it didn't tell a Pfand charged for bottles from a Pfand returned.

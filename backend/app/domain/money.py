@@ -3,6 +3,8 @@
 from decimal import ROUND_HALF_UP, Decimal
 
 CENT = Decimal("0.01")
+SUM_TOLERANCE = Decimal("0.02")
+"""Two amounts in cents are the same within this (the sum check, decisions 0026, 0027)."""
 
 
 def cents(value: Decimal) -> Decimal:

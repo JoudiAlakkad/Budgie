@@ -14,7 +14,8 @@ equals the spend, so nothing can be on pace. `eating_out` is on pace through day
 
 Scenario 3 (decision 0023): `electronics` is an `over_budget` leak on every day;
 `eating_out` (50.00 budget, 41.00 on day 1) is an early-burn leak on every day of the
-first half; `alcohol` (a day-1 wine against the monthly beer) is a `spike` on every day.
+first half; `drinks` (day-1 wine and sekt against the monthly water, beer, cola and energy
+drink) is a `spike` on every day (decision 0025 merged alcohol into drinks).
 Side effects: `health` burns in the first half too, and `eating_out` turns over budget
 and later a spike in the second half.
 """
@@ -203,7 +204,9 @@ MONTHLY: dict[int, tuple[str, tuple[SeedItem, ...]]] = {
 ONE_OFFS: dict[int, tuple[tuple[int, str, tuple[SeedItem, ...]], ...]] = {
     0: (
         # Above the electronics budget from day 1: `over` on every day of the month.
-        (1, "MediaMarkt", _items(("Kopfhörer", "59.99"))),
+        # 47.99 rather than F09's 59.99, so the F13 drinks spike adds no day-1 spend and the
+        # goal card still turns "On track" on day 4.
+        (1, "MediaMarkt", _items(("Kopfhörer", "47.99"))),
         # 9.80 of a 10.00 health budget on day 1 and nothing more: spent stays under the
         # budget, and 9.80 / d * days > 10 for every day d before the last of a 28- to
         # 31-day month, so health is `on_pace_to_overrun` on all of them (on the last day
@@ -218,9 +221,10 @@ ONE_OFFS: dict[int, tuple[tuple[int, str, tuple[SeedItem, ...]], ...]] = {
             "Burgerei",
             _items(("Menü", "24.90"), ("Burger", "11.90"), ("Pommes", "4.20")),
         ),
-        # Alcohol spike: 7.99 on day 1 against a median of 4.74 (the day-14 beer) in the
-        # two previous months; 7.99 > 1.5 × 4.74 = 7.11, and it only grows afterwards.
-        (1, "Weinhandel", _items(("Rotwein", "7.99"))),
+        # Drinks spike: 19.98 on day 1 against a median of 12.27 (water 3.54, beer 4.74,
+        # cola 2.50 and energy drink 1.49 every month) in the two previous months;
+        # 19.98 > 1.5 × 12.27 = 18.405, and it only grows afterwards.
+        (1, "Weinhandel", _items(("Rotwein", "12.99"), ("Sekt", "6.99"))),
     ),
     -1: ((11, "H&M", _items(("Socken", "7.99"), ("Shirt", "12.99"))),),
 }
@@ -228,8 +232,7 @@ ONE_OFFS: dict[int, tuple[tuple[int, str, tuple[SeedItem, ...]], ...]] = {
 BUDGETS: tuple[SeedBudget, ...] = tuple(
     SeedBudget(category, Decimal(limit))
     for category, limit in (
-        ("groceries.fresh", "120.00"),
-        ("groceries.staples", "50.00"),
+        ("groceries", "170.00"),
         ("eating_out", "50.00"),
         ("snacks_sweets", "20.00"),
         ("household", "25.00"),

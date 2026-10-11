@@ -1,0 +1,4 @@
+Your answer is not valid for the JSON schema:
+{errors}
+
+Answer again with only the corrected JSON object for the same receipt. Fill every key of the schema; use null for a value you cannot read. Use a dot as the decimal separator. Do not add any other text.

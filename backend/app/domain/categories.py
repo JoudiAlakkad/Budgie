@@ -5,11 +5,9 @@ both to the wiki and to each other.
 """
 
 CATEGORIES: tuple[str, ...] = (
-    "groceries.fresh",
-    "groceries.staples",
+    "groceries",
     "snacks_sweets",
     "drinks",
-    "alcohol",
     "tobacco",
     "household",
     "personal_care",
@@ -18,6 +16,7 @@ CATEGORIES: tuple[str, ...] = (
     "transport",
     "clothing",
     "electronics",
+    "pet",
     "other",
     "deposit",
     "discount",

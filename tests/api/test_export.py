@@ -32,7 +32,7 @@ def add(
         "merchant": merchant,
         "date": day,
         "total": round(sum(item["amount"] for item in items), 2),
-        "line_items": [{"category": "groceries.fresh"} | item for item in items],
+        "line_items": [{"category": "groceries"} | item for item in items],
     }
     created = client.post("/api/expenses", json=body)
     assert created.status_code == 201, created.text
@@ -118,7 +118,7 @@ def test_one_row_per_item_in_position_order(client: TestClient) -> None:
             "item_description": "BIO BANANE",
             "item_normalized_name": exported[0]["item_normalized_name"],
             "item_amount": "1.99",
-            "category": "groceries.fresh",
+            "category": "groceries",
             "source": "manual",
         },
         exported[1] | {"item_description": "MILCH", "item_amount": "1.09"},
@@ -200,7 +200,7 @@ def test_deposit_and_discount_are_included_and_negatives_stay_bare(client: TestC
     exported = rows(export(client))
 
     assert [(r["category"], r["item_amount"]) for r in exported] == [
-        ("groceries.fresh", "1.29"),
+        ("groceries", "1.29"),
         ("deposit", "0.25"),
         ("discount", "-0.25"),
     ]

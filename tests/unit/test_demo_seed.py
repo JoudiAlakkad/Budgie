@@ -184,7 +184,7 @@ def test_scenario_two_at_mid_october(db: Database, images: ImageStore) -> None:
     assert summary.month == "2026-10"
     assert states["electronics"] == "over"
     assert states["eating_out"] == "on_pace_to_overrun"
-    assert states["groceries.fresh"] == "under"
+    assert states["groceries"] == "under"
     assert summary.total_budget == Decimal("370.00")
     assert summary.goal is not None
     assert summary.goal.required_per_month == Decimal("200.00")  # 1200 over Oct..Mar
@@ -290,13 +290,13 @@ def _every_day(*months: Month) -> list[dt.date]:
     ids=str,
 )
 def test_scenario_three_holds_on_every_day(today: dt.date) -> None:
-    """Decision 0023: electronics over budget and alcohol a spike on every day; eating
+    """Decisions 0023, 0025: electronics over budget and drinks a spike on every day; eating
     out burns on exactly the days of the first half (day ≤ days / 2)."""
     found = {(leak.type, leak.category) for leak in _plan_leaks(today)}
     days = Month.of(today).days
 
     assert ("over_budget", "electronics") in found
-    assert ("spike", "alcohol") in found
+    assert ("spike", "drinks") in found
     assert (("on_pace_to_overrun", "eating_out") in found) is (2 * today.day <= days)
     assert (("on_pace_to_overrun", "health") in found) is (2 * today.day <= days)
 
@@ -433,7 +433,7 @@ def test_cli_loads_then_refuses(settings: Settings, capsys: pytest.CaptureFixtur
     assert "empty database" in refused
     db = database_for(settings.database_url)
     try:
-        assert counts(db) == (47, 0, 9, True)
+        assert counts(db) == (47, 0, 8, True)
     finally:
         dispose_databases()
 

@@ -53,7 +53,7 @@ def distinctive_values(case: dict, image: bytes) -> set[str]:
     """
     values = {base64.b64encode(image).decode("ascii"), EXAMPLE_JSON, EXAMPLE_JSON_V1}
     values.add('"Beispiel Markt"')
-    for version in ("v1", "v2"):
+    for version in ("v1", "v2", "v3"):
         prompts = load_prompts(version)
         values |= {prompts.system.splitlines()[0], prompts.user.strip(), prompts.repair}
     for response in case["responses"]:

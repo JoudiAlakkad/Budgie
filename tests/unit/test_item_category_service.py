@@ -10,7 +10,7 @@ from app.db.repositories.item_categories import ItemCategoryRepository
 from app.db.session import Database
 from app.services.item_categories import ItemCategoryService
 
-SEED = {"banane": "groceries.fresh"}
+SEED = {"banane": "groceries"}
 
 
 @pytest.fixture
@@ -47,7 +47,7 @@ def test_a_user_row_with_a_seed_value_is_updated_not_deleted(db: Database) -> No
     seen = statements_during(db, lambda: service.delete("banane"))
 
     assert not [s for s in seen if s.startswith("DELETE")]
-    assert table(db) == {"banane": ("groceries.fresh", "seed")}
+    assert table(db) == {"banane": ("groceries", "seed")}
 
 
 def test_a_user_row_without_a_seed_value_is_deleted(db: Database) -> None:

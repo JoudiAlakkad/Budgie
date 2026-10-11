@@ -43,6 +43,9 @@ back; the parent records them.
 - [0022 — Demo data by an explicit command through the services](decisions/0022-demo-data-by-explicit-command.md)
 - [0023 — Leak rules and thresholds](decisions/0023-leak-rules-and-thresholds.md)
 - [0024 — CSV format and formula guard](decisions/0024-csv-format-and-formula-guard.md)
+- [0025 — Category revision: groceries, drinks, pet](decisions/0025-category-revision.md)
+- [0026 — Prompt v3, the non-item guard and the Pfand sign](decisions/0026-prompt-v3-non-item-guard-and-pfand-sign.md)
+- [0027 — Fixes from the first v3 host test](decisions/0027-host-test-fixes-for-v3-and-upload.md)
 
 ## Areas
 

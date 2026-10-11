@@ -106,7 +106,7 @@ def test_manual_expense_is_created_assessed_and_returned(api: TestClient) -> Non
 
 
 def test_fully_categorised_consistent_expense_is_accepted(api: TestClient) -> None:
-    items = [{**item, "category": "groceries.fresh"} for item in MANUAL["line_items"]]
+    items = [{**item, "category": "groceries"} for item in MANUAL["line_items"]]
 
     expense = create(api, line_items=items, currency="CHF", subtotal=3.68, tax=0.24)
 
@@ -280,7 +280,7 @@ def test_list_is_newest_date_first_undated_last_ties_by_id(
 
 def test_list_filters(api: TestClient) -> None:
     drinks = create(api, date="2026-10-01")["id"]
-    plain_items = [{"description": "BROT", "amount": 3.68, "category": "groceries.staples"}]
+    plain_items = [{"description": "BROT", "amount": 3.68, "category": "groceries"}]
     accepted = create(api, date="2026-09-30", line_items=plain_items)["id"]
     assert api.get(f"/api/expenses/{accepted}").json()["review_status"] == "accepted"
 
@@ -299,8 +299,8 @@ def test_list_filters(api: TestClient) -> None:
     assert ids(**{"from": "2026-09-30", "to": "2026-10-01"}) == [drinks, accepted]
     assert ids(category="drinks") == [drinks]
     assert ids(category="uncategorized") == [drinks]
-    assert ids(category="groceries.staples") == [accepted]
-    assert ids(category="alcohol") == []
+    assert ids(category="groceries") == [accepted]
+    assert ids(category="pet") == []
 
 
 def test_has_receipt_filter(api: TestClient, model: ModelServer) -> None:
@@ -362,10 +362,10 @@ def test_list_rejects_invalid_filters(api: TestClient, params: dict, field: str)
 
 
 class LookupCategorizer:
-    """Knows `cola` and `club mate` (drinks) and `brot` (groceries.staples) as seed
+    """Knows `cola` and `club mate` (drinks) and `brot` (groceries) as seed
     entries; ignores the table it is given, so the 0018 rules are tested on their own."""
 
-    TABLE = {"cola": "drinks", "club mate": "drinks", "brot": "groceries.staples"}
+    TABLE = {"cola": "drinks", "club mate": "drinks", "brot": "groceries"}
 
     def categorize(self, description: str, table: CategoryTable) -> CategorizedItem:
         name = normalize(description).name
@@ -408,7 +408,7 @@ def resent(expense: dict, **changes: Any) -> list[dict]:
 
 
 def categorised(expense: dict) -> list[dict]:
-    return resent(expense, category="groceries.staples")
+    return resent(expense, category="groceries")
 
 
 def codes(expense: dict) -> list[tuple[str | None, str]]:
@@ -577,9 +577,9 @@ def test_items_not_sent_stay_as_they_are(api: TestClient) -> None:
     ("keep_id", "description", "sent", "category", "source"),
     [
         # an existing item, unchanged description, no category: the stored one stays
-        (True, "Cola", None, "alcohol", "user"),
+        (True, "Cola", None, "snacks_sweets", "user"),
         # a changed description: the categorizer decides
-        (True, "Brot", None, "groceries.staples", "seed"),
+        (True, "Brot", None, "groceries", "seed"),
         (True, "Cola Zero", None, "uncategorized", "none"),
         # a new item: the categorizer decides
         (False, "Cola", None, "drinks", "seed"),
@@ -598,7 +598,7 @@ def test_item_category_on_patch(
 ) -> None:
     # Stored before the categorizer knows `cola`, and different from what it would say.
     expense = create(
-        api, line_items=[{"description": "Cola", "amount": 3.68, "category": "alcohol"}]
+        api, line_items=[{"description": "Cola", "amount": 3.68, "category": "snacks_sweets"}]
     )
     api.app.dependency_overrides[get_item_categorizer] = LookupCategorizer  # type: ignore[attr-defined]
     item: dict[str, Any] = {"description": description, "amount": 3.68}
@@ -780,7 +780,7 @@ def test_confirm_racing_a_retry_is_404_not_500(
 
 
 def test_a_manual_expense_without_receipt_can_be_confirmed(api: TestClient) -> None:
-    items = [{**item, "category": "groceries.fresh"} for item in MANUAL["line_items"]]
+    items = [{**item, "category": "groceries"} for item in MANUAL["line_items"]]
     expense = create(api, line_items=items)
 
     confirmed = confirm(api, expense["id"])
@@ -792,7 +792,7 @@ def test_a_manual_expense_for_a_failed_receipt_can_be_confirmed(
     api: TestClient, model: ModelServer
 ) -> None:
     receipt_id = failed_receipt(api, model)
-    items = [{**item, "category": "groceries.fresh"} for item in MANUAL["line_items"]]
+    items = [{**item, "category": "groceries"} for item in MANUAL["line_items"]]
     expense = create(api, receipt_id=receipt_id, line_items=items)
 
     confirm(api, expense["id"])
@@ -1015,15 +1015,15 @@ def test_a_choice_made_on_one_receipt_categorises_the_next(
         total=3.49,
     )
     assert item_of(first, 0) == ("drachenfrucht", "uncategorized", "none")
-    assert item_of(first, 1) == ("banane", "groceries.fresh", "seed")  # a seed hit
+    assert item_of(first, 1) == ("banane", "groceries", "seed")  # a seed hit
     assert lookup_entry(api, "drachenfrucht") is None
 
     # The review page sends the changed item with its category, then confirms.
     items = resent(first)
-    items[0]["category"] = "groceries.fresh"
+    items[0]["category"] = "groceries"
     edited = patch(api, first["id"], {"line_items": items})
-    assert item_of(edited, 0) == ("drachenfrucht", "groceries.fresh", "user")
-    assert item_of(edited, 1) == ("banane", "groceries.fresh", "seed")  # not sent: kept
+    assert item_of(edited, 0) == ("drachenfrucht", "groceries", "user")
+    assert item_of(edited, 1) == ("banane", "groceries", "seed")  # not sent: kept
     confirm(api, first["id"])
 
     _, second = extracted(
@@ -1035,11 +1035,11 @@ def test_a_choice_made_on_one_receipt_categorises_the_next(
         total=1.75,
     )
 
-    assert item_of(second, 0) == ("drachenfrucht", "groceries.fresh", "user")
+    assert item_of(second, 0) == ("drachenfrucht", "groceries", "user")
     assert (second["review_status"], second["flags"]) == ("accepted", [])
-    assert lookup_entry(api, "drachenfrucht") == ("groceries.fresh", "user")
+    assert lookup_entry(api, "drachenfrucht") == ("groceries", "user")
     # Only the category sent was saved; the unchanged seed entry kept its source.
-    assert lookup_entry(api, "banane") == ("groceries.fresh", "seed")
+    assert lookup_entry(api, "banane") == ("groceries", "seed")
 
 
 def test_a_manual_expense_saves_its_categories(api: TestClient) -> None:
@@ -1100,18 +1100,18 @@ def test_a_resent_category_with_a_corrected_description_does_not_train_the_new_n
 ) -> None:
     """Reviewer finding: the review page resends the stored `user` category when only the
     description changed. Correcting a misread `Milch` to `Bier` must not save
-    bier -> groceries.fresh over the seed's alcohol."""
-    items = [{"description": "Milch", "amount": 3.68, "category": "groceries.fresh"}]
+    bier -> groceries over the seed's drinks."""
+    items = [{"description": "Milch", "amount": 3.68, "category": "groceries"}]
     expense = create(api, line_items=items)
     item_id = expense["line_items"][0]["id"]
 
-    resend = {"id": item_id, "description": "Bier", "amount": 3.68, "category": "groceries.fresh"}
+    resend = {"id": item_id, "description": "Bier", "amount": 3.68, "category": "groceries"}
     edited = patch(api, expense["id"], {"line_items": [resend]})
 
-    assert item_of(edited) == ("bier", "groceries.fresh", "user")  # on the item (0018)
-    assert lookup_entry(api, "bier") == ("alcohol", "seed")  # the table is untouched
+    assert item_of(edited) == ("bier", "groceries", "user")  # on the item (0018)
+    assert lookup_entry(api, "bier") == ("drinks", "seed")  # the table is untouched
     later = create(api, date="2026-10-04", line_items=[{"description": "Bier", "amount": 3.68}])
-    assert item_of(later) == ("bier", "alcohol", "seed")
+    assert item_of(later) == ("bier", "drinks", "seed")
 
 
 @pytest.mark.parametrize(
@@ -1120,7 +1120,7 @@ def test_a_resent_category_with_a_corrected_description_does_not_train_the_new_n
 def test_a_changed_category_on_an_existing_item_is_saved(
     api: TestClient, description: str, name: str
 ) -> None:
-    items = [{"description": "Milch", "amount": 3.68, "category": "groceries.fresh"}]
+    items = [{"description": "Milch", "amount": 3.68, "category": "groceries"}]
     expense = create(api, line_items=items)
     item_id = expense["line_items"][0]["id"]
 
@@ -1133,14 +1133,14 @@ def test_a_changed_category_on_an_existing_item_is_saved(
 
 def test_an_unchanged_resent_category_is_not_saved_again(api: TestClient) -> None:
     expense = create(api, line_items=[{"description": "Banane", "amount": 3.68}])
-    assert item_of(expense) == ("banane", "groceries.fresh", "seed")
+    assert item_of(expense) == ("banane", "groceries", "seed")
     item_id = expense["line_items"][0]["id"]
 
-    resend = {"id": item_id, "description": "Banane", "amount": 3.68, "category": "groceries.fresh"}
+    resend = {"id": item_id, "description": "Banane", "amount": 3.68, "category": "groceries"}
     edited = patch(api, expense["id"], {"line_items": [resend]})
 
-    assert item_of(edited) == ("banane", "groceries.fresh", "user")
-    assert lookup_entry(api, "banane") == ("groceries.fresh", "seed")
+    assert item_of(edited) == ("banane", "groceries", "user")
+    assert lookup_entry(api, "banane") == ("groceries", "seed")
 
 
 def test_a_saved_choice_can_be_removed_and_the_seed_applies_again(api: TestClient) -> None:
@@ -1150,7 +1150,7 @@ def test_a_saved_choice_can_be_removed_and_the_seed_applies_again(api: TestClien
     assert api.delete("/api/item-categories/banane").status_code == 204
 
     later = create(api, date="2026-10-04", line_items=[{"description": "Banane", "amount": 3.68}])
-    assert item_of(later) == ("banane", "groceries.fresh", "seed")
+    assert item_of(later) == ("banane", "groceries", "seed")
 
 
 # ---------------------------------------------------------------- duplicates (F07, 0020)

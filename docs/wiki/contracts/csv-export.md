@@ -20,7 +20,7 @@
 | `item_description` | string | `BIO BANANE 1 KG` |
 | `item_normalized_name` | string | `banane` |
 | `item_amount` | decimal | `1.99` |
-| `category` | string | `groceries.fresh` |
+| `category` | string | `groceries` |
 | `source` | `ai` \| `ai_corrected` \| `manual` | `ai_corrected` |
 
 `source` marks AI-generated data, which criterion 19 requires to be identifiable.

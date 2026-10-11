@@ -1,5 +1,8 @@
 """Versioned prompts load from package data; unknown or unsafe versions are rejected."""
 
+import hashlib
+from importlib.resources import files
+
 import pytest
 
 from app.ai.extractor import output_spec
@@ -7,8 +10,8 @@ from app.ai.prompts import Prompts, UnknownPromptVersion, available_versions, lo
 from app.ai.schema import OUTPUT_SPECS, ReceiptExtraction, ReceiptExtractionV1
 from app.config import Settings
 
-# v1 stays for the F11 comparison; v2 is the default (decision 0019).
-VERSIONS = ["v1", "v2"]
+# v1 and v2 stay frozen for the F11 comparison; v3 is the default (decisions 0019, 0026).
+VERSIONS = ["v1", "v2", "v3"]
 
 
 @pytest.mark.parametrize("version", VERSIONS)
@@ -26,12 +29,16 @@ def test_versions_are_available() -> None:
     assert set(VERSIONS) <= set(available_versions())
 
 
-def test_the_default_version_is_v2_and_exists() -> None:
+def test_the_default_version_is_v3_and_exists() -> None:
     default = Settings.model_fields["prompt_version"].default
 
-    assert default == "v2"
-    assert load_prompts(default).version == "v2"
+    assert default == "v3"
+    assert load_prompts(default).version == "v3"
     assert output_spec(default).model is ReceiptExtraction
+    # v2's schema (0026), with its own example without Pfand or Leergut (0027)
+    assert output_spec("v3").model is output_spec("v2").model
+    assert output_spec("v3").response_format == output_spec("v2").response_format
+    assert output_spec("v3").example_json != output_spec("v2").example_json
 
 
 @pytest.mark.parametrize("version", available_versions())
@@ -91,8 +98,25 @@ def test_v1_is_unchanged_old_schema() -> None:
     assert "subtotal and tax" in system
 
 
-def test_v2_never_mentions_the_removed_keys() -> None:
-    system = load_prompts("v2").system.lower()
+# The prompt files before F13 (decision 0026): v2 is frozen for the F11 comparison, like
+# v1's schema and example. Don't change these files; add a new version instead.
+FROZEN_PROMPT_SHA256 = {
+    ("v2", "system"): "ab69ec77d3a67679f3f6b04f389b6fb6414b1a78d42132ceb0c37ffd9f3f80da",
+    ("v2", "user"): "78f6462ee63382e5067aa1d80ed333ccf41f8938b76677c7a371a57afa30357a",
+    ("v2", "repair"): "261375ceeae67fdbd6369870ff3821044f891c2ecca821929e7b8646f278c8ea",
+}
+
+
+@pytest.mark.parametrize(("version", "name"), sorted(FROZEN_PROMPT_SHA256))
+def test_frozen_prompt_files_are_unchanged(version: str, name: str) -> None:
+    raw = files("app.ai.prompts").joinpath(version, f"{name}.txt").read_bytes()
+
+    assert hashlib.sha256(raw).hexdigest() == FROZEN_PROMPT_SHA256[(version, name)]
+
+
+@pytest.mark.parametrize("version", ["v2", "v3"])
+def test_v2_and_v3_never_mention_the_removed_keys(version: str) -> None:
+    system = load_prompts(version).system.lower()
 
     for word in ("unit_price", "unit price", "subtotal", "tax:", "yyyy-mm-dd"):
         assert word not in system, word
@@ -150,6 +174,119 @@ def test_v2_rules() -> None:
         "bottles: its own item with a negative amount."
     ) in system
     assert "Discounts are items with a negative amount." in system
+
+
+def test_v3_keeps_v2s_item_block_section_word_for_word() -> None:
+    v2, v3 = load_prompts("v2").system, load_prompts("v3").system
+    end = "- The letter or digit after a price"
+
+    # everything up to the end of the item-block section is v2's
+    assert v3.startswith(v2[: v2.index(end)])
+    # every v2 line but the two old Pfand bullets survives
+    for line in v2.splitlines():
+        if "Pfand" not in line:
+            assert line in v3, line
+
+
+def test_v3_rules() -> None:
+    system = load_prompts("v3").system
+
+    # the printed sign comes first (decision 0026)
+    assert "Copy every amount's sign exactly as printed." in system
+    assert "A trailing minus is a minus: 0,75- and -0,75 are both -0.75." in system
+    assert "Only when no sign is printed, its words decide the sign:" in system
+    assert system.index("Copy every amount's sign") < system.index("Only when no sign")
+    assert (
+        "- Pfand, Einwegpfand or Mehrweg for bottles you bought is an extra cost: a positive "
+        "amount."
+    ) in system
+    assert (
+        "- Leergut, Pfandrückgabe, Pfandbon or Pfand zurück is money given back for returned "
+        "bottles: a negative amount."
+    ) in system
+    # v2's keyword-only bullets are gone
+    assert "its own item with a positive amount" not in system
+    assert "its own item with a negative amount" not in system
+    # no concrete Pfand example lines: gemma3:4b copied them into receipts without any
+    # deposit (0027); the rule text stays
+    assert "MINERALWASSER               0,99 € A" not in system
+    assert "LEERGUT                     3,00-" not in system
+    assert "Pfand                      -0,25" not in system
+    assert (
+        "List a Pfand or Leergut item only if that line is printed on this receipt; most "
+        "receipts have none."
+    ) in system
+    # a number alone is never an item, and the total is the paid amount (0027)
+    assert (
+        "- A line with only a number, such as an article number or 219,000, is never an item."
+    ) in system
+    assert (
+        "The total is the amount on the ZU ZAHLEN / SUMME line, never another number."
+    ) in system
+    # the item area ends at the line with the amount paid, not at a ZWISCHENSUMME or a
+    # column header, and Pfand zurück stays an item (F13 review)
+    boundary = system[system.index("WHERE THE ITEMS END") : system.index("IMPORTANT:")]
+    assert (
+        "The items end at the line with the amount paid: SUMME, ZU ZAHLEN or GESAMT followed "
+        "by the total. Items are only the lines above it."
+    ) in boundary
+    assert "A ZWISCHENSUMME line or a column header" in boundary
+    assert "Pfand, Leergut and discount lines printed between a ZWISCHENSUMME" in boundary
+    assert "Nothing at or below the line with the amount paid is ever an item:" in boundary
+    assert "ZURÜCK (but Pfand zurück is an item, see above)" in boundary
+    for word in (
+        "BAR",
+        "Kartenzahlung",
+        "EC-Karte",
+        "girocard",
+        "VISA",
+        "Mastercard",
+        "GEGEBEN",
+        "RÜCKGELD",
+        "ZURÜCK",
+        "MwSt",
+        "USt",
+        "Netto",
+        "Brutto",
+        "Steuer",
+        '"A 19 %"',
+        '"B 7 %"',
+        "TSE, terminal and transaction lines",
+    ):
+        assert word in boundary, word
+    assert boundary.count("Wrong:") == boundary.count("Right:") == 3
+    assert "Right: total 12.40, no item." in boundary
+    assert "Right: payment_method cash, no item." in boundary
+    # the change rule still keeps Pfand zurück an item
+    assert "(but Pfand zurück is an item, see above)" in system
+    # never "unit price" (0019), and still no categorising (0013)
+    assert "unit price" not in system.lower()
+    assert "Do not categorise items." in system
+    # the new sections come after the item blocks and before the example
+    assert (
+        system.index("LINE ITEMS AND MULTI-LINE ITEM BLOCKS")
+        < system.index("PFAND AND LEERGUT")
+        < system.index("WHERE THE ITEMS END")
+        < system.index("{example}")
+    )
+
+
+def test_v3_has_no_pfand_or_leergut_example_line() -> None:
+    """Decision 0027: no indented example line names a deposit, and neither does the
+    example answer."""
+    system = load_prompts("v3").system
+    for line in system.splitlines():
+        if line.startswith(" "):
+            assert "pfand" not in line.lower() and "leergut" not in line.lower(), line
+        assert not line.startswith(("PFAND ", "LEERGUT ")) or line == "PFAND AND LEERGUT", line
+    example = output_spec("v3").example_json.lower()
+    assert "pfand" not in example and "leergut" not in example
+
+
+def test_v3_user_and_repair_prompts_are_v2s() -> None:
+    v2, v3 = load_prompts("v2"), load_prompts("v3")
+
+    assert (v3.user, v3.repair) == (v2.user, v2.repair)
 
 
 @pytest.mark.parametrize("version", VERSIONS)

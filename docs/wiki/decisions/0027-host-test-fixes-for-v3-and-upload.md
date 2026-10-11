@@ -1,0 +1,32 @@
+# 0027 — Fixes from the first v3 host test: copied examples, quantity lines, number items, the paid total, upload size
+
+**Status:** Accepted (2026-10-11)
+
+## Context
+The student ran v3 (`gemma3:4b`) on real receipts after F13 (2026-10-11). The stored raw output showed:
+- **Copied examples.** A Lidl receipt without any deposit got `PFAND -0.25` and `LEERGUT -0.75` as its last items. These are the v3 text example (`Pfand -0,25`) and the example answer's Leergut (−0.75).
+- **Quantity lines as items.** On an ALDI receipt the model listed `24 x 0,49 €` (11.76) and `RHNEIFELS WASSER M. AR` (0.25) as two items, and `3 x 0,89 €` and `-53 x 0,25 €` the same way.
+- **A number as an item and as the total.** `219,000` → 219.00 was stored as an item and also became `total`, while the receipt says `ZU ZAHLEN 54,40`. The model listed that line as an item and the guard dropped it, so the review page said "Items sum to 261.93 but total is 219.00".
+- **A Pfand charge negated.** ALDI prints the deposit charge as `PFAND / RÜCKGABE 0,25` (6.00 for 24 bottles). The bare word `rueckgabe` made the code negate it to −6.00.
+- **A 5.2 MB photo was refused** with a size message. The API's limit is 10 MB, and a 5.2 MB upload returns 202 in a test, so the API doesn't reject it. Phone photos are often 5–12 MB, and the model sees at most about 900 px anyway.
+
+## Decision
+The student asked for all of these to be fixed (2026-10-11). F13 isn't merged, so **v3 is changed in place**; v1 and v2 stay frozen.
+- **v3 gets its own example answer** (`EXAMPLE_OUTPUT_V3`, `OUTPUT_SPECS["v3"]`) **without any Pfand or Leergut line**, and the Pfand section of `system.txt` drops its concrete example lines. It now says: list a Pfand or Leergut item only if that line is printed on this receipt; most receipts have none. The sign rule (printed sign first) stays. v3's prompt also says that a line with only a number is never an item, and that the total is the amount on the ZU ZAHLEN / SUMME line.
+- **No-letter lines (code):** an item whose description has no letter at all (`219,000`, `4711`, `-`) is a non-item and is dropped. A letter of any script counts, so a Cyrillic name stays. A blank description stays an item, since it may be a real amount the model couldn't name. Quantity lines (`3 × 0,89`) are exempt, so they reach the merge.
+- **Quantity lines (code):** an item whose description is only a quantity line (`24 x 0,49 €`, `3 x 0,89`, `1,066 kg x 0,99 €/kg`, `-53 x 0,25 €`) is merged into a neighbour:
+  - The neighbour is the previous item when its amount already equals N × price within 0.02 (`RINDERHACK 4,17` / `3 x 1,39 €` / `BANANEN`). Otherwise it is the next item, and failing that the previous item only if its amount is the unit price. Any other amount on the previous item belongs to a real product and is never overwritten (found by the backend agent and the reviewer: `BROT 2.49` / `3 x 0,89` / `PFAND` lost the 2.49). A negative quantity line merges only into a deposit item, and a positive one never does.
+  - The merged item keeps the neighbour's description, takes the quantity N as its `qty` (the absolute value), and takes the quantity line's amount when it equals N × price within 0.02. Otherwise it keeps the neighbour's amount.
+  - Without a qualifying neighbour the quantity line stays an item, so the user sees and names it.
+- **The paid total (code):** take the dropped `zu zahlen` / `gesamtbetrag` lines with a positive amount, rounded to cents; they must agree with each other within 0.02. A null `total` takes that amount. A non-null `total` is replaced only when the kept items (after the merge) add up to the paid amount and not to the model's total. So a misread `ZU ZAHLEN 0.0` or `219.0` never overwrites a correct total (found by `/code-review` and the reviewer). `summe` doesn't count, because tax tables print one too. It runs before the facts are built, so the sum check compares against the paid amount. Plausibility sees the model's own total, so a paid line alone doesn't make an itemless non-receipt plausible.
+- **Return words:** a bare `rueckgabe` is no longer a return word. `Pfand / Rückgabe` and `Pfand-Rückgabe` (two words after folding) are treated as a plain Pfand: never negated, only flagged. v3's prompt says a positive `Pfand / Rückgabe` line is the charge. Single-word `pfandrueckgabe`, `leergutrueckgabe`, `flaschenrueckgabe`, `leergutruecknahme`, the misspelling `leergutrueckname`, and `pfandruecknahme` are return words, as are the two-word `flaschen rueckgabe` and `leergut`, `leergutbon`, `pfandbon`, `pfand zurueck`, `zurueck pfand`. A negative line without letters (`-0,50`, `-30%`) is a discount, not a non-item.
+- **Upload (frontend):** before upload the page downsizes a photo larger than 2 MB, or one whose long side is over 2,000 px, to a JPEG with the long side at most 2,000 px (quality 0.85), keeping EXIF orientation. A type other than jpeg, png or webp that the browser can decode (HEIC on Safari, BMP, GIF) is always converted. If that fails (an unsupported browser or a decode error), it uploads the original. The 413 message names the limit, and the page says so before uploading a file still over 10 MB.
+
+## Consequences
+- The guard now changes items in three ways (drop, merge, negate) plus the total. Each change is a logged count through a fixed template, and the raw output keeps the model's answer for F11.
+- A merge can attach a quantity line to the wrong product when the model has also lost the order. The sum check and the photo remain the user's check.
+- A quantity line may end in a copied tax class (`2 x 0,49 € A`), and `Stück` counts as a unit; a merged weight line stores its unit (`kg`, `g`, `l`).
+- **Copy risk that remains:** v3 keeps v2's multi-line block examples word for word (`24 x 0,49 €` / `RHEINFELS WASSER M. AR 11,76`, `RINDERHACKFLEI. XXL 4,17`, `BANANEN 1,066 kg`). The student's ALDI receipt really has those lines, so the copy can't be told apart there. F11 should check for the example values on other receipts (found by the reviewer).
+- The uploaded image is the downsized one, so the review page shows that. 2,000 px is enough to read a receipt.
+- The cause of the "too big" message is still unknown, since the API didn't produce it. If it shows again after the downsizing, the exact text will tell where it comes from.
+- Amends [0026](0026-prompt-v3-non-item-guard-and-pfand-sign.md) (return words, v3's example).

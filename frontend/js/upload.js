@@ -1,6 +1,7 @@
 // Upload page: drag and drop or pick a photo, POST /receipts, then open the review page.
-import { api, clearError, formatMoney, showError } from "./api.js";
+import { ApiError, api, clearError, formatMoney, showError } from "./api.js";
 import { RECEIPT_STATUS_WORDS, formatDate, formatTimestamp, h } from "./dom.js";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, preparePhoto } from "./resize.js";
 
 const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("file-input");
@@ -10,23 +11,56 @@ const recentEmpty = document.getElementById("recent-empty");
 
 let uploading = false;
 
-async function uploadFile(file) {
+const TOO_LARGE_MESSAGE = `This photo is larger than ${MAX_UPLOAD_MB} MB, the upload limit.`;
+
+/** The upload is over; the page accepts another file. */
+function resetUpload() {
+  uploading = false;
+  fileInput.disabled = false;
+  fileInput.value = "";
+  dropZone.removeAttribute("aria-busy");
+}
+
+/** Shows an error in the banner; a 413 says the limit, which the server's detail doesn't. */
+function showUploadError(err) {
+  if (err instanceof ApiError && err.error === "file_too_large") {
+    showError(new ApiError(err.status, err.error, TOO_LARGE_MESSAGE, null));
+  } else {
+    showError(err);
+  }
+}
+
+async function uploadFile(file, note = "") {
   if (!file || uploading) return;
   uploading = true;
   clearError();
   fileInput.disabled = true;
-  statusLine.textContent = `Uploading ${file.name}…`;
+  dropZone.setAttribute("aria-busy", "true");
+  // Downsizing a phone photo takes a moment (decision 0027); it never rejects.
+  statusLine.textContent = `${note}Preparing photo…`;
+  let upload = file;
   try {
-    const receipt = await api.upload(file);
+    upload = await preparePhoto(file);
+  } catch {
+    // preparePhoto never rejects; if it ever does, the original still goes up.
+  }
+  if (upload.size > MAX_UPLOAD_BYTES) {
+    // Refused here, before the transfer; the same code the API would answer with.
+    statusLine.textContent = "";
+    showError(new ApiError(413, "file_too_large", TOO_LARGE_MESSAGE, null));
+    resetUpload();
+    return;
+  }
+  statusLine.textContent = `${note}Uploading ${file.name}…`;
+  try {
+    const receipt = await api.upload(upload);
     statusLine.textContent = "Uploaded. Opening the review page…";
     window.location.href = `review.html?id=${encodeURIComponent(receipt.id)}`;
   } catch (err) {
-    // 413 file_too_large and 422 unsupported_file carry a readable detail.
+    // 422 unsupported_file carries a readable detail; 413 gets one that names the limit.
     statusLine.textContent = "";
-    showError(err);
-    uploading = false;
-    fileInput.disabled = false;
-    fileInput.value = "";
+    showUploadError(err);
+    resetUpload();
   }
 }
 
@@ -47,10 +81,9 @@ dropZone.addEventListener("drop", (e) => {
   e.preventDefault();
   dropZone.classList.remove("drag-over");
   const files = e.dataTransfer && e.dataTransfer.files;
-  if (files && files.length > 1) {
-    statusLine.textContent = "Only the first file is uploaded.";
-  }
-  uploadFile(files && files[0]);
+  // Kept in front of the progress text, so it isn't overwritten at once.
+  const note = files && files.length > 1 ? "Only the first file is uploaded. " : "";
+  uploadFile(files && files[0], note);
 });
 // A file dropped next to the zone would otherwise open in the browser tab.
 window.addEventListener("dragover", (e) => e.preventDefault());

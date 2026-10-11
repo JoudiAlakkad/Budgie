@@ -319,7 +319,7 @@ def test_list_filters(db: Database) -> None:
     assert ids(date_from=dt.date(2026, 9, 30), date_to=dt.date(2026, 10, 1)) == [oct_drinks, sept]
     assert ids(category="drinks") == [oct_drinks]
     assert ids(category="uncategorized") == [oct_drinks, sept, undated]
-    assert ids(category="alcohol") == []
+    assert ids(category="pet") == []
 
 
 def test_list_filters_by_having_a_receipt(db: Database) -> None:
@@ -480,7 +480,7 @@ def test_update_replaces_the_items_in_order(db: Database) -> None:
                 stored,
                 edited_item(None, "WASSER", "0.49"),
                 edited_item(milch.id, "MILCH 1L", "1.29"),
-                edited_item(brot.id, "BROT", "2.49", category="groceries.staples"),
+                edited_item(brot.id, "BROT", "2.49", category="groceries"),
             ),
         )
 
@@ -493,7 +493,7 @@ def test_update_replaces_the_items_in_order(db: Database) -> None:
     assert (milch_after.amount, milch_after.category) == (Decimal("1.29"), "other")
     assert (brot_after.id, brot_after.category, brot_after.category_source) == (
         brot.id,
-        "groceries.staples",
+        "groceries",
         "user",
     )
     with db.engine.connect() as conn:  # PFAND is gone
@@ -626,7 +626,7 @@ def table(db: Database) -> dict[str, tuple[str, str]]:
 
 
 def test_sync_seed_inserts_missing_names_and_is_idempotent(db: Database) -> None:
-    seed = {"banane": "groceries.fresh", "pfand": "deposit"}
+    seed = {"banane": "groceries", "pfand": "deposit"}
 
     with db.transaction() as session:
         first = ItemCategoryRepository(session).sync_seed(seed)
@@ -637,7 +637,7 @@ def test_sync_seed_inserts_missing_names_and_is_idempotent(db: Database) -> None
 
     assert (first.inserted, first.updated) == (2, 0)
     assert (second.inserted, second.updated) == (0, 0)
-    assert table(db) == {"banane": ("groceries.fresh", "seed"), "pfand": ("deposit", "seed")}
+    assert table(db) == {"banane": ("groceries", "seed"), "pfand": ("deposit", "seed")}
     with db.transaction() as session:
         assert ItemCategoryRepository(session).get("banane") == stamp  # untouched
 
@@ -646,19 +646,19 @@ def test_sync_seed_updates_seed_rows_and_never_touches_user_rows(db: Database) -
     with db.transaction() as session:
         repo = ItemCategoryRepository(session)
         repo.sync_seed({"kaffee": "drinks", "cola": "drinks"})
-        repo.upsert_user("cola", "alcohol")
-        repo.upsert_user("zwiebeln", "groceries.fresh")
+        repo.upsert_user("cola", "snacks_sweets")
+        repo.upsert_user("zwiebeln", "groceries")
 
     with db.transaction() as session:
         result = ItemCategoryRepository(session).sync_seed(
-            {"kaffee": "groceries.staples", "cola": "drinks", "zwiebeln": "other"}
+            {"kaffee": "groceries", "cola": "drinks", "zwiebeln": "other"}
         )
 
     assert (result.inserted, result.updated) == (0, 1)
     assert table(db) == {
-        "kaffee": ("groceries.staples", "seed"),  # the seed's new value
-        "cola": ("alcohol", "user"),
-        "zwiebeln": ("groceries.fresh", "user"),
+        "kaffee": ("groceries", "seed"),  # the seed's new value
+        "cola": ("snacks_sweets", "user"),
+        "zwiebeln": ("groceries", "user"),
     }
 
 
@@ -674,7 +674,7 @@ def test_sync_seed_keeps_names_the_seed_no_longer_has(db: Database) -> None:
 def test_upsert_user_overrides_a_seed_entry_and_stamps_it(db: Database) -> None:
     with db.transaction() as session:
         repo = ItemCategoryRepository(session)
-        repo.sync_seed({"banane": "groceries.fresh"})
+        repo.sync_seed({"banane": "groceries"})
         seeded = repo.get("banane")
         record = repo.upsert_user("banane", "snacks_sweets")
 
@@ -700,7 +700,7 @@ def test_a_save_is_one_insert_on_conflict_without_a_read_first(db: Database) -> 
     try:
         with db.transaction() as session:
             ItemCategoryRepository(session).upsert_user("zwiebelkuchen", "eating_out")
-            ItemCategoryRepository(session).put_seed("banane", "groceries.fresh")
+            ItemCategoryRepository(session).put_seed("banane", "groceries")
     finally:
         event.remove(db.engine, "before_cursor_execute", record)
 
@@ -745,10 +745,10 @@ def test_put_seed_turns_a_user_row_back_into_the_seed_entry(db: Database) -> Non
     with db.transaction() as session:
         repo = ItemCategoryRepository(session)
         repo.upsert_user("banane", "other")
-        restored = repo.put_seed("banane", "groceries.fresh")
+        restored = repo.put_seed("banane", "groceries")
 
-    assert (restored.category, restored.source) == ("groceries.fresh", "seed")
-    assert table(db) == {"banane": ("groceries.fresh", "seed")}
+    assert (restored.category, restored.source) == ("groceries", "seed")
+    assert table(db) == {"banane": ("groceries", "seed")}
 
 
 def test_put_seed_restores_a_seed_entry(db: Database) -> None:
@@ -757,17 +757,15 @@ def test_put_seed_restores_a_seed_entry(db: Database) -> None:
         repo.upsert_user("banane", "other")
         assert repo.delete("banane") is True
         assert repo.delete("banane") is False
-        repo.put_seed("banane", "groceries.fresh")
+        repo.put_seed("banane", "groceries")
 
-    assert table(db) == {"banane": ("groceries.fresh", "seed")}
+    assert table(db) == {"banane": ("groceries", "seed")}
 
 
 def test_search_is_a_substring_match_sorted_by_name(db: Database) -> None:
     with db.transaction() as session:
         repo = ItemCategoryRepository(session)
-        repo.sync_seed(
-            {"bananen": "groceries.fresh", "banane": "groceries.fresh", "milch": "groceries.fresh"}
-        )
+        repo.sync_seed({"bananen": "groceries", "banane": "groceries", "milch": "groceries"})
         repo.upsert_user("100%_saft", "drinks")
 
     with db.transaction() as session:

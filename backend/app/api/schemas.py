@@ -69,11 +69,9 @@ Timestamp = Annotated[dt.datetime, AfterValidator(_to_utc)]
 # ---------------------------------------------------------------- enumerations
 
 SpendingCategory = Literal[
-    "groceries.fresh",
-    "groceries.staples",
+    "groceries",
     "snacks_sweets",
     "drinks",
-    "alcohol",
     "tobacco",
     "household",
     "personal_care",
@@ -82,16 +80,15 @@ SpendingCategory = Literal[
     "transport",
     "clothing",
     "electronics",
+    "pet",
     "other",
 ]
 """The categories that count as spending (domain-logic.md#categories)."""
 
 Category = Literal[
-    "groceries.fresh",
-    "groceries.staples",
+    "groceries",
     "snacks_sweets",
     "drinks",
-    "alcohol",
     "tobacco",
     "household",
     "personal_care",
@@ -100,6 +97,7 @@ Category = Literal[
     "transport",
     "clothing",
     "electronics",
+    "pet",
     "other",
     "deposit",
     "discount",
@@ -107,11 +105,9 @@ Category = Literal[
 """`SpendingCategory` plus the special categories `deposit` and `discount`."""
 
 LineItemCategory = Literal[
-    "groceries.fresh",
-    "groceries.staples",
+    "groceries",
     "snacks_sweets",
     "drinks",
-    "alcohol",
     "tobacco",
     "household",
     "personal_care",
@@ -120,6 +116,7 @@ LineItemCategory = Literal[
     "transport",
     "clothing",
     "electronics",
+    "pet",
     "other",
     "deposit",
     "discount",
