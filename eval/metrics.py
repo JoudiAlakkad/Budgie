@@ -14,7 +14,7 @@ from decimal import Decimal
 from typing import Any
 
 from app.ai.schema import ReceiptExtraction
-from app.domain.categorize import CategoryTable
+from app.domain.categorize import CategoryTable, normalize
 from app.domain.duplicates import ExpenseKey
 from app.domain.non_items import ItemLine, is_non_item_line
 from app.errors import ExtractionError, NotAReceipt
@@ -31,11 +31,12 @@ from eval.scoring import (
     date_matches,
     extraction_status,
     extraction_wrong,
+    get_path,
     injection_followed,
     match_items,
     merchant_matches,
-    name_key_agrees,
     percentile,
+    rate,
     to_decimal,
     total_matches,
 )
@@ -341,8 +342,9 @@ def score_case(case: Case, obs: Observation, examples: Sequence[Item]) -> CaseSc
         if case.kind != "non_receipt":
             stored = score_stored(case, obs.stored)
             truth = case.items
+            # The stored item's own key (as the app looked it up) against the truth's.
             agree = sum(
-                name_key_agrees(obs.stored.items[i].description, truth[j].description)
+                obs.stored.items[i].normalized_name == normalize(truth[j].description).name
                 for i, j in stored.items.pairs
             )
             changes["stored"] = stored
@@ -353,10 +355,6 @@ def score_case(case: Case, obs: Observation, examples: Sequence[Item]) -> CaseSc
 
 
 # ---------------------------------------------------------------- aggregates
-
-
-def _rate(numerator: int, denominator: int) -> float | None:
-    return None if denominator == 0 else numerator / denominator
 
 
 def _field_rates(scores: Sequence[CaseScore], view: str) -> dict[str, Any]:
@@ -373,7 +371,7 @@ def _field_rates(scores: Sequence[CaseScore], view: str) -> dict[str, Any]:
     n = len(scores)
     return {
         "n": n,
-        **{name: _rate(totals[name], n) for name in ("merchant", "date", "total", "items_exact")},
+        **{name: rate(totals[name], n) for name in ("merchant", "date", "total", "items_exact")},
     }
 
 
@@ -402,7 +400,7 @@ def _run_agreement(observations: Sequence[Observation]) -> dict[str, Any] | None
         return (obs.outcome, stored.merchant, stored.date, stored.total, items)
 
     agree = sum(len({key(obs) for obs in runs}) == 1 for runs in multi.values())
-    return {"cases": len(multi), "agree": agree, "rate": _rate(agree, len(multi))}
+    return {"cases": len(multi), "agree": agree, "rate": rate(agree, len(multi))}
 
 
 def aggregate(
@@ -456,9 +454,9 @@ def aggregate(
         "schema_validity": {
             "n": len(answered),
             "valid": len(valid),
-            "rate": _rate(len(valid), len(answered)),
+            "rate": rate(len(valid), len(answered)),
             "without_repair": len(unrepaired),
-            "rate_without_repair": _rate(len(unrepaired), len(answered)),
+            "rate_without_repair": rate(len(unrepaired), len(answered)),
         },
         "fields": {
             "stored": _field_rates(receipts, "stored"),
@@ -471,26 +469,26 @@ def aggregate(
         "name_key_agreement": {
             "agree": name_agree,
             "pairs": name_pairs,
-            "rate": _rate(name_agree, name_pairs),
+            "rate": rate(name_agree, name_pairs),
         },
         "out_of_scope": {
             "cases": len(non_receipts),
             "rejected": len(rejected),
             "by_model": sum(s.rejected_by == "model" for s in rejected),
             "by_plausibility": sum(s.rejected_by == "plausibility" for s in rejected),
-            "rate": _rate(len(rejected), len(non_receipts)),
+            "rate": rate(len(rejected), len(non_receipts)),
         },
         "false_rejection": {
             "cases": len(receipts),
             "rejected": len(failed),
             "by_outcome": dict(sorted(Counter(s.outcome for s in failed).items())),
-            "rate": _rate(len(failed), len(receipts)),
+            "rate": rate(len(failed), len(receipts)),
         },
         "needs_review": {"receipts": len(produced), **needs_review},
         "injection_followed": {
             "cases": len(judged),
             "followed": len(followed),
-            "rate": _rate(len(followed), len(judged)),
+            "rate": rate(len(followed), len(judged)),
         },
         "copied_examples": {
             "items": sum(len(s.copied) for s in valid_scores),
@@ -530,15 +528,6 @@ HEADLINE: tuple[tuple[str, ...], ...] = (
 )
 
 
-def metric(metrics: Mapping[str, Any], path: Sequence[str]) -> Any:
-    value: Any = metrics
-    for part in path:
-        if not isinstance(value, Mapping):
-            return None
-        value = value.get(part)
-    return value
-
-
 def _case_points(score: CaseScore) -> dict[str, float] | None:
     """Per-field points of one case's stored values; a failure scores 0 everywhere."""
     if score.infra or not score.receipt:
@@ -567,7 +556,7 @@ def compare(a: ConfigResult, b: ConfigResult) -> dict[str, Any]:
     field, on each case's first run. No significance test (18 receipts, decision 0028)."""
     deltas: dict[str, float | None] = {}
     for path in HEADLINE:
-        left, right = metric(a.metrics, path), metric(b.metrics, path)
+        left, right = get_path(a.metrics, *path), get_path(b.metrics, *path)
         is_number = isinstance(left, int | float) and isinstance(right, int | float)
         deltas[".".join(path)] = right - left if is_number else None
 

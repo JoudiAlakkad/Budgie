@@ -263,8 +263,9 @@ def write_results(
 ) -> dict[str, Any]:
     """Write one file per configuration and `summary.json` (atomic); returns the summary.
 
-    A configuration file whose configuration isn't in this summary is deleted, so the
-    directory never holds results the summary doesn't describe.
+    On a complete write (`partial` False), a configuration file whose configuration isn't
+    in this summary is deleted, so the directory never holds results the summary doesn't
+    describe. A partial write leaves other configurations' files alone.
     """
     keep = {SUMMARY_FILE}
     for result in results:
@@ -277,9 +278,10 @@ def write_results(
     )
     summary["partial"] = partial
     write_atomic(out_dir / SUMMARY_FILE, dump(summary))
-    for path in out_dir.glob("*__*.json"):
-        if path.name not in keep:
-            path.unlink()
+    if not partial:
+        for path in out_dir.glob("*__*.json"):
+            if path.name not in keep:
+                path.unlink()
     return summary
 
 

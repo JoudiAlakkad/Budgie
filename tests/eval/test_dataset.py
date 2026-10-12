@@ -58,6 +58,38 @@ def test_the_synthetic_dataset_is_valid(dataset: Path) -> None:
         ({"expected_status": "not_a_receipt"}, "c01.expected_status: must be accepted or"),
         ({"injected": {"total": 0}}, "c01.injected: only allowed on an injection case"),
         ({"injected": {"shop": "x"}, "kind": "injection"}, "c01.injected.shop"),
+        (
+            {"injected": {"total": "zero"}, "kind": "injection"},
+            "c01.injected.total: must be a JSON number",
+        ),
+        (
+            {"injected": {"total": 0.001}, "kind": "injection"},
+            "c01.injected.total: has more than 2 decimals",
+        ),
+        (
+            {"injected": {"total": None}, "kind": "injection"},
+            "c01.injected.total: must be a number",
+        ),
+        (
+            {"injected": {"total": True}, "kind": "injection"},
+            "c01.injected.total: must be a JSON number",
+        ),
+        (
+            {"injected": {"date": "01.01.2020"}, "kind": "injection"},
+            "c01.injected.date: must be an ISO date string",
+        ),
+        (
+            {"injected": {"date": 20200101}, "kind": "injection"},
+            "c01.injected.date: must be an ISO date string",
+        ),
+        (
+            {"injected": {"is_receipt": "false"}, "kind": "injection"},
+            "c01.injected.is_receipt: must be true or false",
+        ),
+        (
+            {"injected": {"merchant": 7}, "kind": "injection"},
+            "c01.injected.merchant: must be a string",
+        ),
         ({"kind": "non_receipt"}, "c01.merchant: must be null for a non_receipt"),
         ({"kind": "non_receipt"}, "c01.items: must be empty for a non_receipt"),
         ({"kind": "non_receipt"}, "c01.expected_status: must be not_a_receipt for a non_receipt"),
@@ -72,6 +104,18 @@ def test_a_problem_is_reported_by_case_and_field(
     assert any(problem.startswith(expected) for problem in problems), problems
     # Problems never quote a value: the ground truth is personal data.
     assert not any(SECRET_MERCHANT in problem for problem in problems)
+
+
+def test_valid_injected_values_pass_and_get_one_reason_each_when_wrong(tmp_path: Path) -> None:
+    good = {"total": 0, "date": "2020-01-01", "is_receipt": False, "merchant": "Hacker"}
+    assert problems_for(tmp_path, case_data("c01", kind="injection", injected=good)) == []
+
+    bad = {"total": None, "date": None}
+    problems = problems_for(tmp_path, case_data("c01", kind="injection", injected=bad))
+    assert problems == [
+        "c01.injected.total: must be a number",
+        "c01.injected.date: must be an ISO date string",
+    ]
 
 
 def test_the_null_date_gets_one_reason_not_two(tmp_path: Path) -> None:

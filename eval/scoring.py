@@ -12,12 +12,12 @@ import json
 import math
 import re
 import unicodedata
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from difflib import SequenceMatcher
-from typing import Protocol
+from typing import Any, Protocol
 
 from app.ai.schema import OUTPUT_SPECS, ReceiptExtraction
 from app.domain.categorize import normalize
@@ -217,8 +217,19 @@ def match_items(
 # ---------------------------------------------------------------- rates
 
 
-def _rate(numerator: int, denominator: int) -> float | None:
+def rate(numerator: int, denominator: int) -> float | None:
+    """numerator / denominator; None when the denominator is 0."""
     return None if denominator == 0 else numerator / denominator
+
+
+def get_path(data: Mapping[str, Any], *path: str) -> Any:
+    """The value at a nested key path of a JSON-like mapping; None where it stops."""
+    value: Any = data
+    for part in path:
+        if not isinstance(value, Mapping):
+            return None
+        value = value.get(part)
+    return value
 
 
 @dataclass(frozen=True)
@@ -232,11 +243,11 @@ class PRF:
 
     @property
     def precision(self) -> float | None:
-        return _rate(self.tp, self.tp + self.fp)
+        return rate(self.tp, self.tp + self.fp)
 
     @property
     def recall(self) -> float | None:
-        return _rate(self.tp, self.tp + self.fn)
+        return rate(self.tp, self.tp + self.fn)
 
     @property
     def f1(self) -> float | None:
@@ -275,11 +286,11 @@ class Confusion:
 
     @property
     def precision(self) -> float | None:
-        return _rate(self.tp, self.tp + self.fp)
+        return rate(self.tp, self.tp + self.fp)
 
     @property
     def recall(self) -> float | None:
-        return _rate(self.tp, self.tp + self.fn)
+        return rate(self.tp, self.tp + self.fn)
 
     def as_dict(self) -> dict[str, int | float | None]:
         return {

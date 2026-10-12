@@ -9,8 +9,10 @@
 Both `run` and `score` write `eval/results/` and rewrite only the generated block of the
 report. Output names case ids and outcome codes only, never values.
 
-Missing or stale cache entries (including infrastructure errors, which are never cached)
-stop the writing of results and the report, unless `--partial` is given. `today` is pinned:
+A write is complete only for the default configurations x every case x every run, with
+no missing or stale cache entry (infrastructure errors are never cached, so they count as
+missing). Anything less writes results and the report only with `--partial`, marked
+partial; only a complete write deletes other configurations' result files. `today` is pinned:
 `--today`, else the `today` of the existing `summary.json`, else today in Berlin.
 
 Exit codes: 0 done, 1 cases missing from the cache, 2 invalid input (ground truth, report
@@ -30,6 +32,8 @@ import httpx
 
 from app.ai.client import LLMClient
 from app.ai.extractor import ExtractionResult
+from app.ai.prompts import available_versions
+from app.ai.schema import OUTPUT_SPECS
 from app.config import Settings
 from app.errors import ExtractionError
 from app.services.dependencies import build_extractor
@@ -40,6 +44,7 @@ from eval.cache import (
     fingerprint,
     is_cacheable,
     load,
+    remove,
     store,
     write_atomic,
 )
@@ -131,6 +136,27 @@ def configs_from(args: argparse.Namespace) -> list[Config]:
     return list(dict.fromkeys(configs))
 
 
+def config_problem(configs: list[Config]) -> str | None:
+    """Why these configurations can't run, or None: an unknown prompt version (no prompt
+    folder or no output spec), or two configurations sharing one cache/result id."""
+    known = sorted(set(available_versions()) & set(OUTPUT_SPECS))
+    for config in configs:
+        if config[1] not in known:
+            return (
+                f"Unknown prompt version {config[1]!r} in {label(config)}; "
+                f"available: {', '.join(known)}"
+            )
+    seen: dict[str, Config] = {}
+    for config in configs:
+        other = seen.setdefault(config_id(*config), config)
+        if other != config:
+            return (
+                f"{label(other)} and {label(config)} map to the same id "
+                f"{config_id(*config)!r}; run them separately"
+            )
+    return None
+
+
 def settings_for(config: Config, timeout: float | None = None) -> Settings:
     """Settings built directly, not the process-wide cached `get_settings()`."""
     model, prompt_version = config
@@ -219,11 +245,20 @@ def _call(
     return CacheEntry.from_result(result, fp), "extracted", None
 
 
+Images = dict[str, tuple[bytes, str]]
+
+
+def prepare_images(cases: list[Case], data: Path, resize: bool) -> Images:
+    """Each case's image as sent, prepared once per invocation."""
+    return {case.id: _image(case, data, resize) for case in cases}
+
+
 def run_models(
     args: argparse.Namespace,
     configs: list[Config],
     cases: list[Case],
     factory: ExtractorFactory | None,
+    images: Images,
 ) -> tuple[int, int]:
     """Call the model where the cache has no matching entry; returns the number of calls
     and of infrastructure errors (not cached, so scoring sees them as missing, exactly
@@ -239,10 +274,16 @@ def run_models(
         cid = config_id(*config)
         print(f"{label(config)}: {len(cases)} cases x {args.runs} run(s)")
         for case in cases:
-            image, mime = _image(case, args.data, not args.no_resize)
+            image, mime = images[case.id]
             for run in range(1, args.runs + 1):
                 fp = _fingerprint(settings, image, run)
-                cached = None if args.force else load(args.cache, cid, case.id, run)
+                if args.force:
+                    # Gone before the call: an infrastructure error leaves it missing,
+                    # not the old answer.
+                    remove(args.cache, cid, case.id, run)
+                    cached = None
+                else:
+                    cached = load(args.cache, cid, case.id, run)
                 if cached is not None and cached.fingerprint == fp:
                     print(f"  {case.id} r{run}: cached ({cached.outcome})")
                     continue
@@ -262,6 +303,7 @@ def score_all(
     args: argparse.Namespace,
     configs: list[Config],
     cases: list[Case],
+    images: Images,
 ) -> tuple[list[ConfigResult], dict[Config, list[Observation]], int]:
     """Score every configuration from the cache; no model, no network."""
     today: dt.date = args.today
@@ -269,7 +311,6 @@ def score_all(
     results: list[ConfigResult] = []
     observed: dict[Config, list[Observation]] = {}
     missing_total = 0
-    images = {case.id: _image(case, args.data, not args.no_resize)[0] for case in cases}
     for config in configs:
         settings = settings_for(config)
         model, prompt_version = config
@@ -279,7 +320,7 @@ def score_all(
         for case in cases:
             for run in range(1, args.runs + 1):
                 entry = load(args.cache, cid, case.id, run)
-                fp = _fingerprint(settings, images[case.id], run)
+                fp = _fingerprint(settings, images[case.id][0], run)
                 if entry is not None and entry.fingerprint == fp:
                     obs = observe(
                         case.id,
@@ -297,6 +338,7 @@ def score_all(
                 scores.append(score_case(case, obs, examples))
         if not observations:
             print(f"{label(config)}: nothing in the cache, skipped")
+            missing_total += missing  # every expected run of this configuration
             continue
         if missing:
             print(f"{label(config)}: {missing} case run(s) not in the cache (or stale)")
@@ -342,15 +384,21 @@ def _finish(
     results: list[ConfigResult],
     observed: dict[Config, list[Observation]],
     missing: int,
+    full_scope: bool,
 ) -> int:
+    """Write results and the report. Complete only for the default configurations, every
+    case and no missing entry; anything less needs `--partial` and is marked partial."""
     if not results:
         print("Nothing to score.")
         return EXIT_MISSING
-    if missing and not args.partial:
-        print(
-            f"{missing} case run(s) missing from the cache: results and report not written "
-            "(run again, or use --partial)"
-        )
+    complete = full_scope and not missing
+    if not complete and not args.partial:
+        reasons = []
+        if missing:
+            reasons.append(f"{missing} case run(s) missing from the cache")
+        if not full_scope:
+            reasons.append("not every default configuration and case was selected")
+        print(f"Partial: {'; '.join(reasons)}. Results and report not written (use --partial).")
         return EXIT_MISSING
     summary = write_results(
         args.out,
@@ -359,7 +407,7 @@ def _finish(
         comparisons({result.config: result for result in results}),
         today=args.today,
         runs=args.runs,
-        partial=bool(missing),
+        partial=not complete,
     )
     print(f"Results written to {args.out}")
     if not args.no_report:
@@ -404,28 +452,34 @@ def main(
     args.today, source = pinned_today(args)
     print(f"today = {args.today.isoformat()} (from {source})")
     configs = configs_from(args)
+    if problem := config_problem(configs):
+        print(problem)
+        return EXIT_INPUT
     try:
-        cases = _selected(load_dataset(args.data), args.cases)
+        dataset = load_dataset(args.data)
+        cases = _selected(dataset, args.cases)
     except InvalidDataset as exc:
         for problem in exc.problems:
             print(problem)
         return EXIT_INPUT
+    full_scope = set(configs) == set(DEFAULT_CONFIGS) and len(cases) == len(dataset)
     try:
         _check_report(args)
     except MarkerError as exc:
         print(f"Report not touched: {exc}")
         return EXIT_INPUT
 
+    if args.command == "run" and extractor_factory is None:
+        message = preflight(settings_for(configs[0], args.timeout), [m for m, _ in configs])
+        if message:
+            print(message)
+            return EXIT_SERVER
+    images = prepare_images(cases, args.data, not args.no_resize)
     if args.command == "run":
-        if extractor_factory is None:
-            message = preflight(settings_for(configs[0], args.timeout), [m for m, _ in configs])
-            if message:
-                print(message)
-                return EXIT_SERVER
-        calls, infra = run_models(args, configs, cases, extractor_factory)
+        calls, infra = run_models(args, configs, cases, extractor_factory, images)
         print(f"{calls} model call(s), {infra} infrastructure error(s)")
-    results, observed, missing = score_all(args, configs, cases)
-    return _finish(args, results, observed, missing)
+    results, observed, missing = score_all(args, configs, cases, images)
+    return _finish(args, results, observed, missing, full_scope)
 
 
 if __name__ == "__main__":

@@ -28,7 +28,9 @@ How the extraction is measured. The rules (what counts as correct, flagged and c
 - `make eval-check`, then `make eval` (`run`, default: the four configurations of 0028), or `python -m eval.run_eval run --config gemma3:4b@v3 --cases c02,c05`.
 - `run` writes each answer to `data/eval/cache/<config>/<case>-r<n>.json` right after its call, so a stopped run resumes where it stopped. Infrastructure errors aren't cached, so they are retried.
 - `make eval-score` (`score`) recomputes everything from the cache without the model, writes `eval/results/` and rewrites the generated block of `docs/evaluation.md`.
-- Exit codes: 0 done; 1 cache entries missing or stale (nothing is written without `--partial`); 2 invalid input (ground truth, report markers, arguments, Pillow missing); 3 model server unreachable or a model not pulled.
+- **Complete or partial:** results and the report block are written only for a complete scope: the four default configurations (in any order), every dataset case, the requested `--runs`, nothing missing. Anything less (`--cases`, other `--config`/`--models`/`--prompts`, missing or stale entries, infrastructure errors) exits 1 and writes nothing, unless `--partial` is given, which marks `summary.json` and the report as partial. Other configurations' result files are deleted only on a complete write (found by `/code-review`: the Makefile's `--cases` example used to overwrite the full results).
+- `--force` deletes a case's cache entry before the call, so a failed retry leaves it missing rather than scoring the old answer. Unknown prompt versions and two configurations with the same cache id exit 2 before any call.
+- Exit codes: 0 done; 1 incomplete scope or cache entries missing or stale (nothing is written without `--partial`); 2 invalid input (ground truth, report markers, arguments, Pillow missing); 3 model server unreachable or a model not pulled.
 - The report is re-read just before the block is replaced and written atomically, so edits made in `docs/evaluation.md` during an hour-long run survive (review fix).
 
 ## Cache fingerprint

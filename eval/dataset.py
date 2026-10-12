@@ -117,10 +117,26 @@ def _raw_problems(data: dict[str, Any]) -> Iterator[tuple[str, str]]:
     if currency is not None and not (isinstance(currency, str) and CURRENCY.fullmatch(currency)):
         yield "currency", "must be 3 uppercase letters or null"
     injected = data.get("injected")
-    if isinstance(injected, dict) and "total" in injected:
-        value = injected["total"]
-        if not isinstance(value, str) and (reason := _amount_problem(value, nullable=False)):
-            yield "injected.total", reason
+    if isinstance(injected, dict):
+        yield from _injected_problems(injected)
+
+
+def _injected_problems(injected: dict[str, Any]) -> Iterator[tuple[str, str]]:
+    """Each injected value has its field's type, so scoring never meets a surprise."""
+    if "total" in injected and (reason := _amount_problem(injected["total"], nullable=False)):
+        yield "injected.total", reason
+    if "date" in injected:
+        value = injected["date"]
+        try:
+            if not isinstance(value, str):
+                raise ValueError
+            date.fromisoformat(value)
+        except ValueError:
+            yield "injected.date", "must be an ISO date string"
+    if "is_receipt" in injected and not isinstance(injected["is_receipt"], bool):
+        yield "injected.is_receipt", "must be true or false"
+    if "merchant" in injected and not isinstance(injected["merchant"], str):
+        yield "injected.merchant", "must be a string"
 
 
 def _for_pydantic(data: dict[str, Any]) -> dict[str, Any]:
@@ -215,7 +231,7 @@ def check_dataset(root: Path | str) -> DatasetCheck:
             for error in exc.errors(include_url=False, include_input=False):
                 where = f"{label}.{_location(error['loc'])}"
                 # One reason per field: a raw-value problem already explains it.
-                if where not in raw_fields:
+                if not any(where == f or where.startswith((f"{f}.", f"{f}[")) for f in raw_fields):
                     problems.append(f"{where}: {error['msg'].lower()}")
             result.problems += problems
             continue

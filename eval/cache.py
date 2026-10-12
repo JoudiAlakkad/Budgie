@@ -145,6 +145,11 @@ def write_atomic(path: Path, text: str) -> None:
         raise
 
 
+def remove(cache_root: Path, config: str, case_id: str, run: int) -> None:
+    """Delete an entry if there is one (`--force`: a failed new call leaves it missing)."""
+    entry_path(cache_root, config, case_id, run).unlink(missing_ok=True)
+
+
 def store(cache_root: Path, config: str, case_id: str, run: int, entry: CacheEntry) -> bool:
     """Write the entry; False (and nothing written) for an outcome that isn't cached."""
     if not is_cacheable(entry.outcome):

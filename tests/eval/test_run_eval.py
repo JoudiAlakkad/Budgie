@@ -16,6 +16,7 @@ from app.config import Settings
 from app.errors import LLMTimeout, LLMUnavailable
 from eval import cache, run_eval
 from eval.cache import entry_path
+from eval.metrics import DEFAULT_CONFIGS
 from eval.results import strings, suspicious
 from eval.run_eval import main, preflight, settings_for
 from tests.eval.conftest import DATASET, FakeExtractor
@@ -35,7 +36,8 @@ def paths(dataset: Path, tmp_path: Path) -> dict[str, Path]:
     return {"data": dataset, "out": tmp_path / "results", "report": report}
 
 
-def argv(command: str, paths: dict[str, Path], *extra: str) -> list[str]:
+def base_argv(command: str, paths: dict[str, Path], *extra: str) -> list[str]:
+    """Every default configuration and case: a complete write."""
     return [
         command,
         "--data",
@@ -46,10 +48,15 @@ def argv(command: str, paths: dict[str, Path], *extra: str) -> list[str]:
         str(paths["report"]),
         "--today",
         "2026-10-12",
-        "--config",
-        CONFIG,
         *extra,
     ]
+
+
+def argv(command: str, paths: dict[str, Path], *extra: str, partial: bool = True) -> list[str]:
+    """One configuration (CONFIG), so a subset: written only with --partial."""
+    return base_argv(
+        command, paths, "--config", CONFIG, *(["--partial"] if partial else []), *extra
+    )
 
 
 def test_check_passes_on_the_synthetic_dataset(
@@ -129,8 +136,8 @@ def test_an_infrastructure_error_is_not_cached_and_is_retried(
     answer = extractor.answers["c02"]
     extractor.answers["c02"] = LLMTimeout("timed out", latency_s=180.0)
 
-    # Not cached, so missing: nothing is written without --partial.
-    assert main(argv("run", paths), extractor_factory=factory) == 1
+    # Not cached, so missing: nothing is written without --partial, even in full scope.
+    assert main(base_argv("run", paths), extractor_factory=factory) == 1
 
     assert not entry_path(paths["data"] / "cache", "gemma3_4b__v3", "c02", 1).exists()
     assert not paths["out"].exists()
@@ -138,11 +145,126 @@ def test_an_infrastructure_error_is_not_cached_and_is_retried(
 
     extractor.answers["c02"] = answer
     extractor.calls.clear()
-    assert main(argv("run", paths), extractor_factory=factory) == 0
-    assert extractor.calls == ["c02"]
+    assert main(base_argv("run", paths), extractor_factory=factory) == 0
+    assert extractor.calls == ["c02"] * 4  # once per default configuration
     summary = json.loads((paths["out"] / "summary.json").read_text(encoding="utf-8"))
     assert summary["partial"] is False
-    assert summary["configs"][0]["metrics"]["missing"] == 0
+    assert [c["metrics"]["missing"] for c in summary["configs"]] == [0, 0, 0, 0]
+    assert "Partial results" not in paths["report"].read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ("--config", CONFIG),
+        ("--cases", "c01,c02,c03"),
+        ("--models", "gemma3:4b"),
+        ("--prompts", "v3"),
+    ],
+)
+def test_a_subset_needs_partial_and_is_marked_partial(
+    paths: dict[str, Path], fake_factory: Factory, extra: tuple[str, ...]
+) -> None:
+    _, factory = fake_factory
+
+    assert main(base_argv("run", paths, *extra), extractor_factory=factory) == 1
+    assert not paths["out"].exists()
+    assert paths["report"].read_text(encoding="utf-8") == REPORT
+
+    assert main(base_argv("run", paths, *extra, "--partial"), extractor_factory=factory) == 0
+    summary = json.loads((paths["out"] / "summary.json").read_text(encoding="utf-8"))
+    assert summary["partial"] is True
+    assert "**Partial results:**" in paths["report"].read_text(encoding="utf-8")
+
+
+def test_the_default_set_given_explicitly_is_complete(
+    paths: dict[str, Path], fake_factory: Factory
+) -> None:
+    _, factory = fake_factory
+    configs = [f"{m}@{p}" for m, p in DEFAULT_CONFIGS]
+    explicit = [arg for config in reversed(configs) for arg in ("--config", config)]
+
+    assert main(base_argv("run", paths, *explicit), extractor_factory=factory) == 0
+
+    summary = json.loads((paths["out"] / "summary.json").read_text(encoding="utf-8"))
+    assert summary["partial"] is False
+
+
+def test_a_configuration_without_cache_entries_counts_all_its_runs_as_missing(
+    paths: dict[str, Path], fake_factory: Factory, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _, factory = fake_factory
+    main(argv("run", paths), extractor_factory=factory)  # gemma3:4b/v3 only
+    capsys.readouterr()
+
+    assert main(base_argv("score", paths, "--runs", "1")) == 1
+
+    out = capsys.readouterr().out
+    # three default configurations with nothing cached, 4 cases each
+    assert "12 case run(s) missing from the cache" in out
+    assert main(base_argv("score", paths, "--partial")) == 1
+    summary = json.loads((paths["out"] / "summary.json").read_text(encoding="utf-8"))
+    assert summary["partial"] is True
+    assert [c["label"] for c in summary["configs"]] == ["gemma3:4b/v3"]
+
+
+def test_force_deletes_the_old_entry_before_the_call(
+    paths: dict[str, Path], fake_factory: Factory
+) -> None:
+    extractor, factory = fake_factory
+    main(argv("run", paths), extractor_factory=factory)
+    path = entry_path(paths["data"] / "cache", "gemma3_4b__v3", "c02", 1)
+    assert path.exists()
+    extractor.answers["c02"] = LLMTimeout("timed out", latency_s=180.0)
+
+    assert main(argv("run", paths, "--force", "--cases", "c02"), extractor_factory=factory) == 1
+
+    assert not path.exists()  # the old answer is gone, not silently reused
+
+
+@pytest.mark.parametrize(
+    ("extra", "message"),
+    [
+        (("--config", "gemma3:4b@v9"), "Unknown prompt version 'v9' in gemma3:4b/v9"),
+        (("--prompts", "v3,../v1"), "Unknown prompt version '../v1'"),
+        (
+            ("--config", "a:b@v3", "--config", "a_b@v3"),
+            "a:b/v3 and a_b/v3 map to the same id 'a_b__v3'",
+        ),
+    ],
+)
+def test_bad_configurations_exit_2_before_anything(
+    paths: dict[str, Path],
+    fake_factory: Factory,
+    capsys: pytest.CaptureFixture[str],
+    extra: tuple[str, ...],
+    message: str,
+) -> None:
+    extractor, factory = fake_factory
+
+    assert main(base_argv("run", paths, *extra), extractor_factory=factory) == 2
+
+    assert message in capsys.readouterr().out
+    assert extractor.calls == []
+    assert not (paths["data"] / "cache").exists()
+
+
+def test_each_image_is_prepared_once(
+    paths: dict[str, Path], fake_factory: Factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, factory = fake_factory
+    prepared: list[str] = []
+    real = run_eval.prepare_image
+
+    def counting(path: Path, resize: bool = True) -> tuple[bytes, str]:
+        prepared.append(path.name)
+        return real(path, resize=resize)
+
+    monkeypatch.setattr(run_eval, "prepare_image", counting)
+
+    assert main(base_argv("run", paths), extractor_factory=factory) == 0
+
+    assert sorted(prepared) == sorted(f"{case}.png" for case in DATASET)
 
 
 def test_run_and_score_show_an_infrastructure_error_the_same_way(
@@ -171,14 +293,21 @@ def test_results_of_configurations_not_in_the_summary_are_deleted(
 ) -> None:
     _, factory = fake_factory
     paths["out"].mkdir()
-    (paths["out"] / "qwen2.5vl_3b__v3.json").write_text("{}", encoding="utf-8")
+    (paths["out"] / "gemma3_4b__v9.json").write_text("{}", encoding="utf-8")
     (paths["out"] / "notes.txt").write_text("kept", encoding="utf-8")
 
+    # A partial write leaves other configurations' files alone ...
     assert main(argv("run", paths), extractor_factory=factory) == 0
+    assert (paths["out"] / "gemma3_4b__v9.json").exists()
 
+    # ... a complete one deletes them.
+    assert main(base_argv("run", paths), extractor_factory=factory) == 0
     assert sorted(p.name for p in paths["out"].iterdir()) == [
+        "gemma3_4b__v1.json",
+        "gemma3_4b__v2.json",
         "gemma3_4b__v3.json",
         "notes.txt",
+        "qwen2.5vl_3b__v3.json",
         "summary.json",
     ]
 
@@ -385,7 +514,7 @@ def test_comparisons_cover_the_configured_pairs(
     paths: dict[str, Path], fake_factory: Factory
 ) -> None:
     _, factory = fake_factory
-    args = argv("run", paths)[:-2] + ["--models", "gemma3:4b", "--prompts", "v2,v3"]
+    args = base_argv("run", paths, "--models", "gemma3:4b", "--prompts", "v2,v3", "--partial")
 
     assert main(args, extractor_factory=factory) == 0
 

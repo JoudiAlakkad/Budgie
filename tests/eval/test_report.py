@@ -26,6 +26,24 @@ def test_only_the_block_changes() -> None:
     assert new == f"{BEFORE}{BEGIN}\n| a | b |\n|---|---|\n{END}{AFTER}"
 
 
+def test_a_crlf_report_gets_a_crlf_block() -> None:
+    crlf = doc().replace("\r\n", "\n").replace("\n", "\r\n")
+
+    new = replace_block(crlf, "line one\nline two\r\nline three\n")
+
+    assert f"{BEGIN}\r\nline one\r\nline two\r\nline three\r\n{END}" in new
+    assert new.count("\n") == new.count("\r\n")  # no bare LF anywhere
+    assert replace_block(new, render(summary())).count("\n") == replace_block(
+        new, render(summary())
+    ).count("\r\n")
+
+
+def test_an_lf_report_gets_an_lf_block() -> None:
+    new = replace_block(doc(), "a\r\nb")
+
+    assert f"{BEGIN}\na\nb\n{END}" in new
+
+
 def test_replacing_twice_gives_the_same_text() -> None:
     once = replace_block(doc(), "block")
 

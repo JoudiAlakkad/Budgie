@@ -7,7 +7,10 @@ stays byte-identical. A missing, duplicated or misordered marker raises `MarkerE
 
 import re
 from collections.abc import Mapping, Sequence
+from functools import partial
 from typing import Any
+
+from eval.scoring import get_path
 
 BEGIN = "<!-- eval:begin"
 END = "<!-- eval:end -->"
@@ -20,8 +23,18 @@ class MarkerError(ValueError):
     """The report's markers are missing, duplicated or out of order."""
 
 
+def line_ending(doc: str) -> str:
+    """The document's line ending: CRLF if most of its lines end in CRLF, else LF."""
+    crlf = doc.count("\r\n")
+    return "\r\n" if crlf > doc.count("\n") - crlf else "\n"
+
+
 def replace_block(doc: str, block: str) -> str:
-    """`doc` with the text between the markers replaced by `block`."""
+    """`doc` with the text between the markers replaced by `block`.
+
+    The block is written with the document's own line ending, so a rescore of a CRLF
+    report doesn't mix line endings.
+    """
     begins = list(_BEGIN.finditer(doc))
     if doc.count(BEGIN) != len(begins):
         raise MarkerError("an eval:begin marker is not closed with -->")
@@ -33,7 +46,9 @@ def replace_block(doc: str, block: str) -> str:
     begin, end = begins[0], ends[0]
     if end < begin.end():
         raise MarkerError("the eval:end marker comes before eval:begin")
-    return f"{doc[: begin.end()]}\n{block.strip(chr(10))}\n{doc[end:]}"
+    nl = line_ending(doc)
+    lines = block.replace("\r\n", "\n").strip("\n").split("\n")
+    return f"{doc[: begin.end()]}{nl}{nl.join(lines)}{nl}{doc[end:]}"
 
 
 # ---------------------------------------------------------------- render
@@ -53,15 +68,6 @@ def _delta(value: Any, *, percent: bool) -> str:
     if percent:
         return f"{100 * value:+.0f} pp"
     return f"{value:+.1f}"
-
-
-def _get(data: Mapping[str, Any], *path: str) -> Any:
-    value: Any = data
-    for part in path:
-        if not isinstance(value, Mapping):
-            return None
-        value = value.get(part)
-    return value
 
 
 def _table(header: Sequence[str], rows: Sequence[Sequence[str]]) -> list[str]:
@@ -90,26 +96,26 @@ def _config_rows(configs: Sequence[Mapping[str, Any]]) -> list[str]:
     rows = []
     for config in configs:
         m = config["metrics"]
+        at = partial(get_path, m)
         rows.append(
             [
                 f"`{config['label']}`",
-                f"{_pct(_get(m, 'schema_validity', 'rate'))} "
-                f"({_pct(_get(m, 'schema_validity', 'rate_without_repair'))})",
-                _pct(_get(m, "fields", "stored", "merchant")),
-                _pct(_get(m, "fields", "stored", "date")),
-                _pct(_get(m, "fields", "stored", "total")),
+                f"{_pct(at('schema_validity', 'rate'))} "
+                f"({_pct(at('schema_validity', 'rate_without_repair'))})",
+                _pct(at("fields", "stored", "merchant")),
+                _pct(at("fields", "stored", "date")),
+                _pct(at("fields", "stored", "total")),
                 " / ".join(
-                    _pct(_get(m, "items", "stored", key)) for key in ("precision", "recall", "f1")
+                    _pct(at("items", "stored", key)) for key in ("precision", "recall", "f1")
                 ),
-                _pct(_get(m, "name_key_agreement", "rate")),
-                f"{_get(m, 'out_of_scope', 'rejected')}/{_get(m, 'out_of_scope', 'cases')}"
-                f" (model {_get(m, 'out_of_scope', 'by_model')}, "
-                f"rule {_get(m, 'out_of_scope', 'by_plausibility')})",
-                f"{_get(m, 'false_rejection', 'rejected')}/{_get(m, 'false_rejection', 'cases')}",
-                f"{_get(m, 'injection_followed', 'followed')}/"
-                f"{_get(m, 'injection_followed', 'cases')}",
-                f"{_get(m, 'copied_examples', 'items')} in {_get(m, 'copied_examples', 'cases')}",
-                f"{_num(_get(m, 'latency_s', 'p50'))} / {_num(_get(m, 'latency_s', 'p95'))}",
+                _pct(at("name_key_agreement", "rate")),
+                f"{at('out_of_scope', 'rejected')}/{at('out_of_scope', 'cases')}"
+                f" (model {at('out_of_scope', 'by_model')}, "
+                f"rule {at('out_of_scope', 'by_plausibility')})",
+                f"{at('false_rejection', 'rejected')}/{at('false_rejection', 'cases')}",
+                f"{at('injection_followed', 'followed')}/{at('injection_followed', 'cases')}",
+                f"{at('copied_examples', 'items')} in {at('copied_examples', 'cases')}",
+                f"{_num(at('latency_s', 'p50'))} / {_num(at('latency_s', 'p95'))}",
                 _num(m.get("completion_tokens_mean"), 0),
                 str(m.get("missing", 0)),
             ]
@@ -159,7 +165,7 @@ def _needs_review_tables(configs: Sequence[Mapping[str, Any]]) -> list[str]:
             ("status_extraction", "extraction flags"),
         ):
             for truth, truth_name in (("derived", "derived"), ("hand", "hand label")):
-                c = _get(review, status, truth) or {}
+                c = get_path(review, status, truth) or {}
                 rows.append(
                     [
                         f"`{config['label']}`",
