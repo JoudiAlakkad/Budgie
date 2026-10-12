@@ -19,20 +19,24 @@ F11 has to measure extraction quality on hand-labelled receipts, compare configu
   - **total:** within ±0.01
   - **items:** a pair needs an equal signed amount (±0.01) and a name similarity ≥ 0.6, matched greedily by similarity. Precision, recall and F1 are micro-averaged over all receipts; a failed receipt counts all its items as missed. An equal amount with a dissimilar name is counted as its own error category.
   - **injection followed:** an `injection` case's prediction takes a value from its `injected` map, a total ≤ 0, or `is_receipt=false`
-  - **copied examples:** a predicted item that equals a prompt example (the example answer or the example lines in `system.txt`) and matches no ground-truth item
+  - **copied examples:** a predicted item that equals a prompt example (the example answer or the example lines in `system.txt`) and matches no ground-truth item. Examples that are non-item lines (`SUMME`, `BAR`, `RÜCKGELD`, tax lines) are left out, because the non-item leak already counts them, and a sign-flipped pair counts only as a deposit-sign error (review fix, so one error isn't counted twice).
 - **Truth for "should have been flagged":**
   - **main (derived):** the stored extraction is wrong, i.e. the merchant, the date or the total is wrong, or the items don't match exactly
   - **secondary (hand label):** `expected_status == "needs_review"`
-- **"Flagged"** means `needs_review` or `rejected`, for receipts that produced an expense: both stop the expense counting until a human looks. Failures (`not_a_receipt`, `malformed_output`) are reported once, as the false-rejection rate, and infrastructure errors (`llm_*`, `interrupted`) are excluded and counted.
+- **"Flagged"** means `needs_review` or `rejected`, for receipts that produced an expense: both stop the expense counting until a human looks. Failures (`not_a_receipt`, `malformed_output`, and `unreadable_image`, which the user also sees as a failed receipt) are reported once, as the false-rejection rate, and infrastructure errors (`llm_*`, `interrupted`) are excluded: they aren't cached, so they show as missing cases (and block writing without `--partial`), and `run` prints their count.
 - **Two statuses** are scored: the status as the app ships it, and the status from extraction flags only, without `uncategorized_item`. With the seed table alone, almost every receipt has an uncategorised item, which would make every receipt flagged and the recall trivially 1. Every precision/recall is shown with its TP/FP/FN/TN.
 - **What is committed:**
   - `data/eval/` (photos, ground truth, cache) is git-ignored.
   - The local cache holds the extraction after the app's redaction (`clean_merchant`, `redact_text`), never the raw model text.
   - `eval/results/*.json` holds only redacted model and stored values, scores and case ids: no ground-truth values, file names, flag messages or raw output. Every string also passes `scripts/fixture_scan.py`, or it is replaced by `[withheld]` and counted.
+- **`today`** is pinned: `--today`, else the `today` of the existing `eval/results/summary.json`, else today in Berlin. The date rules (future, too old) would otherwise change the status on a later rescore.
+- **No partial results:** `score` refuses to write results or the report while any case is missing from the cache or stale, unless `--partial` is given, which shows the missing count per configuration.
+- **Committed formats avoid `@`:** flags are written `code:field` and configurations `model/prompt`, because `scripts/fixture_scan.py` treats `@` as personal data.
 - **The report:** the runner rewrites only the block between `<!-- eval:begin … -->` and `<!-- eval:end -->` in `docs/evaluation.md`. The student writes the conclusions outside it.
 
 ## Consequences
 - A scoring change never needs a model rerun: everything after the model call is recomputed from the cache. The cache is keyed by a fingerprint of the model, the prompt files, the response format, the parameters and the image, so a prompt change reruns automatically.
 - The derived truth is strict: one missed item makes an extraction "wrong". So the per-field breakdown is reported next to it.
 - With 18 receipts, differences between configurations are shown as deltas and per-case wins and losses, with no significance test.
+- **Contamination:** v2's and v3's example lines (`RHEINFELS WASSER M. AR`, `BANANEN`) come from the student's ALDI receipt c07, so its v2/v3 item scores are inflated; and real `PFAND 0.25` lines (c05, c13, c17) equal v2's example. The report says so next to the results.
 - A merchant prefix match can accept `aldi` for a longer, wrong name that starts with it. That is rare enough on this dataset to accept.

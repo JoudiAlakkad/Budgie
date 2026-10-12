@@ -19,7 +19,7 @@ How the extraction is measured. The rules (what counts as correct, flagged and c
 | `report.py` | markdown tables and the marker-block replacement |
 | `run_eval.py` | CLI: `check`, `run`, `score` |
 
-- `eval` may import `app.ai`, `app.config`, `app.domain` and `app.services`, never `app.api` or `app.db`; `app` never imports `eval` (import-linter).
+- `eval` imports `app.ai`, `app.config`, `app.domain` and `app.services`, and never imports `app.api` or `app.db` **directly** (import-linter, direct imports only: `app.services` itself imports `app.db`, but nothing in `eval` opens a database). `app` never imports `eval`.
 - Pillow comes from the `eval` extra (`pip install -e "./backend[dev,eval]"`); the Docker image doesn't install it.
 - Tests are in `tests/eval/` and use synthetic cases only, since `data/eval/` is in neither CI nor a worktree.
 
@@ -28,3 +28,10 @@ How the extraction is measured. The rules (what counts as correct, flagged and c
 - `make eval-check`, then `make eval` (`run`, default: the four configurations of 0028), or `python -m eval.run_eval run --config gemma3:4b@v3 --cases c02,c05`.
 - `run` writes each answer to `data/eval/cache/<config>/<case>-r<n>.json` right after its call, so a stopped run resumes where it stopped. Infrastructure errors aren't cached, so they are retried.
 - `make eval-score` (`score`) recomputes everything from the cache without the model, writes `eval/results/` and rewrites the generated block of `docs/evaluation.md`.
+- Exit codes: 0 done; 1 cache entries missing or stale (nothing is written without `--partial`); 2 invalid input (ground truth, report markers, arguments, Pillow missing); 3 model server unreachable or a model not pulled.
+- The report is re-read just before the block is replaced and written atomically, so edits made in `docs/evaluation.md` during an hour-long run survive (review fix).
+
+## Cache fingerprint
+- It covers the model, the prompt version, the system prompt as sent, the user and repair prompts, the response format, temperature, `max_tokens`, the image's SHA-256 and the run number (runs count from 1).
+- It doesn't cover the MIME type or the extractor's parsing and repair code. After a change to `load_json`, `parse_output` or the repair trigger, rerun with `--force`.
+- Stale entries count as missing in `score`. Infrastructure errors are never cached.
