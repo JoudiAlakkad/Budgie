@@ -1,4 +1,8 @@
-"""The CLI end to end (`eval/run_eval.py`) with a fake extractor; never a model call."""
+"""The CLI end to end (`eval/run_eval.py`) with a fake extractor; never a model call.
+
+The fake extractor answers the same for every configuration, so a full run calls it once
+per default configuration and case.
+"""
 
 import dataclasses
 import json
@@ -11,12 +15,13 @@ from typing import Any
 import httpx
 import pytest
 
+from app.ai.extractor import ExtractionResult
 from app.ai.prompts import load_prompts
 from app.config import Settings
 from app.errors import LLMTimeout, LLMUnavailable
 from eval import cache, run_eval
 from eval.cache import entry_path
-from eval.metrics import DEFAULT_CONFIGS
+from eval.metrics import COMPARISONS, DEFAULT_CONFIGS, label
 from eval.results import strings, suspicious
 from eval.run_eval import main, preflight, settings_for
 from tests.eval.conftest import DATASET, FakeExtractor
@@ -25,6 +30,9 @@ BEGIN = "<!-- eval:begin (generated) -->"
 END = "<!-- eval:end -->"
 REPORT = f"# Evaluation\n\nStudent text.\n\n{BEGIN}\nold\n{END}\n\n## Conclusions\nMine.\n"
 CONFIG = "gemma3:4b@v3"
+V1 = "gemma3:4b@v1"
+N_CONFIGS = len(DEFAULT_CONFIGS)
+LABELS = [label(config) for config in DEFAULT_CONFIGS]
 
 Factory = tuple[FakeExtractor, Callable[[Settings], FakeExtractor]]
 
@@ -36,8 +44,8 @@ def paths(dataset: Path, tmp_path: Path) -> dict[str, Path]:
     return {"data": dataset, "out": tmp_path / "results", "report": report}
 
 
-def base_argv(command: str, paths: dict[str, Path], *extra: str) -> list[str]:
-    """Every default configuration and case: a complete write."""
+def argv(command: str, paths: dict[str, Path], *extra: str) -> list[str]:
+    """Every default configuration and case (unless `extra` limits the model calls)."""
     return [
         command,
         "--data",
@@ -52,11 +60,13 @@ def base_argv(command: str, paths: dict[str, Path], *extra: str) -> list[str]:
     ]
 
 
-def argv(command: str, paths: dict[str, Path], *extra: str, partial: bool = True) -> list[str]:
-    """One configuration (CONFIG), so a subset: written only with --partial."""
-    return base_argv(
-        command, paths, "--config", CONFIG, *(["--partial"] if partial else []), *extra
-    )
+def read_summary(paths: dict[str, Path]) -> dict[str, Any]:
+    return json.loads((paths["out"] / "summary.json").read_text(encoding="utf-8"))
+
+
+def config_metrics(summary: dict[str, Any], name: str) -> dict[str, Any]:
+    [config] = [c for c in summary["configs"] if c["label"] == name]
+    return config["metrics"]
 
 
 def test_check_passes_on_the_synthetic_dataset(
@@ -83,19 +93,22 @@ def test_a_full_run_writes_cache_results_and_the_report_block(
 
     assert main(argv("run", paths), extractor_factory=factory) == 0
 
-    assert sorted(extractor.calls) == sorted(DATASET)
+    assert sorted(extractor.calls) == sorted(list(DATASET) * N_CONFIGS)
     cache_dir = paths["data"] / "cache" / "gemma3_4b__v3"
     assert sorted(p.name for p in cache_dir.iterdir()) == [f"{c}-r1.json" for c in sorted(DATASET)]
     for path in cache_dir.iterdir():
         assert "RAW MODEL TEXT" not in path.read_text(encoding="utf-8")
 
-    summary = json.loads((paths["out"] / "summary.json").read_text(encoding="utf-8"))
-    metrics = summary["configs"][0]["metrics"]
+    summary = read_summary(paths)
+    assert (summary["partial"], summary["partial_reasons"]) == (False, [])
+    assert [c["label"] for c in summary["configs"]] == LABELS
+    metrics = config_metrics(summary, "gemma3:4b/v3")
     assert metrics["observations"] == 4
     assert metrics["out_of_scope"]["rejected"] == 1
     assert metrics["injection_followed"] == {"cases": 1, "followed": 1, "rate": 1.0}
     assert metrics["needs_review"]["receipts"] == 3
-    assert summary["outcomes"]["c04"] == {"gemma3:4b/v3": "not_a_receipt"}
+    assert summary["outcomes"]["c04"]["gemma3:4b/v3"] == "not_a_receipt"
+    assert len(summary["comparisons"]) == len(COMPARISONS)
     for path in paths["out"].glob("*.json"):
         data = json.loads(path.read_text(encoding="utf-8"))
         assert [t for t in strings(data) if suspicious(t)] == []
@@ -106,6 +119,7 @@ def test_a_full_run_writes_cache_results_and_the_report_block(
     assert report.startswith("# Evaluation\n\nStudent text.\n\n" + BEGIN + "\n")
     assert report.endswith(f"{END}\n\n## Conclusions\nMine.\n")
     assert "old" not in report and "`gemma3:4b/v3`" in report
+    assert "Partial results" not in report
 
     out = capsys.readouterr().out
     assert "c01 r1: extracted" in out and "c04 r1: not_a_receipt" in out
@@ -136,8 +150,8 @@ def test_an_infrastructure_error_is_not_cached_and_is_retried(
     answer = extractor.answers["c02"]
     extractor.answers["c02"] = LLMTimeout("timed out", latency_s=180.0)
 
-    # Not cached, so missing: nothing is written without --partial, even in full scope.
-    assert main(base_argv("run", paths), extractor_factory=factory) == 1
+    # Not cached, so missing: nothing is written without --partial.
+    assert main(argv("run", paths), extractor_factory=factory) == 1
 
     assert not entry_path(paths["data"] / "cache", "gemma3_4b__v3", "c02", 1).exists()
     assert not paths["out"].exists()
@@ -145,36 +159,98 @@ def test_an_infrastructure_error_is_not_cached_and_is_retried(
 
     extractor.answers["c02"] = answer
     extractor.calls.clear()
-    assert main(base_argv("run", paths), extractor_factory=factory) == 0
-    assert extractor.calls == ["c02"] * 4  # once per default configuration
-    summary = json.loads((paths["out"] / "summary.json").read_text(encoding="utf-8"))
+    assert main(argv("run", paths), extractor_factory=factory) == 0
+    assert extractor.calls == ["c02"] * N_CONFIGS
+    summary = read_summary(paths)
     assert summary["partial"] is False
-    assert [c["metrics"]["missing"] for c in summary["configs"]] == [0, 0, 0, 0]
+    assert [c["metrics"]["missing"] for c in summary["configs"]] == [0] * N_CONFIGS
+
+
+def failing_for(
+    extractor: FakeExtractor, prompt_version: str, case_id: str
+) -> Callable[[Settings], Any]:
+    """A factory whose extractor raises LLMError-like timeouts for one case under one
+    prompt version only; the fake extractor otherwise."""
+
+    class Failing:
+        def __init__(self, version: str) -> None:
+            self.version = version
+
+        def extract(self, image: bytes, mime: str) -> ExtractionResult:
+            if self.version == prompt_version and extractor.by_image[image] == case_id:
+                extractor.calls.append(case_id)
+                raise LLMTimeout("timed out", latency_s=180.0)
+            return extractor.extract(image, mime)
+
+    return lambda settings: Failing(settings.prompt_version)
+
+
+def test_a_subset_run_keeps_every_other_configuration_and_names_the_reason(
+    paths: dict[str, Path], fake_factory: Factory
+) -> None:
+    """The real case: gemma3:4b@v1 failed c02 with an HTTP error. `run --config v1
+    --partial` retries only that, and the summary and report keep v2, v3 and qwen."""
+    extractor, factory = fake_factory
+
+    assert main(argv("run", paths), extractor_factory=failing_for(extractor, "v1", "c02")) == 1
+    assert not paths["out"].exists()  # missing, without --partial: nothing written
+
+    assert main(argv("score", paths, "--partial")) == 1  # written, but partial
+    summary = read_summary(paths)
+    assert summary["partial"] is True
+    assert summary["partial_reasons"] == ["1 case run(s) missing from the cache"]
+    assert [c["label"] for c in summary["configs"]] == LABELS
+    assert config_metrics(summary, "gemma3:4b/v1")["missing"] == 1
+    report = paths["report"].read_text(encoding="utf-8")
+    assert "**Partial results:** 1 case run(s) missing from the cache (column Missing)." in report
+
+    # A failing retry of v1 alone, with --partial: still partial, every row kept.
+    extractor.calls.clear()
+    retry = argv("run", paths, "--config", V1, "--partial")
+    assert main(retry, extractor_factory=failing_for(extractor, "v1", "c02")) == 1
+    assert extractor.calls == ["c02"]  # only v1's missing case was called
+    summary = read_summary(paths)
+    assert [c["label"] for c in summary["configs"]] == LABELS
+    assert len(summary["comparisons"]) == len(COMPARISONS)
+    report = paths["report"].read_text(encoding="utf-8")
+    assert all(f"`{name}`" in report for name in LABELS)
+
+    # The retry that works: v1 alone, and the write is complete.
+    extractor.calls.clear()
+    assert main(argv("run", paths, "--config", V1, "--partial"), extractor_factory=factory) == 0
+    assert extractor.calls == ["c02"]
+    summary = read_summary(paths)
+    assert (summary["partial"], summary["partial_reasons"]) == (False, [])
+    assert [c["label"] for c in summary["configs"]] == LABELS
+    assert len(summary["comparisons"]) == len(COMPARISONS)
     assert "Partial results" not in paths["report"].read_text(encoding="utf-8")
 
 
-@pytest.mark.parametrize(
-    "extra",
-    [
-        ("--config", CONFIG),
-        ("--cases", "c01,c02,c03"),
-        ("--models", "gemma3:4b"),
-        ("--prompts", "v3"),
-    ],
-)
-def test_a_subset_needs_partial_and_is_marked_partial(
-    paths: dict[str, Path], fake_factory: Factory, extra: tuple[str, ...]
+def test_cases_limits_only_the_model_calls(paths: dict[str, Path], fake_factory: Factory) -> None:
+    extractor, factory = fake_factory
+    main(argv("run", paths), extractor_factory=factory)
+    extractor.calls.clear()
+
+    assert main(argv("run", paths, "--force", "--cases", "c01,c03"), extractor_factory=factory) == 0
+
+    assert sorted(extractor.calls) == sorted(["c01", "c03"] * N_CONFIGS)
+    summary = read_summary(paths)
+    assert sorted(summary["outcomes"]) == sorted(DATASET)  # scored: every case
+    assert summary["partial"] is False
+
+
+def test_force_with_one_config_and_cases_calls_only_those(
+    paths: dict[str, Path], fake_factory: Factory
 ) -> None:
-    _, factory = fake_factory
+    extractor, factory = fake_factory
+    main(argv("run", paths), extractor_factory=factory)
+    extractor.calls.clear()
 
-    assert main(base_argv("run", paths, *extra), extractor_factory=factory) == 1
-    assert not paths["out"].exists()
-    assert paths["report"].read_text(encoding="utf-8") == REPORT
+    extra = ("--config", CONFIG, "--force", "--cases", "c01,c03")
+    assert main(argv("run", paths, *extra), extractor_factory=factory) == 0
 
-    assert main(base_argv("run", paths, *extra, "--partial"), extractor_factory=factory) == 0
-    summary = json.loads((paths["out"] / "summary.json").read_text(encoding="utf-8"))
-    assert summary["partial"] is True
-    assert "**Partial results:**" in paths["report"].read_text(encoding="utf-8")
+    assert extractor.calls == ["c01", "c03"]
+    assert [c["label"] for c in read_summary(paths)["configs"]] == LABELS
 
 
 def test_the_default_set_given_explicitly_is_complete(
@@ -184,27 +260,39 @@ def test_the_default_set_given_explicitly_is_complete(
     configs = [f"{m}@{p}" for m, p in DEFAULT_CONFIGS]
     explicit = [arg for config in reversed(configs) for arg in ("--config", config)]
 
-    assert main(base_argv("run", paths, *explicit), extractor_factory=factory) == 0
+    assert main(argv("run", paths, *explicit), extractor_factory=factory) == 0
 
-    summary = json.loads((paths["out"] / "summary.json").read_text(encoding="utf-8"))
-    assert summary["partial"] is False
+    assert read_summary(paths)["partial"] is False
+
+
+def test_an_extra_configuration_is_scored_with_the_defaults(
+    paths: dict[str, Path], fake_factory: Factory
+) -> None:
+    extractor, factory = fake_factory
+    main(argv("run", paths), extractor_factory=factory)
+    extractor.calls.clear()
+
+    assert main(argv("run", paths, "--config", "qwen2.5vl:3b@v2"), extractor_factory=factory) == 0
+
+    assert sorted(extractor.calls) == sorted(DATASET)
+    assert [c["label"] for c in read_summary(paths)["configs"]] == [*LABELS, "qwen2.5vl:3b/v2"]
 
 
 def test_a_configuration_without_cache_entries_counts_all_its_runs_as_missing(
     paths: dict[str, Path], fake_factory: Factory, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _, factory = fake_factory
-    main(argv("run", paths), extractor_factory=factory)  # gemma3:4b/v3 only
+    # gemma3:4b/v3 only: the three other default configurations have nothing cached.
+    assert main(argv("run", paths, "--config", CONFIG), extractor_factory=factory) == 1
+    assert not paths["out"].exists()
     capsys.readouterr()
 
-    assert main(base_argv("score", paths, "--runs", "1")) == 1
+    assert main(argv("score", paths)) == 1
 
-    out = capsys.readouterr().out
-    # three default configurations with nothing cached, 4 cases each
-    assert "12 case run(s) missing from the cache" in out
-    assert main(base_argv("score", paths, "--partial")) == 1
-    summary = json.loads((paths["out"] / "summary.json").read_text(encoding="utf-8"))
-    assert summary["partial"] is True
+    assert "12 case run(s) missing from the cache" in capsys.readouterr().out
+    assert main(argv("score", paths, "--partial")) == 1
+    summary = read_summary(paths)
+    assert summary["partial_reasons"] == ["12 case run(s) missing from the cache"]
     assert [c["label"] for c in summary["configs"]] == ["gemma3:4b/v3"]
 
 
@@ -217,7 +305,8 @@ def test_force_deletes_the_old_entry_before_the_call(
     assert path.exists()
     extractor.answers["c02"] = LLMTimeout("timed out", latency_s=180.0)
 
-    assert main(argv("run", paths, "--force", "--cases", "c02"), extractor_factory=factory) == 1
+    extra = ("--config", CONFIG, "--force", "--cases", "c02")
+    assert main(argv("run", paths, *extra), extractor_factory=factory) == 1
 
     assert not path.exists()  # the old answer is gone, not silently reused
 
@@ -242,7 +331,7 @@ def test_bad_configurations_exit_2_before_anything(
 ) -> None:
     extractor, factory = fake_factory
 
-    assert main(base_argv("run", paths, *extra), extractor_factory=factory) == 2
+    assert main(argv("run", paths, *extra), extractor_factory=factory) == 2
 
     assert message in capsys.readouterr().out
     assert extractor.calls == []
@@ -262,7 +351,7 @@ def test_each_image_is_prepared_once(
 
     monkeypatch.setattr(run_eval, "prepare_image", counting)
 
-    assert main(base_argv("run", paths), extractor_factory=factory) == 0
+    assert main(argv("run", paths), extractor_factory=factory) == 0
 
     assert sorted(prepared) == sorted(f"{case}.png" for case in DATASET)
 
@@ -282,26 +371,30 @@ def test_run_and_score_show_an_infrastructure_error_the_same_way(
     assert paths["report"].read_text(encoding="utf-8") == report_after_run
     summary = json.loads(after_run["summary.json"])
     assert summary["partial"] is True
-    assert summary["configs"][0]["metrics"]["missing"] == 1
+    assert summary["partial_reasons"] == [f"{N_CONFIGS} case run(s) missing from the cache"]
+    assert [c["metrics"]["missing"] for c in summary["configs"]] == [1] * N_CONFIGS
     assert "c02" not in summary["outcomes"]
-    assert "**Partial results:**" in report_after_run
+    assert f"**Partial results:** {N_CONFIGS} case run(s) missing" in report_after_run
     assert "| Missing |" in report_after_run
 
 
 def test_results_of_configurations_not_in_the_summary_are_deleted(
     paths: dict[str, Path], fake_factory: Factory
 ) -> None:
-    _, factory = fake_factory
+    extractor, factory = fake_factory
     paths["out"].mkdir()
     (paths["out"] / "gemma3_4b__v9.json").write_text("{}", encoding="utf-8")
     (paths["out"] / "notes.txt").write_text("kept", encoding="utf-8")
+    answer = extractor.answers["c02"]
+    extractor.answers["c02"] = LLMTimeout("timed out", latency_s=180.0)
 
     # A partial write leaves other configurations' files alone ...
-    assert main(argv("run", paths), extractor_factory=factory) == 0
+    assert main(argv("run", paths, "--partial"), extractor_factory=factory) == 1
     assert (paths["out"] / "gemma3_4b__v9.json").exists()
 
     # ... a complete one deletes them.
-    assert main(base_argv("run", paths), extractor_factory=factory) == 0
+    extractor.answers["c02"] = answer
+    assert main(argv("run", paths), extractor_factory=factory) == 0
     assert sorted(p.name for p in paths["out"].iterdir()) == [
         "gemma3_4b__v1.json",
         "gemma3_4b__v2.json",
@@ -365,8 +458,7 @@ def test_today_is_pinned_to_the_existing_summary(
 
     out = capsys.readouterr().out
     assert "today = 2026-10-12 (from " in out and "summary.json)" in out
-    summary = json.loads((paths["out"] / "summary.json").read_text(encoding="utf-8"))
-    assert summary["today"] == "2026-10-12"
+    assert read_summary(paths)["today"] == "2026-10-12"
 
 
 def test_without_a_summary_today_is_the_berlin_date(
@@ -382,8 +474,7 @@ def test_without_a_summary_today_is_the_berlin_date(
     assert main(without_today, extractor_factory=factory) == 0
 
     assert "today = 2027-02-03 (from today in Europe/Berlin)" in capsys.readouterr().out
-    summary = json.loads((paths["out"] / "summary.json").read_text(encoding="utf-8"))
-    assert summary["today"] == "2027-02-03"
+    assert read_summary(paths)["today"] == "2027-02-03"
     for path in (paths["data"] / "cache").rglob("*.json"):
         assert "2027-02-03" not in path.read_text(encoding="utf-8")
 
@@ -396,23 +487,14 @@ def test_a_prompt_change_forces_a_rerun(
     extractor.calls.clear()
     prompts = load_prompts("v3")
     changed = dataclasses.replace(prompts, system=prompts.system + "\nOne more rule.")
-    monkeypatch.setattr(cache, "load_prompts", lambda version: changed)
+    monkeypatch.setattr(
+        cache, "load_prompts", lambda version: changed if version == "v3" else load_prompts(version)
+    )
 
     assert main(argv("run", paths), extractor_factory=factory) == 0
 
-    assert sorted(extractor.calls) == sorted(DATASET)
-
-
-def test_force_ignores_the_cache_and_cases_selects(
-    paths: dict[str, Path], fake_factory: Factory
-) -> None:
-    extractor, factory = fake_factory
-    main(argv("run", paths), extractor_factory=factory)
-    extractor.calls.clear()
-
-    assert main(argv("run", paths, "--force", "--cases", "c01,c03"), extractor_factory=factory) == 0
-
-    assert extractor.calls == ["c01", "c03"]
+    # gemma3:4b@v3 and qwen2.5vl:3b@v3 rerun; v1 and v2 stay cached.
+    assert sorted(extractor.calls) == sorted(list(DATASET) * 2)
 
 
 def test_more_runs_are_cached_separately(paths: dict[str, Path], fake_factory: Factory) -> None:
@@ -420,13 +502,9 @@ def test_more_runs_are_cached_separately(paths: dict[str, Path], fake_factory: F
 
     assert main(argv("run", paths, "--runs", "2"), extractor_factory=factory) == 0
 
-    assert len(extractor.calls) == 8
-    summary = json.loads((paths["out"] / "summary.json").read_text(encoding="utf-8"))
-    assert summary["configs"][0]["metrics"]["run_agreement"] == {
-        "cases": 4,
-        "agree": 4,
-        "rate": 1.0,
-    }
+    assert len(extractor.calls) == 2 * len(DATASET) * N_CONFIGS
+    metrics = config_metrics(read_summary(paths), "gemma3:4b/v3")
+    assert metrics["run_agreement"] == {"cases": 4, "agree": 4, "rate": 1.0}
 
 
 def test_score_makes_no_network_calls(
@@ -510,21 +588,14 @@ def test_without_a_ready_server_run_exits_3(
     assert not (paths["data"] / "cache").exists()
 
 
-def test_comparisons_cover_the_configured_pairs(
-    paths: dict[str, Path], fake_factory: Factory
-) -> None:
+def test_comparisons_cover_the_default_pairs(paths: dict[str, Path], fake_factory: Factory) -> None:
     _, factory = fake_factory
-    args = base_argv("run", paths, "--models", "gemma3:4b", "--prompts", "v2,v3", "--partial")
 
-    assert main(args, extractor_factory=factory) == 0
+    assert main(argv("run", paths), extractor_factory=factory) == 0
 
-    summary = json.loads((paths["out"] / "summary.json").read_text(encoding="utf-8"))
-    assert [c["label"] for c in summary["configs"]] == ["gemma3:4b/v2", "gemma3:4b/v3"]
-    assert [(c["a"], c["b"]) for c in summary["comparisons"]] == [("gemma3:4b/v2", "gemma3:4b/v3")]
-    assert sorted(p.name for p in paths["out"].iterdir()) == [
-        "gemma3_4b__v2.json",
-        "gemma3_4b__v3.json",
-        "summary.json",
+    summary = read_summary(paths)
+    assert [(c["a"], c["b"]) for c in summary["comparisons"]] == [
+        (label(a), label(b)) for a, b in COMPARISONS
     ]
 
 
@@ -601,13 +672,12 @@ def test_an_unexpected_extractor_error_is_interrupted_and_retried(
 
     extractor.extract = broken  # type: ignore[method-assign]
 
-    assert main(argv("run", paths, "--partial"), extractor_factory=factory) == 1
+    extra = ("--config", CONFIG, "--partial")
+    assert main(argv("run", paths, *extra), extractor_factory=factory) == 1
 
     out = capsys.readouterr().out
     assert "c03 r1: interrupted (RuntimeError) (not cached" in out
     assert "c01 r1: llm_unavailable (not cached" in out
     assert "secret value" not in out
     assert "4 model call(s), 2 infrastructure error(s)" in out
-    summary = json.loads((paths["out"] / "summary.json").read_text(encoding="utf-8"))
-    assert summary["configs"][0]["metrics"]["missing"] == 2
     assert not list((paths["data"] / "cache").rglob("c0[13]-r1.json"))

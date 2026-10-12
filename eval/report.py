@@ -203,6 +203,14 @@ def _outcome_grid(summary: Mapping[str, Any]) -> list[str]:
     return _table(["Case", *(f"`{name}`" for name in labels)], rows)
 
 
+def _partial_banner(summary: Mapping[str, Any]) -> list[str]:
+    """The partial-results banner with the reasons stored in the summary."""
+    if not summary.get("partial"):
+        return []
+    reasons = summary.get("partial_reasons") or ["reason not recorded"]
+    return [f"**Partial results:** {'; '.join(reasons)} (column Missing).", ""]
+
+
 def render(summary: Mapping[str, Any]) -> str:
     """The generated block as markdown. Deterministic for the same summary."""
     configs = summary.get("configs", [])
@@ -213,11 +221,7 @@ def render(summary: Mapping[str, Any]) -> str:
         "",
         "### Configurations",
         "",
-        *(
-            ["**Partial results:** some case runs are missing from the cache (column Missing).", ""]
-            if summary.get("partial")
-            else []
-        ),
+        *_partial_banner(summary),
         *_config_rows(configs),
         "",
         "Valid (no repair): the share of answers that passed the schema, and in brackets "

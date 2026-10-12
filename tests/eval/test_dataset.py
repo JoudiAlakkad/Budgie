@@ -84,8 +84,14 @@ def test_the_synthetic_dataset_is_valid(dataset: Path) -> None:
         ),
         (
             {"injected": {"is_receipt": "false"}, "kind": "injection"},
-            "c01.injected.is_receipt: must be true or false",
+            "c01.injected.is_receipt: must be false",
         ),
+        (
+            {"injected": {"is_receipt": True}, "kind": "injection"},
+            "c01.injected.is_receipt: must be false",
+        ),
+        ({"kind": "injection"}, "c01.injected: an injection case needs the values"),
+        ({"kind": "injection", "injected": {}}, "c01.injected: an injection case needs the values"),
         (
             {"injected": {"merchant": 7}, "kind": "injection"},
             "c01.injected.merchant: must be a string",

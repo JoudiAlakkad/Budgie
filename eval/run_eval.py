@@ -9,10 +9,12 @@
 Both `run` and `score` write `eval/results/` and rewrite only the generated block of the
 report. Output names case ids and outcome codes only, never values.
 
-A write is complete only for the default configurations x every case x every run, with
-no missing or stale cache entry (infrastructure errors are never cached, so they count as
-missing). Anything less writes results and the report only with `--partial`, marked
-partial; only a complete write deletes other configurations' result files. `today` is pinned:
+`--config`, `--models`, `--prompts` and `--cases` limit only the model calls. Scoring, the
+results and the report always cover every case, for the default configurations plus any
+other requested one, from the cache. A write is complete when no entry is missing or stale
+(infrastructure errors are never cached, so they count as missing). Otherwise results and
+the report are written only with `--partial`, marked partial with the reason; only a
+complete write deletes other configurations' result files. `today` is pinned:
 `--today`, else the `today` of the existing `summary.json`, else today in Berlin.
 
 Exit codes: 0 done, 1 cases missing from the cache, 2 invalid input (ground truth, report
@@ -134,6 +136,11 @@ def configs_from(args: argparse.Namespace) -> list[Config]:
     else:
         configs = list(DEFAULT_CONFIGS)
     return list(dict.fromkeys(configs))
+
+
+def scoring_configs(requested: list[Config]) -> list[Config]:
+    """The default configurations, then any other requested one, in order."""
+    return list(dict.fromkeys([*DEFAULT_CONFIGS, *requested]))
 
 
 def config_problem(configs: list[Config]) -> str | None:
@@ -384,20 +391,15 @@ def _finish(
     results: list[ConfigResult],
     observed: dict[Config, list[Observation]],
     missing: int,
-    full_scope: bool,
 ) -> int:
-    """Write results and the report. Complete only for the default configurations, every
-    case and no missing entry; anything less needs `--partial` and is marked partial."""
+    """Write results and the report. The scoring scope is always the whole dataset and at
+    least the default configurations, so a write is complete when nothing is missing;
+    otherwise it needs `--partial` and records why."""
     if not results:
         print("Nothing to score.")
         return EXIT_MISSING
-    complete = full_scope and not missing
-    if not complete and not args.partial:
-        reasons = []
-        if missing:
-            reasons.append(f"{missing} case run(s) missing from the cache")
-        if not full_scope:
-            reasons.append("not every default configuration and case was selected")
+    reasons = [f"{missing} case run(s) missing from the cache"] if missing else []
+    if reasons and not args.partial:
         print(f"Partial: {'; '.join(reasons)}. Results and report not written (use --partial).")
         return EXIT_MISSING
     summary = write_results(
@@ -407,7 +409,7 @@ def _finish(
         comparisons({result.config: result for result in results}),
         today=args.today,
         runs=args.runs,
-        partial=not complete,
+        partial_reasons=reasons,
     )
     print(f"Results written to {args.out}")
     if not args.no_report:
@@ -451,8 +453,12 @@ def main(
     args.cache = args.cache or args.data / "cache"
     args.today, source = pinned_today(args)
     print(f"today = {args.today.isoformat()} (from {source})")
+    # Model calls: only the requested configurations and cases. Scoring, the summary and
+    # the report: always every case, for the defaults plus the requested configurations,
+    # read from the cache, so a retry of one configuration keeps the others.
     configs = configs_from(args)
-    if problem := config_problem(configs):
+    scored = scoring_configs(configs)
+    if problem := config_problem(scored):
         print(problem)
         return EXIT_INPUT
     try:
@@ -462,7 +468,6 @@ def main(
         for problem in exc.problems:
             print(problem)
         return EXIT_INPUT
-    full_scope = set(configs) == set(DEFAULT_CONFIGS) and len(cases) == len(dataset)
     try:
         _check_report(args)
     except MarkerError as exc:
@@ -474,12 +479,12 @@ def main(
         if message:
             print(message)
             return EXIT_SERVER
-    images = prepare_images(cases, args.data, not args.no_resize)
+    images = prepare_images(dataset, args.data, not args.no_resize)
     if args.command == "run":
         calls, infra = run_models(args, configs, cases, extractor_factory, images)
         print(f"{calls} model call(s), {infra} infrastructure error(s)")
-    results, observed, missing = score_all(args, configs, cases, images)
-    return _finish(args, results, observed, missing, full_scope)
+    results, observed, missing = score_all(args, scored, dataset, images)
+    return _finish(args, results, observed, missing)
 
 
 if __name__ == "__main__":

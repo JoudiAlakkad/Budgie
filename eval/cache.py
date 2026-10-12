@@ -25,7 +25,6 @@ from app.services.receipt_pipeline import redact_extraction
 
 SCHEMA = 1
 CACHED_OUTCOMES = frozenset({"extracted", "not_a_receipt", "malformed_output", "unreadable_image"})
-INFRA_OUTCOMES = frozenset({"llm_unavailable", "llm_timeout", "llm_error", "interrupted"})
 _UNSAFE = re.compile(r"[^A-Za-z0-9.]+")
 
 

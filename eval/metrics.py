@@ -20,7 +20,7 @@ from app.domain.non_items import ItemLine, is_non_item_line
 from app.errors import ExtractionError, NotAReceipt
 from app.services.categorization import LookupCategorizer
 from app.services.receipt_pipeline import GuardCounts, process_extraction
-from eval.cache import INFRA_OUTCOMES, CacheEntry
+from eval.cache import CacheEntry
 from eval.dataset import Case
 from eval.scoring import (
     PRF,
@@ -117,17 +117,13 @@ class Observation:
 
     case_id: str
     run: int
-    outcome: str  # extracted, a failure code, or an infrastructure code
+    outcome: str  # extracted or a cached failure code; infrastructure errors aren't cached
     rejected_by: str | None = None  # model | plausibility, for not_a_receipt
     latency_s: float | None = None
     repaired: bool = False
     completion_tokens: int | None = None
     model: ReceiptExtraction | None = None  # redacted
     stored: Stored | None = None
-
-    @property
-    def infra(self) -> bool:
-        return self.outcome in INFRA_OUTCOMES
 
 
 def seed_lookups(
@@ -194,10 +190,6 @@ def observe(
     return replace(base, stored=stored)
 
 
-def infra_observation(case_id: str, run: int, code: str, latency_s: float | None) -> Observation:
-    return Observation(case_id, run, code, latency_s=latency_s)
-
-
 # ---------------------------------------------------------------- per case
 
 
@@ -242,7 +234,6 @@ class CaseScore:
     run: int
     outcome: str
     rejected_by: str | None
-    infra: bool
     produced: bool  # an expense was stored
     n_truth: int
     model: FieldScore | None = None
@@ -269,8 +260,6 @@ class CaseScore:
 
 def _errors(case: Case, obs: Observation, score: "CaseScore") -> tuple[str, ...]:
     found: list[str] = []
-    if obs.infra:
-        return ()
     if not score.receipt:
         if score.produced:
             found.append("non_receipt_accepted")
@@ -317,7 +306,6 @@ def score_case(case: Case, obs: Observation, examples: Sequence[Item]) -> CaseSc
         run=obs.run,
         outcome=obs.outcome,
         rejected_by=obs.rejected_by,
-        infra=obs.infra,
         produced=produced,
         n_truth=len(case.items),
         hand_needs_review=case.expected_status == "needs_review",
@@ -325,8 +313,6 @@ def score_case(case: Case, obs: Observation, examples: Sequence[Item]) -> CaseSc
         repaired=obs.repaired,
         completion_tokens=obs.completion_tokens,
     )
-    if obs.infra:
-        return score
     changes: dict[str, Any] = {
         "injection_followed": injection_followed(
             case, obs.model, model_rejected=obs.rejected_by == "model"
@@ -334,14 +320,17 @@ def score_case(case: Case, obs: Observation, examples: Sequence[Item]) -> CaseSc
     }
     if obs.model is not None:
         predicted = model_items(obs.model)
-        copies = example_copies(predicted, truth_items(case), examples)
+        match = None
+        if case.kind != "non_receipt":
+            model_score = score_model(case, obs.model)
+            changes["model"] = model_score
+            match = model_score.items  # reused: the items aren't matched twice
+        copies = example_copies(predicted, truth_items(case), examples, match)
         changes["invented_examples"] = copies.invented
         changes["example_amount_on_real_item"] = copies.on_real_item
         changes["non_item_leak"] = sum(
             is_non_item_line(ItemLine(i.description, i.amount)) for i in predicted
         )
-        if case.kind != "non_receipt":
-            changes["model"] = score_model(case, obs.model)
     if obs.stored is not None:
         codes = [code for code, _ in obs.stored.flags]
         changes["status_app"] = obs.stored.review_status
@@ -393,8 +382,7 @@ def _items(scores: Sequence[CaseScore], view: str) -> PRF:
 def _run_agreement(observations: Sequence[Observation]) -> dict[str, Any] | None:
     by_case: dict[str, list[Observation]] = {}
     for obs in observations:
-        if not obs.infra:
-            by_case.setdefault(obs.case_id, []).append(obs)
+        by_case.setdefault(obs.case_id, []).append(obs)
     multi = {case: runs for case, runs in by_case.items() if len(runs) > 1}
     if not multi:
         return None
@@ -416,9 +404,9 @@ def aggregate(
     *,
     missing: int = 0,
 ) -> dict[str, Any]:
-    """The metrics of one configuration (decision 0028)."""
-    infra = Counter(score.outcome for score in scores if score.infra)
-    valid_scores = [score for score in scores if not score.infra]
+    """The metrics of one configuration (decision 0028). Infrastructure errors are never
+    cached, so they never reach here: they are `missing`."""
+    valid_scores = list(scores)
     receipts = [score for score in valid_scores if score.receipt]
     non_receipts = [score for score in valid_scores if not score.receipt]
 
@@ -457,7 +445,6 @@ def aggregate(
     return {
         "observations": len(scores),
         "missing": missing,
-        "infra_errors": dict(sorted(infra.items())),
         "schema_validity": {
             "n": len(answered),
             "valid": len(valid),
@@ -542,11 +529,11 @@ HEADLINE: tuple[tuple[str, ...], ...] = (
 
 def _case_points(score: CaseScore) -> dict[str, float] | None:
     """Per-field points of one case's stored values; a failure scores 0 everywhere."""
-    if score.infra or not score.receipt:
+    if not score.receipt:
         return None
     fields = score.stored
     if fields is None:
-        return {"merchant": 0, "date": 0, "total": 0, "items": 0 if score.n_truth else 1}
+        return {"merchant": 0, "date": 0, "total": 0, "items": 0}
     f1 = fields.prf.f1
     return {
         "merchant": float(fields.merchant),

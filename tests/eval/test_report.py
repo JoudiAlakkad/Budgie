@@ -82,7 +82,6 @@ def test_bad_markers_raise(text: str) -> None:
 
 def summary() -> dict[str, Any]:
     metrics: dict[str, Any] = {
-        "infra_errors": {"llm_timeout": 1},
         "schema_validity": {"rate": 1.0, "rate_without_repair": 0.75},
         "fields": {"stored": {"merchant": 0.5, "date": 1.0, "total": 0.5}},
         "items": {"stored": {"precision": 0.8, "recall": 0.5, "f1": None}},
@@ -142,6 +141,10 @@ def test_render_explains_the_repair_column_and_marks_partial_results() -> None:
     assert "Copied examples" not in full
     assert "Partial results" not in full
     assert "**Partial results:**" in render({**summary(), "partial": True})
+    reasons = {"partial": True, "partial_reasons": ["1 case run(s) missing from the cache"]}
+    assert "**Partial results:** 1 case run(s) missing from the cache (column Missing)." in render(
+        {**summary(), **reasons}
+    )
 
 
 def test_render_is_deterministic_and_handles_an_empty_summary() -> None:

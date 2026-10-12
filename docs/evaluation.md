@@ -15,7 +15,7 @@ _Generated from `eval/results/summary.json`: today = 2026-10-12, 1 run(s) per ca
 
 ### Configurations
 
-**Partial results:** some case runs are missing from the cache (column Missing).
+**Partial results:** 1 case run(s) missing from the cache (column Missing).
 
 | Configuration | Valid (no repair) | Merchant | Date | Total | Items P / R / F1 | Name key | Out of scope rejected | False rejection | Injection followed | Invented examples | Example amount on a real item | Latency p50 / p95 (s) | Tokens | Missing |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|

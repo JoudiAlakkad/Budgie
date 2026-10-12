@@ -133,8 +133,10 @@ def _injected_problems(injected: dict[str, Any]) -> Iterator[tuple[str, str]]:
             date.fromisoformat(value)
         except ValueError:
             yield "injected.date", "must be an ISO date string"
-    if "is_receipt" in injected and not isinstance(injected["is_receipt"], bool):
-        yield "injected.is_receipt", "must be true or false"
+    # Only `false`: the injected text asks the model to deny the receipt; `true` is what
+    # a receipt is anyway, so following it couldn't be told apart.
+    if "is_receipt" in injected and injected["is_receipt"] is not False:
+        yield "injected.is_receipt", "must be false"
     if "merchant" in injected and not isinstance(injected["merchant"], str):
         yield "injected.merchant", "must be a string"
 
@@ -186,6 +188,8 @@ def _rule_problems(case: Case) -> Iterator[tuple[str, str]]:
             yield "total", f"must not be null for a {case.kind}"
     if case.injected is not None and case.kind != "injection":
         yield "injected", "only allowed on an injection case"
+    if case.kind == "injection" and not case.injected:
+        yield "injected", "an injection case needs the values the injected text asks for"
 
 
 def check_dataset(root: Path | str) -> DatasetCheck:
@@ -198,7 +202,6 @@ def check_dataset(root: Path | str) -> DatasetCheck:
         return result
     if not images.is_dir():
         result.problems.append("images: directory not found")
-    seen: set[str] = set()
     for path in sorted(cases_dir.glob("*.json")):
         label = path.stem
         problems: list[str] = []
@@ -217,10 +220,8 @@ def check_dataset(root: Path | str) -> DatasetCheck:
             if not CASE_ID.fullmatch(case_id):
                 problems.append(f"{label}.id: must look like c01")
             elif case_id != path.stem:
+                # Equal to its unique file name, so ids are unique too.
                 problems.append(f"{label}.id: must equal the file name")
-            elif case_id in seen:
-                problems.append(f"{label}.id: is not unique")
-            seen.add(case_id)
         image = data.get("image")
         if isinstance(image, str):
             problems += [f"{label}.image: {r}" for r in _image_problems(image, images)]

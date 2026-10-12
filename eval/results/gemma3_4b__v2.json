@@ -11,7 +11,6 @@
   "metrics": {
     "observations": 20,
     "missing": 0,
-    "infra_errors": {},
     "schema_validity": {
       "n": 20,
       "valid": 19,

@@ -16,7 +16,6 @@ from eval.metrics import (
     aggregate,
     compare,
     comparisons,
-    infra_observation,
     observe,
     score_case,
 )
@@ -181,31 +180,26 @@ def test_a_deposit_with_the_wrong_sign_is_a_deposit_sign_error() -> None:
     assert score.status_extraction == "needs_review"  # deposit_sign_suspect
 
 
-def scores_for(entries: dict[str, CacheEntry | str]) -> tuple[list[Any], list[Observation]]:
-    observations = []
-    for case_id, entry in entries.items():
-        if isinstance(entry, str):
-            observations.append(infra_observation(case_id, 1, entry, 3.0))
-        else:
-            observations.append(observed(case_id, entry))
+def scores_for(entries: dict[str, CacheEntry]) -> tuple[list[Any], list[Observation]]:
+    observations = [observed(case_id, entry) for case_id, entry in entries.items()]
     scores = [score_case(CASES[o.case_id], o, EXAMPLES) for o in observations]
     return scores, observations
 
 
-def test_aggregate_counts_failures_infra_and_the_needs_review_matrices() -> None:
+def test_aggregate_counts_failures_missing_and_the_needs_review_matrices() -> None:
     scores, observations = scores_for(
         {
             "c01": entry_for(),  # right, accepted by extraction flags
             "c02": entry_for(merchant="ALDI SÜD", total=9.99),  # wrong, flagged
-            "c03": "llm_timeout",  # excluded and counted
+            # c03: an infrastructure error, never cached, so only `missing`
             "c04": CacheEntry.from_error("not_a_receipt", 0.5, "f"),
         }
     )
 
-    metrics = aggregate(scores, observations)
+    metrics = aggregate(scores, observations, missing=1)
 
-    assert metrics["infra_errors"] == {"llm_timeout": 1}
-    assert metrics["observations"] == 4
+    assert "infra_errors" not in metrics
+    assert (metrics["observations"], metrics["missing"]) == (3, 1)
     assert metrics["out_of_scope"] == {
         "cases": 1,
         "rejected": 1,
@@ -287,6 +281,23 @@ def test_run_agreement_compares_the_stored_values_across_runs() -> None:
         "agree": 1,
         "rate": 0.5,
     }
+
+
+def test_a_failed_receipt_scores_0_for_items_even_without_truth_items() -> None:
+    """A receipt with no item lines in the truth: the failed configuration loses the
+    items point to the one that stored the expense with no items."""
+    case = Case.model_validate({**DATASET["c01"], "items": []})
+    failed = score_case(
+        case, observed("c01", CacheEntry.from_error("malformed_output", 1.0, "f")), EXAMPLES
+    )
+    stored = score_case(case, observed("c01", entry_for(line_items=[])), EXAMPLES)
+    a = ConfigResult(("gemma3:4b", "v2"), aggregate([failed]), [failed])
+    b = ConfigResult(("gemma3:4b", "v3"), aggregate([stored]), [stored])
+
+    result = compare(a, b)
+
+    assert result["cases"]["items"] == {"wins": ["c01"], "losses": [], "ties": 0}
+    assert compare(a, a)["cases"]["items"] == {"wins": [], "losses": [], "ties": 1}
 
 
 def test_compare_reports_deltas_and_wins_per_case() -> None:

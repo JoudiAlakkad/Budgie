@@ -260,14 +260,16 @@ def write_results(
     *,
     today: date,
     runs: int,
-    partial: bool = False,
+    partial_reasons: Sequence[str] = (),
 ) -> dict[str, Any]:
     """Write one file per configuration and `summary.json` (atomic); returns the summary.
 
-    On a complete write (`partial` False), a configuration file whose configuration isn't
-    in this summary is deleted, so the directory never holds results the summary doesn't
-    describe. A partial write leaves other configurations' files alone.
+    The write is partial when there are `partial_reasons` (stored in the summary, so the
+    report can say why). On a complete write, a configuration file whose configuration
+    isn't in this summary is deleted, so the directory never holds results the summary
+    doesn't describe. A partial write leaves other configurations' files alone.
     """
+    partial = bool(partial_reasons)
     keep = {SUMMARY_FILE}
     for result in results:
         document = config_document(result, observations[result.config], today=today, runs=runs)
@@ -278,6 +280,7 @@ def write_results(
         results, comparisons, today=today, runs=runs, outcomes=outcome_grid(results)
     )
     summary["partial"] = partial
+    summary["partial_reasons"] = list(partial_reasons)
     write_atomic(out_dir / SUMMARY_FILE, dump(summary))
     if not partial:
         for path in out_dir.glob("*__*.json"):
