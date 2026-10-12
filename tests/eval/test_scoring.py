@@ -13,11 +13,12 @@ from eval.scoring import (
     PRF,
     PROMPT_TEXT_EXAMPLES,
     Confusion,
+    ExampleCopies,
     FieldScore,
     Item,
-    copied_examples,
     date_matches,
     description_similarity,
+    example_copies,
     example_items,
     extraction_status,
     extraction_wrong,
@@ -366,8 +367,8 @@ def test_a_sign_flipped_truth_item_is_not_a_copy() -> None:
     examples = example_items("v2")
     predicted = items(("LEERGUT", "-0.75"))
 
-    assert copied_examples(predicted, items(("Leergut", "0.75")), examples) == []
-    assert copied_examples(predicted, items(("BROT", "0.75")), examples) == [0]
+    assert example_copies(predicted, items(("Leergut", "0.75")), examples) == ExampleCopies()
+    assert example_copies(predicted, items(("BROT", "0.75")), examples) == ExampleCopies((0,))
 
 
 @pytest.mark.parametrize("example", PROMPT_TEXT_EXAMPLES, ids=lambda e: e.description)
@@ -384,20 +385,52 @@ def test_the_listed_versions_exist() -> None:
     assert {v for e in PROMPT_TEXT_EXAMPLES for v in e.versions} <= set(available_versions())
 
 
-def test_a_copied_example_matches_no_truth_item() -> None:
+def test_an_invented_pfand_on_a_receipt_without_pfand_is_invented() -> None:
     examples = example_items("v2")
-    predicted = items(("BROT", "2.49"), ("LEERGUT", "-0.75"), ("PFAND", "0.25"))
+    predicted = items(("BROT", "2.49"), ("PFAND", "0.25"), ("LEERGUT", "-0.75"))
+    truth = items(("BROT", "2.49"), ("Butter", "1.75"))
+
+    assert example_copies(predicted, truth, examples) == ExampleCopies(invented=(1, 2))
+
+
+def test_a_real_pfand_line_read_with_the_example_amount_is_on_a_real_item() -> None:
+    """ALDI prints `PFAND / RÜCKGABE 0,25` per bottle; the line total is 6.00."""
+    examples = example_items("v2")
+    predicted = items(("BROT", "2.49"), ("PFAND / RÜCKGABE", "0.25"))
+    truth = items(("BROT", "2.49"), ("PFAND / RÜCKGABE", "6.00"))
+
+    assert example_copies(predicted, truth, examples) == ExampleCopies(on_real_item=(1,))
+
+
+def test_a_matched_example_value_is_neither() -> None:
+    examples = example_items("v2")
+    predicted = items(("BROT", "2.49"), ("PFAND", "0.25"))
     truth = items(("BROT", "2.49"), ("Pfand", "0.25"))
 
-    # LEERGUT -0.75 is the v2 example and not on this receipt; PFAND 0.25 is on it.
-    assert copied_examples(predicted, truth, examples) == [1]
+    assert example_copies(predicted, truth, examples) == ExampleCopies()
 
 
-def test_an_example_value_on_the_receipt_is_not_copied() -> None:
+def test_a_sign_flipped_example_value_is_neither() -> None:
+    """PFAND -0.25 against the truth's +0.25 is deposit_sign only; LEERGUT +0.75 against
+    -0.75 likewise, though v2's example is LEERGUT -0.75."""
+    examples = example_items("v2")
+
+    assert (
+        example_copies(items(("PFAND", "-0.25")), items(("Pfand", "0.25")), examples)
+        == ExampleCopies()
+    )
+    assert (
+        example_copies(items(("LEERGUT", "0.75")), items(("Leergut", "-0.75")), examples)
+        == ExampleCopies()
+    )
+
+
+def test_an_example_value_on_the_receipt_is_not_a_copy() -> None:
     examples = example_items("v3")
     predicted = items(("RHEINFELS WASSER M. AR", "11.76"))
     truth = items(("RHEINFELS WASSER M. AR", "11.76"))
 
-    assert copied_examples(predicted, truth, examples) == []
-    assert copied_examples(predicted, [], examples) == [0]
-    assert copied_examples(items(("RHEINFELS WASSER M. AR", "11.00")), [], examples) == []
+    assert example_copies(predicted, truth, examples) == ExampleCopies()
+    assert example_copies(predicted, [], examples) == ExampleCopies(invented=(0,))
+    other_amount = items(("RHEINFELS WASSER M. AR", "11.00"))
+    assert example_copies(other_amount, [], examples) == ExampleCopies()

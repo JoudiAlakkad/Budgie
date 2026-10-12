@@ -15,6 +15,20 @@ How Budgie treats uncertainty in the model's output (criterion 13 of the brief).
 - The API has no score field. A test checks that the `Expense` DTO has no score, confidence or probability field and that `review_status` is a JSON-schema string enum equal to the domain's `ReviewStatus`.
 - The brief allows a confidence value only if it is "appropriately justified or calibrated". Budgie doesn't show one. Instead F11 justifies the status: it reports the precision and recall of `needs_review` against the hand-labelled `expected_status`, i.e. how many wrong extractions get flagged and how many correct ones are flagged for nothing.
 
+## Measured in F11
+Precision and recall of "flagged" (`needs_review` or `rejected`) on 18 real receipts, one run at temperature 0, prompt v3 ([0028](../decisions/0028-evaluation-truth-and-scoring.md); the full tables are in `docs/evaluation.md`). The main truth is derived: the stored extraction is wrong somewhere.
+
+| Model | Status | Precision | Recall | TP / FP / FN / TN |
+|---|---|---|---|---|
+| `qwen2.5vl:3b` | as shipped | 0.47 | 1.0 | 8 / 9 / 0 / 1 |
+| `qwen2.5vl:3b` | extraction flags only | 0.64 | 0.88 | 7 / 4 / 1 / 6 |
+| `gemma3:4b` | as shipped | 0.88 | 1.0 | 15 / 2 / 0 / 0 |
+
+- **No wrong extraction got through as shipped**, with either model. The cost is false alarms: with the seed table alone almost every receipt has an uncategorised item, so `uncategorized_item` flags correct extractions too (qwen: 9 of 17 flags).
+- **gemma's high precision isn't a quality signal:** only 2 of its 17 extracted receipts were fully right (17 % had exactly the right items), so flagging nearly everything was mostly right.
+- **Without `uncategorized_item`** the flags are more precise, but one wrong qwen extraction passes: the "internally consistent but wrong" gap below.
+- Against the hand labels (only c03 is `needs_review`) every precision is 0.06–0.09: the labels say "accepted" for receipts the model got partly wrong, so the derived truth is the meaningful one.
+
 ## What the user sees
 - Each flag's `message` next to its field, e.g. "Items sum to 12.40 but total is 14.40".
 - An "AI-generated" badge on each extracted value until the user edits or confirms it.

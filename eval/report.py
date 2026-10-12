@@ -88,7 +88,8 @@ def _config_rows(configs: Sequence[Mapping[str, Any]]) -> list[str]:
         "Out of scope rejected",
         "False rejection",
         "Injection followed",
-        "Copied examples",
+        "Invented examples",
+        "Example amount on a real item",
         "Latency p50 / p95 (s)",
         "Tokens",
         "Missing",
@@ -114,7 +115,9 @@ def _config_rows(configs: Sequence[Mapping[str, Any]]) -> list[str]:
                 f"rule {at('out_of_scope', 'by_plausibility')})",
                 f"{at('false_rejection', 'rejected')}/{at('false_rejection', 'cases')}",
                 f"{at('injection_followed', 'followed')}/{at('injection_followed', 'cases')}",
-                f"{at('copied_examples', 'items')} in {at('copied_examples', 'cases')}",
+                f"{at('invented_examples', 'items')} in {at('invented_examples', 'cases')}",
+                f"{at('example_amount_on_real_item', 'items')} in "
+                f"{at('example_amount_on_real_item', 'cases')}",
                 f"{_num(at('latency_s', 'p50'))} / {_num(at('latency_s', 'p95'))}",
                 _num(m.get("completion_tokens_mean"), 0),
                 str(m.get("missing", 0)),
@@ -130,7 +133,8 @@ _COMPARED = (
     ("items.stored.f1", "Item F1", True),
     ("schema_validity.rate_without_repair", "Valid without repair", True),
     ("false_rejection.rate", "False rejection", True),
-    ("copied_examples.items", "Copied examples", False),
+    ("invented_examples.items", "Invented examples", False),
+    ("example_amount_on_real_item.items", "Example amount on a real item", False),
     ("latency_s.p50", "Latency p50 (s)", False),
 )
 
@@ -221,6 +225,12 @@ def render(summary: Mapping[str, Any]) -> str:
         "say whether a repair happened, so it counts as valid without repair. Missing: case "
         "runs without a matching cache entry, including infrastructure errors "
         "(`llm_*`, `interrupted`), which are never cached.",
+        "",
+        "Invented examples: an item equal to a prompt example (name and amount) that has no "
+        "similar line on the receipt; the model added it. Example amount on a real item: an "
+        "item equal to a prompt example whose name matches a real line with another amount. "
+        "That can be a correct reading when the receipt prints the same price (e.g. the "
+        "per-bottle Pfand 0.25), so each one needs a look at the photo.",
         "",
         "### Comparisons",
         "",

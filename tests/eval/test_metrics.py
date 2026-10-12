@@ -119,8 +119,41 @@ def test_copied_examples_are_found_on_the_model_view() -> None:
 
     score = score_case(CASES["c01"], observed("c01", entry), EXAMPLES)
 
-    assert score.copied == (2,)
-    assert "example_copied" in score.errors and "items_extra" in score.errors
+    assert score.invented_examples == (2,)
+    assert score.example_amount_on_real_item == ()
+    assert "example_invented" in score.errors and "items_extra" in score.errors
+    assert "example_amount_on_real_item" not in score.errors
+
+
+def test_an_example_amount_on_a_real_item_is_counted_apart() -> None:
+    """The receipt has a Pfand line of 6.00; the model read it as the v2 example's 0.25."""
+    case = Case.model_validate(
+        {
+            **DATASET["c01"],
+            "total": 8.49,
+            "items": [
+                {"description": "BROT", "amount": 2.49},
+                {"description": "PFAND / RÜCKGABE", "amount": 6.0},
+            ],
+        }
+    )
+    entry = entry_for(
+        line_items=[
+            {"description": "BROT", "qty": None, "amount": 2.49},
+            {"description": "PFAND / RÜCKGABE", "qty": None, "amount": 0.25},
+        ],
+        total=8.49,
+    )
+
+    score = score_case(case, observed("c01", entry), example_items("v2"))
+
+    assert score.invented_examples == ()
+    assert score.example_amount_on_real_item == (1,)
+    assert "example_amount_on_real_item" in score.errors
+    assert "example_invented" not in score.errors
+    metrics = aggregate([score])
+    assert metrics["example_amount_on_real_item"] == {"items": 1, "cases": 1}
+    assert metrics["invented_examples"] == {"items": 0, "cases": 0}
 
 
 def test_a_deposit_with_the_wrong_sign_is_a_deposit_sign_error() -> None:
@@ -202,8 +235,8 @@ def test_aggregate_counts_failures_infra_and_the_needs_review_matrices() -> None
     first = {"count": 1, "first_case": "c02"}
     assert metrics["errors"] == {
         "date_wrong": first,
-        # VOLLMILCH 3,5% 1.19 is the v3 example answer's item and not on c02
-        "example_copied": first,
+        # VOLLMILCH 3,5% 1.19 is the v3 example answer's item and nothing like it is on c02
+        "example_invented": first,
         "items_extra": first,
         "items_missing": first,
         "total_wrong": first,

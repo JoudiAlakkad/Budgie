@@ -90,7 +90,8 @@ def summary() -> dict[str, Any]:
         "out_of_scope": {"rejected": 1, "cases": 1, "by_model": 1, "by_plausibility": 0},
         "false_rejection": {"rejected": 0, "cases": 3},
         "injection_followed": {"followed": 1, "cases": 1},
-        "copied_examples": {"items": 0, "cases": 0},
+        "invented_examples": {"items": 2, "cases": 1},
+        "example_amount_on_real_item": {"items": 1, "cases": 1},
         "latency_s": {"p50": 1.2, "p95": 1.4},
         "completion_tokens_mean": 120.0,
         "needs_review": {
@@ -135,6 +136,10 @@ def test_render_explains_the_repair_column_and_marks_partial_results() -> None:
     full = render(summary())
 
     assert "the extractor doesn't say whether a repair happened" in full
+    assert "| Invented examples | Example amount on a real item |" in full
+    assert "| 2 in 1 | 1 in 1 |" in full
+    assert "can be a correct reading when the receipt prints the same price" in full
+    assert "Copied examples" not in full
     assert "Partial results" not in full
     assert "**Partial results:**" in render({**summary(), "partial": True})
 

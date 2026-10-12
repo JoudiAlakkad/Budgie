@@ -414,28 +414,53 @@ def example_items(prompt_version: str) -> list[Item]:
     return [item for item in items if not is_non_item_line(ItemLine(item.description, item.amount))]
 
 
-def copied_examples(
-    predicted: Sequence[ItemLike], truth: Sequence[ItemLike], examples: Sequence[ItemLike]
-) -> list[int]:
-    """Predicted items that look like a prompt example (similarity >= 0.85, equal amount)
-    and match no ground-truth item: indices into `predicted`.
+@dataclass(frozen=True)
+class ExampleCopies:
+    """Predicted items equal to a prompt example, split by what the receipt has.
+
+    - `invented`: no ground-truth item has a similar name (>= the match threshold): the
+      model added an item that isn't on the receipt.
+    - `on_real_item`: a ground-truth item has a similar name but another amount: a real
+      line got the example's amount, or the receipt prints the same price (e.g. the
+      per-bottle Pfand 0.25). That needs a human judgement.
+    """
+
+    invented: tuple[int, ...] = ()  # indices into the predicted items
+    on_real_item: tuple[int, ...] = ()
+
+
+def example_copies(
+    predicted: Sequence[ItemLike],
+    truth: Sequence[ItemLike],
+    examples: Sequence[ItemLike],
+    name_threshold: float = NAME_THRESHOLD,
+) -> ExampleCopies:
+    """Predicted items that equal a prompt example (similarity >= 0.85, equal amount) and
+    match no ground-truth item, split into invented items and real items with the
+    example's amount.
 
     An item that is a truth item with the other sign (`sign_flipped`, the deposit_sign
-    error) isn't a copy, so one error isn't counted twice.
+    error) is neither, so one error isn't counted twice.
     """
-    match = match_items(predicted, truth)
+    match = match_items(predicted, truth, name_threshold)
     matched = {i for i, _ in match.pairs} | {i for i, _ in match.sign_flipped}
-    copied = []
+    invented: list[int] = []
+    on_real_item: list[int] = []
     for index, item in enumerate(predicted):
         if index in matched:
             continue
-        if any(
+        if not any(
             amounts_equal(item.amount, example.amount)
             and description_similarity(item.description, example.description) >= EXAMPLE_THRESHOLD
             for example in examples
         ):
-            copied.append(index)
-    return copied
+            continue
+        real = any(
+            description_similarity(item.description, true.description) >= name_threshold
+            for true in truth
+        )
+        (on_real_item if real else invented).append(index)
+    return ExampleCopies(tuple(invented), tuple(on_real_item))
 
 
 # ---------------------------------------------------------------- truth and status

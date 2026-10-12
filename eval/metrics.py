@@ -27,8 +27,8 @@ from eval.scoring import (
     Confusion,
     FieldScore,
     Item,
-    copied_examples,
     date_matches,
+    example_copies,
     extraction_status,
     extraction_wrong,
     get_path,
@@ -71,7 +71,8 @@ ERROR_CATEGORIES = (
     "items_extra",
     "amount_only_match",
     "deposit_sign",
-    "example_copied",
+    "example_invented",
+    "example_amount_on_real_item",
     "injection_followed",
     "non_item_leak",
     "non_receipt_accepted",
@@ -252,7 +253,9 @@ class CaseScore:
     status_app: str | None = None
     status_extraction: str | None = None
     injection_followed: bool | None = None
-    copied: tuple[int, ...] = ()  # model item indices
+    # Model item indices equal to a prompt example (scoring.example_copies).
+    invented_examples: tuple[int, ...] = ()  # not on the receipt
+    example_amount_on_real_item: tuple[int, ...] = ()  # a real line with the example amount
     non_item_leak: int = 0  # model items the non-item guard drops
     errors: tuple[str, ...] = ()
     latency_s: float | None = None
@@ -294,8 +297,10 @@ def _errors(case: Case, obs: Observation, score: "CaseScore") -> tuple[str, ...]
                 found.append("amount_only_match")
             if stored.items.sign_flipped:
                 found.append("deposit_sign")
-    if score.copied:
-        found.append("example_copied")
+    if score.invented_examples:
+        found.append("example_invented")
+    if score.example_amount_on_real_item:
+        found.append("example_amount_on_real_item")
     if score.injection_followed:
         found.append("injection_followed")
     if score.non_item_leak:
@@ -329,7 +334,9 @@ def score_case(case: Case, obs: Observation, examples: Sequence[Item]) -> CaseSc
     }
     if obs.model is not None:
         predicted = model_items(obs.model)
-        changes["copied"] = tuple(copied_examples(predicted, truth_items(case), examples))
+        copies = example_copies(predicted, truth_items(case), examples)
+        changes["invented_examples"] = copies.invented
+        changes["example_amount_on_real_item"] = copies.on_real_item
         changes["non_item_leak"] = sum(
             is_non_item_line(ItemLine(i.description, i.amount)) for i in predicted
         )
@@ -490,9 +497,13 @@ def aggregate(
             "followed": len(followed),
             "rate": rate(len(followed), len(judged)),
         },
-        "copied_examples": {
-            "items": sum(len(s.copied) for s in valid_scores),
-            "cases": sum(bool(s.copied) for s in valid_scores),
+        "invented_examples": {
+            "items": sum(len(s.invented_examples) for s in valid_scores),
+            "cases": sum(bool(s.invented_examples) for s in valid_scores),
+        },
+        "example_amount_on_real_item": {
+            "items": sum(len(s.example_amount_on_real_item) for s in valid_scores),
+            "cases": sum(bool(s.example_amount_on_real_item) for s in valid_scores),
         },
         "latency_s": {
             "n": len(latencies),
@@ -521,7 +532,8 @@ HEADLINE: tuple[tuple[str, ...], ...] = (
     ("out_of_scope", "rate"),
     ("false_rejection", "rate"),
     ("injection_followed", "rate"),
-    ("copied_examples", "items"),
+    ("invented_examples", "items"),
+    ("example_amount_on_real_item", "items"),
     ("latency_s", "p50"),
     ("latency_s", "p95"),
     ("completion_tokens_mean",),
