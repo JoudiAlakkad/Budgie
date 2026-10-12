@@ -23,6 +23,9 @@
   product (`merge_quantity_lines`); a positive item `is_deposit_return` says is money
   back is negated. Only the stored items and total change; the raw output stays the
   model's answer.
+- **One code path** (decision 0028): everything after the model call is the public
+  `process_extraction`, which the pipeline and the evaluation (`eval/`) both call; the
+  pipeline passes its database lookups, the evaluation the seed table.
 - **Logs** use fixed templates with ids, codes, counts and exception type names only;
   never `logger.exception`, because a traceback can quote values.
 """
@@ -103,11 +106,27 @@ class AmountOutOfRange(ValueError):
     """A model amount with `abs >= 10**10`; it can't be shown as `Money`."""
 
 
+LookupLoader = Callable[[date | None, Decimal | None], tuple[CategoryTable, list[ExpenseKey]]]
+"""Loads the item lookup table and the duplicate candidates for a date and a total."""
+
+
+@dataclass(frozen=True)
+class GuardCounts:
+    """What the non-item guard did to one extraction (decisions 0026, 0027): the same
+    counts the pipeline logs."""
+
+    dropped: int = 0
+    merged: int = 0
+    negated: int = 0
+    paid_total: bool = False
+
+
 @dataclass(frozen=True)
 class Extracted:
     expense: NewExpense
     latency_ms: int
     raw_output: str
+    guard: GuardCounts = GuardCounts()
 
 
 @dataclass(frozen=True)
@@ -167,6 +186,182 @@ def failed(exc: ExtractionError, cause: str | None = None) -> Failed:
     if exc.code in KEEPS_RAW_OUTPUT and exc.raw_output is not None:
         raw = redact_raw_output(exc.raw_output)
     return Failed(exc.code, _ms(exc.latency_s), raw, cause or type(exc).__name__)
+
+
+def redact_extraction(ex: ReceiptExtraction) -> ReceiptExtraction:
+    """The extraction with its free text redacted (decision 0017); idempotent.
+
+    `clean_merchant` on the merchant, `redact_text` on the date, the currency and every
+    item description. The date and currency rules quote the text in their flag messages,
+    which are stored; a real date or currency has nothing for `redact_text` to change.
+    """
+    return ex.model_copy(
+        update={
+            "merchant": clean_merchant(ex.merchant),
+            "date": redact_text(ex.date) if ex.date is not None else None,
+            "currency": redact_text(ex.currency) if ex.currency is not None else None,
+            "line_items": [
+                item.model_copy(update={"description": redact_text(item.description)})
+                for item in ex.line_items
+            ],
+        }
+    )
+
+
+def kept_items(
+    receipt_id: int, lines: Sequence[ItemLine], total: Decimal | None
+) -> tuple[list[ItemLine], Decimal | None, GuardCounts]:
+    """The stored items, the total and what the guard did (decisions 0026, 0027).
+
+    Drops the non-items, merges the quantity lines, takes the total from a dropped
+    paid line unless the model's total matches the kept items, then negates the
+    positive deposit returns. Runs on the redacted descriptions; logs only the counts.
+    """
+    kept: list[ItemLine] = []
+    dropped: list[ItemLine] = []
+    for line in lines:
+        (dropped if is_non_item_line(line) else kept).append(line)
+    if dropped:
+        logger.info("Receipt %d: dropped %d non-item lines", receipt_id, len(dropped))
+    kept, merged = merge_quantity_lines(kept)
+    if merged:
+        logger.info("Receipt %d: merged %d quantity lines", receipt_id, merged)
+    # After the merge, so a model total that the merged items add up to is kept.
+    paid = paid_total(dropped, total, sum((line.amount for line in kept), Decimal(0)))
+    if paid is not None:
+        total = paid
+        logger.info("Receipt %d: took the total from the paid line", receipt_id)
+    negated = 0
+    for index, line in enumerate(kept):
+        if line.amount > 0 and is_deposit_return(line.description):
+            kept[index] = dataclasses.replace(line, amount=-line.amount)
+            negated += 1
+    if negated:
+        logger.info("Receipt %d: negated %d deposit returns", receipt_id, negated)
+    counts = GuardCounts(
+        dropped=len(dropped), merged=merged, negated=negated, paid_total=paid is not None
+    )
+    return kept, total, counts
+
+
+def process_extraction(
+    receipt_id: int,
+    result: ExtractionResult,
+    *,
+    lookups: LookupLoader,
+    categorizer: ItemCategorizer,
+    today: Today,
+) -> Extracted:
+    """Everything after the model call: convert, redact, guard, check, categorise, assess.
+
+    Raises `MalformedOutput` (an amount out of range), `NotAReceipt` (the plausibility
+    rule) or `ExtractionInterrupted` (a `StorageError` from `lookups`, with the model
+    call's latency kept). `lookups` runs only after the plausibility check, so a
+    non-receipt never touches the database; `today` is called when the rules run. The
+    evaluation (decision 0028) calls it with the seed table and no duplicates.
+    """
+    ex: ReceiptExtraction = result.extraction
+    # Decision 0019: the model gives no subtotal, tax or unit price; they stay null.
+    try:
+        total = to_optional_amount(ex.total)
+        amounts = [to_amount(i.amount) for i in ex.line_items]
+    except AmountOutOfRange:
+        raise MalformedOutput(
+            "an amount is out of range",
+            raw_output=result.raw_output,
+            latency_s=result.latency_s,
+        ) from None
+
+    redacted = redact_extraction(ex)
+    merchant = redacted.merchant
+    date_text = redacted.date
+    currency_text = redacted.currency
+    model_total = total
+    lines, total, guard = kept_items(
+        receipt_id,
+        [
+            ItemLine(
+                item.description,
+                amount,
+                Decimal(str(item.qty)) if item.qty is not None else None,
+            )
+            for item, amount in zip(redacted.line_items, amounts, strict=True)
+        ],
+        total,
+    )
+    descriptions = [line.description for line in lines]
+    facts = ReceiptFacts(
+        merchant=merchant,
+        date=date_text,
+        currency=currency_text,
+        subtotal=None,
+        tax=None,
+        total=total,
+        items=tuple(ItemFacts(line.description, line.amount) for line in lines),
+        unreadable_fields=tuple(ex.unreadable_fields),
+    )
+    # Plausibility needs no categories (merchant, total, item count), so a non-receipt
+    # never touches the database. The dropped and merged lines still count as receipt
+    # lines. It sees the model's own total: a total taken only from a dropped paid line
+    # mustn't make an itemless non-receipt plausible.
+    plausibility_facts = dataclasses.replace(facts, total=model_total)
+    if not is_plausible_receipt(plausibility_facts, dropped=len(ex.line_items) - len(lines)):
+        raise NotAReceipt(
+            "plausibility rule", raw_output=result.raw_output, latency_s=result.latency_s
+        )
+    day = parse_date(date_text) if date_text else None
+    try:
+        table, others = lookups(day, total)
+    except StorageError as exc:
+        # `interrupted`, as for any unexpected error, but the model call's latency is
+        # kept; the raw output isn't (only kept for malformed_output and not_a_receipt).
+        raise ExtractionInterrupted(type(exc).__name__, latency_s=result.latency_s) from exc
+    categorized = [categorizer.categorize(d, table) for d in descriptions]
+    facts = dataclasses.replace(
+        facts,
+        items=tuple(
+            dataclasses.replace(item_facts, category=category.category)
+            for item_facts, category in zip(facts.items, categorized, strict=True)
+        ),
+    )
+    # Called here, inside the task: a receipt queued over midnight uses the new day.
+    review_status, flags = assess(facts, today(), others)
+
+    items = []
+    for line, category in zip(lines, categorized, strict=True):
+        # The model's qty (or a merged quantity line's N) wins over the normaliser's;
+        # it is stored unrounded. The normaliser's unit stays only with its own qty.
+        qty = line.qty if line.qty is not None else category.qty
+        items.append(
+            NewLineItem(
+                description=line.description,
+                normalized_name=category.normalized_name,
+                qty=qty,
+                unit=line.unit if line.unit is not None else paired_unit(qty, category),
+                unit_price=None,
+                amount=cents(line.amount),
+                category=category.category,
+                category_source=category.category_source,
+            )
+        )
+    expense = NewExpense(
+        receipt_id=receipt_id,
+        merchant=merchant,
+        # An unparseable date is stored as null, an unknown currency as EUR; their
+        # flags stay (domain-logic.md).
+        date=day,
+        currency=(normalize_currency(currency_text) if currency_text else None) or DEFAULT_CURRENCY,
+        subtotal=None,
+        tax=None,
+        total=optional_cents(total),
+        source="ai",
+        review_status=review_status,
+        flags=tuple(FlagRecord(f.field, f.code, f.message) for f in flags),
+        unreadable_fields=tuple(ex.unreadable_fields),
+        line_items=tuple(items),
+    )
+    latency_ms = round(result.latency_s * 1000)
+    return Extracted(expense, latency_ms, redact_raw_output(result.raw_output), guard)
 
 
 class ReceiptPipeline:
@@ -243,144 +438,13 @@ class ReceiptPipeline:
 
     def _extracted(self, receipt_id: int, result: ExtractionResult) -> Extracted:
         """Convert, redact, check and assess; raises `MalformedOutput` or `NotAReceipt`."""
-        ex: ReceiptExtraction = result.extraction
-        # Decision 0019: the model gives no subtotal, tax or unit price; they stay null.
-        try:
-            total = to_optional_amount(ex.total)
-            amounts = [to_amount(i.amount) for i in ex.line_items]
-        except AmountOutOfRange:
-            raise MalformedOutput(
-                "an amount is out of range",
-                raw_output=result.raw_output,
-                latency_s=result.latency_s,
-            ) from None
-
-        merchant = clean_merchant(ex.merchant)
-        # The date and currency rules quote the text in their flag messages, which are
-        # stored; a real date or currency has nothing for redact_text to change.
-        date_text = redact_text(ex.date) if ex.date is not None else None
-        currency_text = redact_text(ex.currency) if ex.currency is not None else None
-        model_total = total
-        lines, total = self._kept_items(
+        return process_extraction(
             receipt_id,
-            [
-                ItemLine(
-                    redact_text(item.description),
-                    amount,
-                    Decimal(str(item.qty)) if item.qty is not None else None,
-                )
-                for item, amount in zip(ex.line_items, amounts, strict=True)
-            ],
-            total,
+            result,
+            lookups=self._lookups,
+            categorizer=self._categorizer,
+            today=self._today,
         )
-        descriptions = [line.description for line in lines]
-        facts = ReceiptFacts(
-            merchant=merchant,
-            date=date_text,
-            currency=currency_text,
-            subtotal=None,
-            tax=None,
-            total=total,
-            items=tuple(ItemFacts(line.description, line.amount) for line in lines),
-            unreadable_fields=tuple(ex.unreadable_fields),
-        )
-        # Plausibility needs no categories (merchant, total, item count), so a non-receipt
-        # never touches the database. The dropped and merged lines still count as receipt
-        # lines. It sees the model's own total: a total taken only from a dropped paid line
-        # mustn't make an itemless non-receipt plausible.
-        plausibility_facts = dataclasses.replace(facts, total=model_total)
-        if not is_plausible_receipt(plausibility_facts, dropped=len(ex.line_items) - len(lines)):
-            raise NotAReceipt(
-                "plausibility rule", raw_output=result.raw_output, latency_s=result.latency_s
-            )
-        day = parse_date(date_text) if date_text else None
-        try:
-            table, others = self._lookups(day, total)
-        except StorageError as exc:
-            # `interrupted`, as for any unexpected error, but the model call's latency is
-            # kept; the raw output isn't (only kept for malformed_output and not_a_receipt).
-            raise ExtractionInterrupted(type(exc).__name__, latency_s=result.latency_s) from exc
-        categorized = [self._categorizer.categorize(d, table) for d in descriptions]
-        facts = dataclasses.replace(
-            facts,
-            items=tuple(
-                dataclasses.replace(item_facts, category=category.category)
-                for item_facts, category in zip(facts.items, categorized, strict=True)
-            ),
-        )
-        # Called here, inside the task: a receipt queued over midnight uses the new day.
-        review_status, flags = assess(facts, self._today(), others)
-
-        items = []
-        for line, category in zip(lines, categorized, strict=True):
-            # The model's qty (or a merged quantity line's N) wins over the normaliser's;
-            # it is stored unrounded. The normaliser's unit stays only with its own qty.
-            qty = line.qty if line.qty is not None else category.qty
-            items.append(
-                NewLineItem(
-                    description=line.description,
-                    normalized_name=category.normalized_name,
-                    qty=qty,
-                    unit=line.unit if line.unit is not None else paired_unit(qty, category),
-                    unit_price=None,
-                    amount=cents(line.amount),
-                    category=category.category,
-                    category_source=category.category_source,
-                )
-            )
-        expense = NewExpense(
-            receipt_id=receipt_id,
-            merchant=merchant,
-            # An unparseable date is stored as null, an unknown currency as EUR; their
-            # flags stay (domain-logic.md).
-            date=day,
-            currency=(normalize_currency(currency_text) if currency_text else None)
-            or DEFAULT_CURRENCY,
-            subtotal=None,
-            tax=None,
-            total=optional_cents(total),
-            source="ai",
-            review_status=review_status,
-            flags=tuple(FlagRecord(f.field, f.code, f.message) for f in flags),
-            unreadable_fields=tuple(ex.unreadable_fields),
-            line_items=tuple(items),
-        )
-        latency_ms = round(result.latency_s * 1000)
-        return Extracted(expense, latency_ms, redact_raw_output(result.raw_output))
-
-    @staticmethod
-    def _kept_items(
-        receipt_id: int, lines: Sequence[ItemLine], total: Decimal | None
-    ) -> tuple[list[ItemLine], Decimal | None]:
-        """The stored items and the total (decisions 0026, 0027).
-
-        Drops the non-items, merges the quantity lines, takes the total from a dropped
-        paid line unless the model's total matches the kept items, then negates the
-        positive deposit returns. Runs on the redacted
-        descriptions; logs only the counts.
-        """
-        kept: list[ItemLine] = []
-        dropped: list[ItemLine] = []
-        for line in lines:
-            (dropped if is_non_item_line(line) else kept).append(line)
-        if dropped:
-            logger.info("Receipt %d: dropped %d non-item lines", receipt_id, len(dropped))
-        kept, merged = merge_quantity_lines(kept)
-        if merged:
-            logger.info("Receipt %d: merged %d quantity lines", receipt_id, merged)
-        # After the merge, so a model total that the merged items add up to is kept.
-        paid = paid_total(dropped, total, sum((line.amount for line in kept), Decimal(0)))
-        if paid is not None:
-            total = paid
-            logger.info("Receipt %d: took the total from the paid line", receipt_id)
-        negated = 0
-        for index, line in enumerate(kept):
-            if line.amount > 0 and is_deposit_return(line.description):
-                kept[index] = dataclasses.replace(line, amount=-line.amount)
-                negated += 1
-        if negated:
-            logger.info("Receipt %d: negated %d deposit returns", receipt_id, negated)
-        return kept, total
 
     def _lookups(
         self, day: date | None, total: Decimal | None
