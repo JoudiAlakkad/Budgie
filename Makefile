@@ -5,23 +5,24 @@ VENV   ?= .venv
 PY     := $(VENV)/bin/python
 CONFIG := backend/pyproject.toml
 
-.PHONY: install lint format test imports openapi openapi-check secrets check run seed-demo docker-check
+.PHONY: install lint format test imports openapi openapi-check secrets check run seed-demo docker-check \
+	eval-check eval eval-score
 
 install:
 	python3 -m venv $(VENV)
 	$(PY) -m pip install --upgrade pip
-	$(PY) -m pip install -e "./backend[dev]"
+	$(PY) -m pip install -e "./backend[dev,eval]"
 
 lint:
-	$(VENV)/bin/ruff check --config $(CONFIG) backend tests scripts
-	$(VENV)/bin/ruff format --check --config $(CONFIG) backend tests scripts
+	$(VENV)/bin/ruff check --config $(CONFIG) backend eval tests scripts
+	$(VENV)/bin/ruff format --check --config $(CONFIG) backend eval tests scripts
 
 format:
-	$(VENV)/bin/ruff check --fix --config $(CONFIG) backend tests scripts
-	$(VENV)/bin/ruff format --config $(CONFIG) backend tests scripts
+	$(VENV)/bin/ruff check --fix --config $(CONFIG) backend eval tests scripts
+	$(VENV)/bin/ruff format --config $(CONFIG) backend eval tests scripts
 
 test:
-	$(PY) -m pytest -c $(CONFIG) --rootdir . -m "not integration" --cov=app --cov-report=term-missing tests
+	$(PY) -m pytest -c $(CONFIG) --rootdir . -m "not integration" --cov=app --cov=eval --cov-report=term-missing tests
 
 imports:
 	$(VENV)/bin/lint-imports --config $(CONFIG)
@@ -49,3 +50,15 @@ seed-demo:
 # Needs docker, so run it on the host (the dev container has none).
 docker-check:
 	scripts/docker-health-check.sh
+
+# Evaluation (F11, decision 0028; docs/wiki/backend/evaluation.md). The data in data/eval/
+# is git-ignored. `make eval EVAL_ARGS="--config gemma3:4b@v3 --cases c02,c05"`.
+eval-check:
+	$(PY) -m eval.run_eval check
+
+eval:
+	$(PY) -m eval.run_eval run $(EVAL_ARGS)
+
+# Offline: rescores the cache, rewrites eval/results/ and the report block.
+eval-score:
+	$(PY) -m eval.run_eval score $(EVAL_ARGS)

@@ -12,7 +12,7 @@ You implement one backend feature of Budgie, a receipt-to-expense service.
 3. Restate the acceptance criteria you were given. If they conflict with the wiki, stop and report the conflict.
 
 ## Rules
-- Edit only files under `backend/` and `tests/`. Don't touch `docs/wiki/`, `.claude/`, `.devcontainer/`, `frontend/` or `.github/`.
+- Edit only files under `backend/` and `tests/`, plus `eval/` (never `eval/results/`) and the `Makefile` when your task names them. Don't touch `docs/wiki/`, `.claude/`, `.devcontainer/`, `frontend/` or `.github/`.
 - Don't change the public contract (`backend/app/api/schemas.py`, the endpoint paths, the error codes). If it needs to change, describe the change in your report.
 - Keep the layer rules: `domain/` is pure, and only `db/` imports SQLAlchemy.
 - Every behaviour change comes with tests. Use fakes or the recorded responses for the model; never call a real model in unit tests.

@@ -351,3 +351,44 @@ Limitation: every agent passed all automated checks, yet three review layers eac
 - Guard ambiguous for a leading `'`, and 0024 cited a contract rule that didn't exist → reviewer → `c5e1f65`.
 - "AI-generated" badge on confirmed expenses contradicted 0018 → reviewer → `c5e1f65`.
 - `;` and ` =…` slipped past the guard → `/code-review` → student's choice, `dc99479`, `9f40f1b`.
+
+## Episode 11 — F11: evaluation runner, two review rounds and the qwen context limit
+- **Date:** 2026-10-13 · **Feature:** F11 · **Commits:** `af00b23..bdf6c7c` · **Outcome:** partial
+
+**1. Development task given to the agent**
+Plan F11 and assign the work. `backend-dev`: make the pipeline's post-extraction step public and build `eval/` (dataset check, scoring, cache, results, report, CLI), with no model calls. `eval-runner`: run 4 configurations (gemma3:4b v1/v2/v3, qwen2.5vl:3b v3) against the host's Ollama.
+
+**2. Relevant context and instructions**
+- Wiki first: roadmap, decisions 0004, 0017, 0026 and 0027, and the new [0028](wiki/decisions/0028-evaluation-truth-and-scoring.md), committed before any agent started (`af00b23`).
+- The student's decisions: the two comparisons, the derived truth for "should have been flagged", and no category labels.
+- The brief named the base hash.
+
+**3. Agent's proposed contribution**
+- The `process_extraction` refactor (`1964291`).
+- 9 `eval/` modules with tests in `tests/eval/` (`642bb97`).
+- 79 of 80 model answers cached. The results are committed as partial (`1f31c49`).
+
+**4. Tools or permissions used by the agent**
+- `backend-dev`: in a worktree, scope widened to `eval/` and the `Makefile`.
+- `reviewer`: read-only.
+- `eval-runner`: Bash, network only to `host.docker.internal:11434`.
+- The sandbox refused subagent Bash commands containing the word "eval".
+
+**5. How the result was verified**
+- `make check`: 3,678 passed, 6 import contracts kept.
+- `reviewer`: 1 blocker, 6 should-fix.
+- `/code-review`, twice: 10 findings each.
+- The rescore diff showed no metric change.
+- The privacy scan withheld 6 strings.
+
+**6. What was accepted, modified or rejected**
+Accepted: the plan of the agent, while rejecting to evaluate the categories, since the evaluation was targeting the LLM model extraction.
+
+**7. Observed benefit, limitation or risk**
+Benefit: qwen introduced better results than gemma but required a bigger context window. Risk: an hour-long run plus a stale snapshot nearly overwrote the report (caught by the reviewer agent).
+
+**Detected and corrected** (required for partial or failed)
+- Report written back from a pre-run snapshot → `reviewer` → re-read and atomic write (`642bb97`).
+- Subset and `--force` runs replaced committed results as complete → `/code-review` → complete-scope rule (`9afc939`), separate call and scoring scopes (`bdf6c7c`).
+- qwen HTTP 400 on 17/20 cases → main session: image tokens exceed the 4,096 context → host restarted with 8,192.
+- `backend-dev` tried once to quote past the "eval" guard → refused; self-reported.

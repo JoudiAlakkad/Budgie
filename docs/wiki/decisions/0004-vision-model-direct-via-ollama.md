@@ -18,3 +18,6 @@ Receipts arrive as photos. The brief requires a locally run model behind an Open
 - Without a separate classifier, the same model decides whether an image is a receipt at all. The spike showed it can't be trusted to do that, so `not_a_receipt` needs a second signal ([ai-extraction](../backend/ai-extraction.md)).
 - Latency on CPU is high, about 30–90 s per receipt, which led to [0007](0007-async-extraction-with-polling.md).
 - Swapping the model or server is a config change only, and the model comparison in the evaluation shows that it works.
+
+## F11 result (2026-10-12)
+The deferred comparison ran in F11 ([0028](0028-evaluation-truth-and-scoring.md), `docs/evaluation.md`): on 18 real receipts with prompt v3, `qwen2.5vl:3b` was clearly better than `gemma3:4b` (total 94 % vs 67 %, item F1 0.90 vs 0.43) at a similar latency. It needs an 8,192-token context on the Ollama server. `gemma3:4b` stays the default until a separate decision ([roadmap](../plan/roadmap.md#future-work)).
