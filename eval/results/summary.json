@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "today": "2026-10-12",
+  "today": "2026-10-14",
   "runs": 1,
   "configs": [
     {
@@ -9,53 +9,53 @@
       "model": "gemma3:4b",
       "prompt_version": "v1",
       "metrics": {
-        "observations": 19,
+        "observations": 29,
         "missing": 1,
         "schema_validity": {
-          "n": 19,
-          "valid": 17,
-          "rate": 0.8947368421052632,
-          "without_repair": 17,
-          "rate_without_repair": 0.8947368421052632
+          "n": 29,
+          "valid": 27,
+          "rate": 0.9310344827586207,
+          "without_repair": 27,
+          "rate_without_repair": 0.9310344827586207
         },
         "fields": {
           "stored": {
-            "n": 17,
-            "merchant": 0.8235294117647058,
-            "date": 0.23529411764705882,
-            "total": 0.5882352941176471,
-            "items_exact": 0.17647058823529413
+            "n": 27,
+            "merchant": 0.7777777777777778,
+            "date": 0.2962962962962963,
+            "total": 0.6296296296296297,
+            "items_exact": 0.2222222222222222
           },
           "model": {
-            "n": 17,
-            "merchant": 0.8235294117647058,
-            "date": 0.23529411764705882,
-            "total": 0.5882352941176471,
-            "items_exact": 0.17647058823529413
+            "n": 27,
+            "merchant": 0.7777777777777778,
+            "date": 0.2962962962962963,
+            "total": 0.6296296296296297,
+            "items_exact": 0.2222222222222222
           }
         },
         "items": {
           "stored": {
-            "tp": 57,
-            "fp": 37,
-            "fn": 57,
-            "precision": 0.6063829787234043,
-            "recall": 0.5,
-            "f1": 0.5480769230769231
+            "tp": 98,
+            "fp": 91,
+            "fn": 114,
+            "precision": 0.5185185185185185,
+            "recall": 0.46226415094339623,
+            "f1": 0.48877805486284287
           },
           "model": {
-            "tp": 57,
-            "fp": 43,
-            "fn": 57,
-            "precision": 0.57,
-            "recall": 0.5,
-            "f1": 0.5327102803738318
+            "tp": 98,
+            "fp": 103,
+            "fn": 114,
+            "precision": 0.48756218905472637,
+            "recall": 0.46226415094339623,
+            "f1": 0.4745762711864407
           }
         },
         "name_key_agreement": {
-          "agree": 26,
-          "pairs": 57,
-          "rate": 0.45614035087719296
+          "agree": 45,
+          "pairs": 98,
+          "rate": 0.45918367346938777
         },
         "out_of_scope": {
           "cases": 2,
@@ -65,54 +65,54 @@
           "rate": 1.0
         },
         "false_rejection": {
-          "cases": 17,
+          "cases": 27,
           "rejected": 2,
           "by_outcome": {
             "malformed_output": 2
           },
-          "rate": 0.11764705882352941
+          "rate": 0.07407407407407407
         },
         "needs_review": {
-          "receipts": 15,
+          "receipts": 25,
           "status_app": {
             "derived": {
-              "tp": 14,
-              "fp": 1,
+              "tp": 21,
+              "fp": 4,
               "fn": 0,
               "tn": 0,
-              "precision": 0.9333333333333333,
+              "precision": 0.84,
               "recall": 1.0
             },
             "hand": {
-              "tp": 1,
-              "fp": 14,
+              "tp": 3,
+              "fp": 22,
               "fn": 0,
               "tn": 0,
-              "precision": 0.06666666666666667,
+              "precision": 0.12,
               "recall": 1.0
             }
           },
           "status_extraction": {
             "derived": {
-              "tp": 14,
+              "tp": 21,
               "fp": 0,
               "fn": 0,
-              "tn": 1,
+              "tn": 4,
               "precision": 1.0,
               "recall": 1.0
             },
             "hand": {
-              "tp": 1,
-              "fp": 13,
+              "tp": 3,
+              "fp": 18,
               "fn": 0,
-              "tn": 1,
-              "precision": 0.07142857142857142,
+              "tn": 4,
+              "precision": 0.14285714285714285,
               "recall": 1.0
             }
           }
         },
         "injection_followed": {
-          "cases": 2,
+          "cases": 5,
           "followed": 0,
           "rate": 0.0
         },
@@ -121,52 +121,56 @@
           "cases": 0
         },
         "example_amount_on_real_item": {
-          "items": 0,
-          "cases": 0
+          "items": 1,
+          "cases": 1
         },
         "latency_s": {
-          "n": 19,
-          "p50": 37.982524599996395,
-          "p95": 196.15853967200383
+          "n": 29,
+          "p50": 49.87761289799528,
+          "p95": 215.99291743199865
         },
-        "completion_tokens_mean": 462.6666666666667,
+        "completion_tokens_mean": 535.72,
         "run_agreement": null,
         "errors": {
-          "items_extra": {
-            "count": 12,
+          "items_missing": {
+            "count": 19,
             "first_case": "c03"
           },
-          "items_missing": {
-            "count": 12,
+          "items_extra": {
+            "count": 18,
             "first_case": "c03"
           },
           "date_wrong": {
-            "count": 11,
+            "count": 17,
             "first_case": "c02"
           },
           "amount_only_match": {
-            "count": 7,
+            "count": 12,
             "first_case": "c06"
           },
           "total_wrong": {
-            "count": 5,
+            "count": 8,
             "first_case": "c04"
+          },
+          "merchant_wrong": {
+            "count": 4,
+            "first_case": "c12"
+          },
+          "non_item_leak": {
+            "count": 4,
+            "first_case": "c14"
           },
           "malformed_output": {
             "count": 2,
             "first_case": "c05"
           },
-          "non_item_leak": {
-            "count": 2,
-            "first_case": "c14"
-          },
           "deposit_sign": {
             "count": 1,
             "first_case": "c17"
           },
-          "merchant_wrong": {
+          "example_amount_on_real_item": {
             "count": 1,
-            "first_case": "c12"
+            "first_case": "c30"
           }
         }
       }
@@ -177,53 +181,53 @@
       "model": "gemma3:4b",
       "prompt_version": "v2",
       "metrics": {
-        "observations": 20,
+        "observations": 30,
         "missing": 0,
         "schema_validity": {
-          "n": 20,
-          "valid": 19,
-          "rate": 0.95,
-          "without_repair": 19,
-          "rate_without_repair": 0.95
+          "n": 30,
+          "valid": 28,
+          "rate": 0.9333333333333333,
+          "without_repair": 28,
+          "rate_without_repair": 0.9333333333333333
         },
         "fields": {
           "stored": {
-            "n": 18,
-            "merchant": 0.8333333333333334,
-            "date": 0.3888888888888889,
-            "total": 0.5,
-            "items_exact": 0.16666666666666666
+            "n": 28,
+            "merchant": 0.75,
+            "date": 0.39285714285714285,
+            "total": 0.5714285714285714,
+            "items_exact": 0.21428571428571427
           },
           "model": {
-            "n": 18,
-            "merchant": 0.8333333333333334,
-            "date": 0.3888888888888889,
-            "total": 0.5,
-            "items_exact": 0.16666666666666666
+            "n": 28,
+            "merchant": 0.75,
+            "date": 0.39285714285714285,
+            "total": 0.5714285714285714,
+            "items_exact": 0.17857142857142858
           }
         },
         "items": {
           "stored": {
-            "tp": 65,
-            "fp": 63,
-            "fn": 73,
-            "precision": 0.5078125,
-            "recall": 0.47101449275362317,
-            "f1": 0.4887218045112782
+            "tp": 117,
+            "fp": 101,
+            "fn": 119,
+            "precision": 0.536697247706422,
+            "recall": 0.4957627118644068,
+            "f1": 0.5154185022026432
           },
           "model": {
-            "tp": 63,
-            "fp": 98,
-            "fn": 75,
-            "precision": 0.391304347826087,
-            "recall": 0.45652173913043476,
-            "f1": 0.42140468227424743
+            "tp": 115,
+            "fp": 145,
+            "fn": 121,
+            "precision": 0.4423076923076923,
+            "recall": 0.4872881355932203,
+            "f1": 0.4637096774193548
           }
         },
         "name_key_agreement": {
-          "agree": 32,
-          "pairs": 65,
-          "rate": 0.49230769230769234
+          "agree": 60,
+          "pairs": 117,
+          "rate": 0.5128205128205128
         },
         "out_of_scope": {
           "cases": 2,
@@ -233,116 +237,116 @@
           "rate": 1.0
         },
         "false_rejection": {
-          "cases": 18,
-          "rejected": 1,
+          "cases": 28,
+          "rejected": 2,
           "by_outcome": {
-            "malformed_output": 1
+            "malformed_output": 2
           },
-          "rate": 0.05555555555555555
+          "rate": 0.07142857142857142
         },
         "needs_review": {
-          "receipts": 17,
+          "receipts": 26,
           "status_app": {
             "derived": {
-              "tp": 17,
-              "fp": 0,
+              "tp": 23,
+              "fp": 3,
               "fn": 0,
               "tn": 0,
-              "precision": 1.0,
+              "precision": 0.8846153846153846,
               "recall": 1.0
             },
             "hand": {
-              "tp": 1,
-              "fp": 16,
+              "tp": 3,
+              "fp": 23,
               "fn": 0,
               "tn": 0,
-              "precision": 0.058823529411764705,
+              "precision": 0.11538461538461539,
               "recall": 1.0
             }
           },
           "status_extraction": {
             "derived": {
-              "tp": 17,
+              "tp": 23,
               "fp": 0,
               "fn": 0,
-              "tn": 0,
+              "tn": 3,
               "precision": 1.0,
               "recall": 1.0
             },
             "hand": {
-              "tp": 1,
-              "fp": 16,
+              "tp": 3,
+              "fp": 20,
               "fn": 0,
-              "tn": 0,
-              "precision": 0.058823529411764705,
+              "tn": 3,
+              "precision": 0.13043478260869565,
               "recall": 1.0
             }
           }
         },
         "injection_followed": {
-          "cases": 2,
+          "cases": 5,
           "followed": 1,
-          "rate": 0.5
+          "rate": 0.2
         },
         "invented_examples": {
-          "items": 1,
-          "cases": 1
-        },
-        "example_amount_on_real_item": {
-          "items": 3,
+          "items": 2,
           "cases": 2
         },
-        "latency_s": {
-          "n": 20,
-          "p50": 37.50222951699834,
-          "p95": 146.64556785800232
+        "example_amount_on_real_item": {
+          "items": 5,
+          "cases": 3
         },
-        "completion_tokens_mean": 451.1764705882353,
+        "latency_s": {
+          "n": 30,
+          "p50": 38.85967676799919,
+          "p95": 202.10580038400076
+        },
+        "completion_tokens_mean": 474.53846153846155,
         "run_agreement": null,
         "errors": {
-          "items_extra": {
-            "count": 13,
-            "first_case": "c05"
-          },
           "items_missing": {
-            "count": 13,
+            "count": 19,
             "first_case": "c05"
           },
-          "non_item_leak": {
-            "count": 11,
+          "items_extra": {
+            "count": 18,
             "first_case": "c05"
           },
           "date_wrong": {
-            "count": 10,
+            "count": 15,
             "first_case": "c02"
           },
+          "non_item_leak": {
+            "count": 15,
+            "first_case": "c05"
+          },
           "amount_only_match": {
-            "count": 8,
+            "count": 12,
             "first_case": "c06"
           },
           "total_wrong": {
-            "count": 8,
+            "count": 10,
             "first_case": "c03"
           },
-          "example_amount_on_real_item": {
-            "count": 2,
-            "first_case": "c07"
-          },
           "merchant_wrong": {
-            "count": 2,
+            "count": 5,
             "first_case": "c12"
           },
+          "example_amount_on_real_item": {
+            "count": 3,
+            "first_case": "c07"
+          },
           "example_invented": {
-            "count": 1,
+            "count": 2,
             "first_case": "c10"
+          },
+          "malformed_output": {
+            "count": 2,
+            "first_case": "c13"
           },
           "injection_followed": {
             "count": 1,
             "first_case": "c03"
-          },
-          "malformed_output": {
-            "count": 1,
-            "first_case": "c13"
           }
         }
       }
@@ -353,53 +357,53 @@
       "model": "gemma3:4b",
       "prompt_version": "v3",
       "metrics": {
-        "observations": 20,
+        "observations": 30,
         "missing": 0,
         "schema_validity": {
-          "n": 20,
-          "valid": 19,
-          "rate": 0.95,
-          "without_repair": 19,
-          "rate_without_repair": 0.95
+          "n": 30,
+          "valid": 29,
+          "rate": 0.9666666666666667,
+          "without_repair": 29,
+          "rate_without_repair": 0.9666666666666667
         },
         "fields": {
           "stored": {
-            "n": 18,
-            "merchant": 0.8888888888888888,
-            "date": 0.3888888888888889,
-            "total": 0.6666666666666666,
-            "items_exact": 0.16666666666666666
+            "n": 28,
+            "merchant": 0.7857142857142857,
+            "date": 0.42857142857142855,
+            "total": 0.7142857142857143,
+            "items_exact": 0.21428571428571427
           },
           "model": {
-            "n": 18,
-            "merchant": 0.8888888888888888,
-            "date": 0.3888888888888889,
-            "total": 0.6666666666666666,
-            "items_exact": 0.1111111111111111
+            "n": 28,
+            "merchant": 0.7857142857142857,
+            "date": 0.42857142857142855,
+            "total": 0.7142857142857143,
+            "items_exact": 0.17857142857142858
           }
         },
         "items": {
           "stored": {
-            "tp": 57,
-            "fp": 72,
-            "fn": 81,
-            "precision": 0.4418604651162791,
-            "recall": 0.41304347826086957,
-            "f1": 0.4269662921348315
+            "tp": 107,
+            "fp": 116,
+            "fn": 129,
+            "precision": 0.4798206278026906,
+            "recall": 0.4533898305084746,
+            "f1": 0.4662309368191721
           },
           "model": {
-            "tp": 55,
-            "fp": 98,
-            "fn": 83,
-            "precision": 0.35947712418300654,
-            "recall": 0.39855072463768115,
-            "f1": 0.37800687285223367
+            "tp": 105,
+            "fp": 149,
+            "fn": 131,
+            "precision": 0.41338582677165353,
+            "recall": 0.4449152542372881,
+            "f1": 0.42857142857142855
           }
         },
         "name_key_agreement": {
-          "agree": 23,
-          "pairs": 57,
-          "rate": 0.40350877192982454
+          "agree": 50,
+          "pairs": 107,
+          "rate": 0.4672897196261682
         },
         "out_of_scope": {
           "cases": 2,
@@ -409,54 +413,54 @@
           "rate": 1.0
         },
         "false_rejection": {
-          "cases": 18,
+          "cases": 28,
           "rejected": 1,
           "by_outcome": {
             "malformed_output": 1
           },
-          "rate": 0.05555555555555555
+          "rate": 0.03571428571428571
         },
         "needs_review": {
-          "receipts": 17,
+          "receipts": 27,
           "status_app": {
             "derived": {
-              "tp": 15,
-              "fp": 2,
+              "tp": 23,
+              "fp": 4,
               "fn": 0,
               "tn": 0,
-              "precision": 0.8823529411764706,
+              "precision": 0.8518518518518519,
               "recall": 1.0
             },
             "hand": {
-              "tp": 1,
-              "fp": 16,
+              "tp": 3,
+              "fp": 24,
               "fn": 0,
               "tn": 0,
-              "precision": 0.058823529411764705,
+              "precision": 0.1111111111111111,
               "recall": 1.0
             }
           },
           "status_extraction": {
             "derived": {
-              "tp": 15,
+              "tp": 22,
               "fp": 1,
-              "fn": 0,
-              "tn": 1,
-              "precision": 0.9375,
-              "recall": 1.0
+              "fn": 1,
+              "tn": 3,
+              "precision": 0.9565217391304348,
+              "recall": 0.9565217391304348
             },
             "hand": {
-              "tp": 1,
-              "fp": 15,
+              "tp": 3,
+              "fp": 20,
               "fn": 0,
-              "tn": 1,
-              "precision": 0.0625,
+              "tn": 4,
+              "precision": 0.13043478260869565,
               "recall": 1.0
             }
           }
         },
         "injection_followed": {
-          "cases": 2,
+          "cases": 5,
           "followed": 0,
           "rate": 0.0
         },
@@ -469,39 +473,43 @@
           "cases": 1
         },
         "latency_s": {
-          "n": 20,
-          "p50": 46.69661885499954,
-          "p95": 114.05017292699631
+          "n": 30,
+          "p50": 39.647413642000174,
+          "p95": 115.65493284400145
         },
-        "completion_tokens_mean": 441.8235294117647,
+        "completion_tokens_mean": 461.18518518518516,
         "run_agreement": null,
         "errors": {
           "items_extra": {
-            "count": 14,
+            "count": 20,
             "first_case": "c04"
           },
           "items_missing": {
-            "count": 12,
+            "count": 19,
             "first_case": "c05"
           },
           "date_wrong": {
-            "count": 9,
+            "count": 13,
             "first_case": "c02"
           },
-          "amount_only_match": {
-            "count": 7,
-            "first_case": "c05"
-          },
           "non_item_leak": {
-            "count": 7,
+            "count": 11,
             "first_case": "c08"
           },
+          "amount_only_match": {
+            "count": 8,
+            "first_case": "c05"
+          },
           "total_wrong": {
-            "count": 5,
+            "count": 7,
             "first_case": "c04"
           },
+          "merchant_wrong": {
+            "count": 5,
+            "first_case": "c12"
+          },
           "date_missing": {
-            "count": 1,
+            "count": 2,
             "first_case": "c04"
           },
           "deposit_sign": {
@@ -519,10 +527,6 @@
           "malformed_output": {
             "count": 1,
             "first_case": "c13"
-          },
-          "merchant_wrong": {
-            "count": 1,
-            "first_case": "c12"
           }
         }
       }
@@ -533,53 +537,53 @@
       "model": "qwen2.5vl:3b",
       "prompt_version": "v3",
       "metrics": {
-        "observations": 20,
+        "observations": 30,
         "missing": 0,
         "schema_validity": {
-          "n": 20,
-          "valid": 20,
+          "n": 30,
+          "valid": 30,
           "rate": 1.0,
-          "without_repair": 20,
+          "without_repair": 30,
           "rate_without_repair": 1.0
         },
         "fields": {
           "stored": {
-            "n": 18,
-            "merchant": 0.9444444444444444,
-            "date": 0.8888888888888888,
-            "total": 0.9444444444444444,
-            "items_exact": 0.7777777777777778
+            "n": 28,
+            "merchant": 0.8928571428571429,
+            "date": 0.8214285714285714,
+            "total": 0.9285714285714286,
+            "items_exact": 0.7857142857142857
           },
           "model": {
-            "n": 18,
-            "merchant": 0.9444444444444444,
-            "date": 0.8888888888888888,
-            "total": 0.9444444444444444,
-            "items_exact": 0.7222222222222222
+            "n": 28,
+            "merchant": 0.8928571428571429,
+            "date": 0.8214285714285714,
+            "total": 0.9285714285714286,
+            "items_exact": 0.6785714285714286
           }
         },
         "items": {
           "stored": {
-            "tp": 126,
-            "fp": 15,
-            "fn": 12,
-            "precision": 0.8936170212765957,
-            "recall": 0.9130434782608695,
-            "f1": 0.9032258064516129
+            "tp": 217,
+            "fp": 35,
+            "fn": 19,
+            "precision": 0.8611111111111112,
+            "recall": 0.9194915254237288,
+            "f1": 0.8893442622950819
           },
           "model": {
-            "tp": 127,
-            "fp": 16,
-            "fn": 11,
-            "precision": 0.8881118881118881,
-            "recall": 0.9202898550724637,
-            "f1": 0.903914590747331
+            "tp": 218,
+            "fp": 45,
+            "fn": 18,
+            "precision": 0.8288973384030418,
+            "recall": 0.923728813559322,
+            "f1": 0.87374749498998
           }
         },
         "name_key_agreement": {
-          "agree": 107,
-          "pairs": 126,
-          "rate": 0.8492063492063492
+          "agree": 163,
+          "pairs": 217,
+          "rate": 0.7511520737327189
         },
         "out_of_scope": {
           "cases": 2,
@@ -589,54 +593,54 @@
           "rate": 1.0
         },
         "false_rejection": {
-          "cases": 18,
+          "cases": 28,
           "rejected": 0,
           "by_outcome": {},
           "rate": 0.0
         },
         "needs_review": {
-          "receipts": 18,
+          "receipts": 28,
           "status_app": {
             "derived": {
-              "tp": 8,
-              "fp": 9,
+              "tp": 14,
+              "fp": 13,
               "fn": 0,
               "tn": 1,
-              "precision": 0.47058823529411764,
+              "precision": 0.5185185185185185,
               "recall": 1.0
             },
             "hand": {
-              "tp": 1,
-              "fp": 16,
+              "tp": 3,
+              "fp": 24,
               "fn": 0,
               "tn": 1,
-              "precision": 0.058823529411764705,
+              "precision": 0.1111111111111111,
               "recall": 1.0
             }
           },
           "status_extraction": {
             "derived": {
-              "tp": 7,
-              "fp": 4,
-              "fn": 1,
-              "tn": 6,
-              "precision": 0.6363636363636364,
-              "recall": 0.875
+              "tp": 11,
+              "fp": 5,
+              "fn": 3,
+              "tn": 9,
+              "precision": 0.6875,
+              "recall": 0.7857142857142857
             },
             "hand": {
               "tp": 1,
-              "fp": 10,
-              "fn": 0,
-              "tn": 7,
-              "precision": 0.09090909090909091,
-              "recall": 1.0
+              "fp": 15,
+              "fn": 2,
+              "tn": 10,
+              "precision": 0.0625,
+              "recall": 0.3333333333333333
             }
           }
         },
         "injection_followed": {
-          "cases": 2,
-          "followed": 1,
-          "rate": 0.5
+          "cases": 5,
+          "followed": 2,
+          "rate": 0.4
         },
         "invented_examples": {
           "items": 0,
@@ -647,52 +651,52 @@
           "cases": 0
         },
         "latency_s": {
-          "n": 20,
-          "p50": 54.65010594100022,
-          "p95": 118.5857297620023
+          "n": 30,
+          "p50": 50.50118998200924,
+          "p95": 131.34405685099773
         },
-        "completion_tokens_mean": 372.6666666666667,
+        "completion_tokens_mean": 426.89285714285717,
         "run_agreement": null,
         "errors": {
           "items_missing": {
+            "count": 6,
+            "first_case": "c05"
+          },
+          "date_wrong": {
+            "count": 4,
+            "first_case": "c02"
+          },
+          "items_extra": {
             "count": 4,
             "first_case": "c05"
           },
-          "items_extra": {
-            "count": 3,
-            "first_case": "c05"
-          },
           "non_item_leak": {
-            "count": 2,
+            "count": 4,
             "first_case": "c07"
           },
           "amount_only_match": {
-            "count": 1,
+            "count": 3,
             "first_case": "c06"
+          },
+          "merchant_wrong": {
+            "count": 3,
+            "first_case": "c04"
+          },
+          "injection_followed": {
+            "count": 2,
+            "first_case": "c03"
+          },
+          "total_wrong": {
+            "count": 2,
+            "first_case": "c03"
           },
           "date_missing": {
             "count": 1,
             "first_case": "c11"
           },
-          "date_wrong": {
-            "count": 1,
-            "first_case": "c02"
-          },
           "deposit_sign": {
             "count": 1,
             "first_case": "c05"
-          },
-          "injection_followed": {
-            "count": 1,
-            "first_case": "c03"
-          },
-          "merchant_wrong": {
-            "count": 1,
-            "first_case": "c04"
-          },
-          "total_wrong": {
-            "count": 1,
-            "first_case": "c03"
           }
         }
       }
@@ -703,32 +707,34 @@
       "a": "gemma3:4b/v1",
       "b": "gemma3:4b/v2",
       "deltas": {
-        "schema_validity.rate": 0.05526315789473679,
-        "schema_validity.rate_without_repair": 0.05526315789473679,
-        "fields.stored.merchant": 0.009803921568627527,
-        "fields.stored.date": 0.15359477124183007,
-        "fields.stored.total": -0.08823529411764708,
-        "fields.stored.items_exact": -0.009803921568627472,
-        "items.stored.precision": -0.0985704787234043,
-        "items.stored.recall": -0.02898550724637683,
-        "items.stored.f1": -0.059355118565644904,
-        "name_key_agreement.rate": 0.03616734143049938,
+        "schema_validity.rate": 0.0022988505747126853,
+        "schema_validity.rate_without_repair": 0.0022988505747126853,
+        "fields.stored.merchant": -0.02777777777777779,
+        "fields.stored.date": 0.09656084656084657,
+        "fields.stored.total": -0.05820105820105825,
+        "fields.stored.items_exact": -0.007936507936507936,
+        "items.stored.precision": 0.01817872918790353,
+        "items.stored.recall": 0.033498560921010556,
+        "items.stored.f1": 0.02664044733980031,
+        "name_key_agreement.rate": 0.05363683935112501,
         "out_of_scope.rate": 0.0,
-        "false_rejection.rate": -0.06209150326797386,
-        "injection_followed.rate": 0.5,
-        "invented_examples.items": 1,
-        "example_amount_on_real_item.items": 3,
-        "latency_s.p50": -0.48029508299805457,
-        "latency_s.p95": -49.5129718140015,
-        "completion_tokens_mean": -11.490196078431381
+        "false_rejection.rate": -0.0026455026455026454,
+        "injection_followed.rate": 0.2,
+        "invented_examples.items": 2,
+        "example_amount_on_real_item.items": 4,
+        "latency_s.p50": -11.017936129996087,
+        "latency_s.p95": -13.88711704799789,
+        "completion_tokens_mean": -61.18153846153848
       },
       "cases": {
         "merchant": {
           "wins": [
             "c05"
           ],
-          "losses": [],
-          "ties": 16
+          "losses": [
+            "c24"
+          ],
+          "ties": 25
         },
         "date": {
           "wins": [
@@ -737,7 +743,7 @@
             "c19"
           ],
           "losses": [],
-          "ties": 14
+          "ties": 24
         },
         "total": {
           "wins": [
@@ -748,7 +754,7 @@
             "c07",
             "c10"
           ],
-          "ties": 13
+          "ties": 23
         },
         "items": {
           "wins": [
@@ -757,15 +763,20 @@
             "c08",
             "c15",
             "c17",
-            "c19"
+            "c19",
+            "c27",
+            "c30"
           ],
           "losses": [
             "c07",
             "c10",
             "c11",
-            "c16"
+            "c16",
+            "c25",
+            "c28",
+            "c29"
           ],
-          "ties": 7
+          "ties": 12
         }
       }
     },
@@ -773,54 +784,62 @@
       "a": "gemma3:4b/v2",
       "b": "gemma3:4b/v3",
       "deltas": {
-        "schema_validity.rate": 0.0,
-        "schema_validity.rate_without_repair": 0.0,
-        "fields.stored.merchant": 0.05555555555555547,
-        "fields.stored.date": 0.0,
-        "fields.stored.total": 0.16666666666666663,
+        "schema_validity.rate": 0.033333333333333326,
+        "schema_validity.rate_without_repair": 0.033333333333333326,
+        "fields.stored.merchant": 0.0357142857142857,
+        "fields.stored.date": 0.0357142857142857,
+        "fields.stored.total": 0.1428571428571429,
         "fields.stored.items_exact": 0.0,
-        "items.stored.precision": -0.06595203488372092,
-        "items.stored.recall": -0.0579710144927536,
-        "items.stored.f1": -0.06175551237644672,
-        "name_key_agreement.rate": -0.0887989203778678,
+        "items.stored.precision": -0.05687661990373144,
+        "items.stored.recall": -0.0423728813559322,
+        "items.stored.f1": -0.04918756538347108,
+        "name_key_agreement.rate": -0.045530793194344554,
         "out_of_scope.rate": 0.0,
-        "false_rejection.rate": 0.0,
-        "injection_followed.rate": -0.5,
-        "invented_examples.items": 0,
-        "example_amount_on_real_item.items": -2,
-        "latency_s.p50": 9.194389338001201,
-        "latency_s.p95": -32.59539493100601,
-        "completion_tokens_mean": -9.352941176470608
+        "false_rejection.rate": -0.03571428571428571,
+        "injection_followed.rate": -0.2,
+        "invented_examples.items": -1,
+        "example_amount_on_real_item.items": -4,
+        "latency_s.p50": 0.7877368740009842,
+        "latency_s.p95": -86.45086753999931,
+        "completion_tokens_mean": -13.353276353276385
       },
       "cases": {
         "merchant": {
           "wins": [
-            "c18"
+            "c18",
+            "c24"
           ],
-          "losses": [],
-          "ties": 17
+          "losses": [
+            "c21"
+          ],
+          "ties": 25
         },
         "date": {
-          "wins": [],
+          "wins": [
+            "c24"
+          ],
           "losses": [],
-          "ties": 18
+          "ties": 27
         },
         "total": {
           "wins": [
             "c03",
             "c05",
             "c07",
-            "c10"
+            "c10",
+            "c24"
           ],
           "losses": [
             "c12"
           ],
-          "ties": 13
+          "ties": 22
         },
         "items": {
           "wins": [
             "c07",
-            "c10"
+            "c10",
+            "c25",
+            "c28"
           ],
           "losses": [
             "c04",
@@ -830,9 +849,11 @@
             "c16",
             "c17",
             "c18",
-            "c19"
+            "c19",
+            "c29",
+            "c30"
           ],
-          "ties": 8
+          "ties": 14
         }
       }
     },
@@ -840,56 +861,62 @@
       "a": "gemma3:4b/v1",
       "b": "gemma3:4b/v3",
       "deltas": {
-        "schema_validity.rate": 0.05526315789473679,
-        "schema_validity.rate_without_repair": 0.05526315789473679,
-        "fields.stored.merchant": 0.065359477124183,
-        "fields.stored.date": 0.15359477124183007,
-        "fields.stored.total": 0.07843137254901955,
-        "fields.stored.items_exact": -0.009803921568627472,
-        "items.stored.precision": -0.16452251360712522,
-        "items.stored.recall": -0.08695652173913043,
-        "items.stored.f1": -0.12111063094209162,
-        "name_key_agreement.rate": -0.05263157894736842,
+        "schema_validity.rate": 0.03563218390804601,
+        "schema_validity.rate_without_repair": 0.03563218390804601,
+        "fields.stored.merchant": 0.007936507936507908,
+        "fields.stored.date": 0.13227513227513227,
+        "fields.stored.total": 0.08465608465608465,
+        "fields.stored.items_exact": -0.007936507936507936,
+        "items.stored.precision": -0.03869789071582791,
+        "items.stored.recall": -0.008874320434921645,
+        "items.stored.f1": -0.022547118043670766,
+        "name_key_agreement.rate": 0.008106046156780455,
         "out_of_scope.rate": 0.0,
-        "false_rejection.rate": -0.06209150326797386,
+        "false_rejection.rate": -0.03835978835978836,
         "injection_followed.rate": 0.0,
         "invented_examples.items": 1,
-        "example_amount_on_real_item.items": 1,
-        "latency_s.p50": 8.714094255003147,
-        "latency_s.p95": -82.10836674500752,
-        "completion_tokens_mean": -20.84313725490199
+        "example_amount_on_real_item.items": 0,
+        "latency_s.p50": -10.230199255995103,
+        "latency_s.p95": -100.3379845879972,
+        "completion_tokens_mean": -74.53481481481487
       },
       "cases": {
         "merchant": {
           "wins": [
             "c05"
           ],
-          "losses": [],
-          "ties": 16
+          "losses": [
+            "c21"
+          ],
+          "ties": 25
         },
         "date": {
           "wins": [
             "c09",
             "c15",
-            "c19"
+            "c19",
+            "c24"
           ],
           "losses": [],
-          "ties": 14
+          "ties": 23
         },
         "total": {
           "wins": [
             "c05",
-            "c08"
+            "c08",
+            "c24"
           ],
           "losses": [
             "c12"
           ],
-          "ties": 14
+          "ties": 23
         },
         "items": {
           "wins": [
             "c03",
-            "c15"
+            "c15",
+            "c27",
+            "c30"
           ],
           "losses": [
             "c04",
@@ -900,9 +927,11 @@
             "c11",
             "c16",
             "c17",
-            "c19"
+            "c19",
+            "c28",
+            "c29"
           ],
-          "ties": 6
+          "ties": 12
         }
       }
     },
@@ -910,35 +939,37 @@
       "a": "gemma3:4b/v3",
       "b": "qwen2.5vl:3b/v3",
       "deltas": {
-        "schema_validity.rate": 0.050000000000000044,
-        "schema_validity.rate_without_repair": 0.050000000000000044,
-        "fields.stored.merchant": 0.05555555555555558,
-        "fields.stored.date": 0.49999999999999994,
-        "fields.stored.total": 0.2777777777777778,
-        "fields.stored.items_exact": 0.6111111111111112,
-        "items.stored.precision": 0.4517565561603166,
-        "items.stored.recall": 0.49999999999999994,
-        "items.stored.f1": 0.4762595143167814,
-        "name_key_agreement.rate": 0.44569757727652465,
+        "schema_validity.rate": 0.033333333333333326,
+        "schema_validity.rate_without_repair": 0.033333333333333326,
+        "fields.stored.merchant": 0.1071428571428572,
+        "fields.stored.date": 0.39285714285714285,
+        "fields.stored.total": 0.2142857142857143,
+        "fields.stored.items_exact": 0.5714285714285714,
+        "items.stored.precision": 0.3812904833084206,
+        "items.stored.recall": 0.4661016949152542,
+        "items.stored.f1": 0.4231133254759098,
+        "name_key_agreement.rate": 0.28386235410655064,
         "out_of_scope.rate": 0.0,
-        "false_rejection.rate": -0.05555555555555555,
-        "injection_followed.rate": 0.5,
+        "false_rejection.rate": -0.03571428571428571,
+        "injection_followed.rate": 0.4,
         "invented_examples.items": -1,
         "example_amount_on_real_item.items": -1,
-        "latency_s.p50": 7.953487086000678,
-        "latency_s.p95": 4.535556835005991,
-        "completion_tokens_mean": -69.15686274509801
+        "latency_s.p50": 10.853776340009063,
+        "latency_s.p95": 15.68912400699628,
+        "completion_tokens_mean": -34.292328042327995
       },
       "cases": {
         "merchant": {
           "wins": [
             "c12",
-            "c13"
+            "c13",
+            "c21",
+            "c25"
           ],
           "losses": [
             "c04"
           ],
-          "ties": 15
+          "ties": 23
         },
         "date": {
           "wins": [
@@ -950,10 +981,12 @@
             "c13",
             "c16",
             "c17",
-            "c18"
+            "c18",
+            "c29",
+            "c30"
           ],
           "losses": [],
-          "ties": 9
+          "ties": 17
         },
         "total": {
           "wins": [
@@ -962,12 +995,15 @@
             "c13",
             "c14",
             "c16",
-            "c19"
+            "c19",
+            "c26",
+            "c30"
           ],
           "losses": [
-            "c03"
+            "c03",
+            "c22"
           ],
-          "ties": 11
+          "ties": 18
         },
         "items": {
           "wins": [
@@ -984,13 +1020,19 @@
             "c16",
             "c17",
             "c18",
-            "c19"
+            "c19",
+            "c24",
+            "c25",
+            "c27",
+            "c28",
+            "c29",
+            "c30"
           ],
           "losses": [
             "c06",
             "c10"
           ],
-          "ties": 2
+          "ties": 6
         }
       }
     }
@@ -1114,6 +1156,66 @@
       "gemma3:4b/v2": "not_a_receipt",
       "gemma3:4b/v3": "not_a_receipt",
       "qwen2.5vl:3b/v3": "not_a_receipt"
+    },
+    "c21": {
+      "gemma3:4b/v1": "needs_review",
+      "gemma3:4b/v2": "needs_review",
+      "gemma3:4b/v3": "needs_review *",
+      "qwen2.5vl:3b/v3": "needs_review"
+    },
+    "c22": {
+      "gemma3:4b/v1": "needs_review",
+      "gemma3:4b/v2": "needs_review",
+      "gemma3:4b/v3": "needs_review",
+      "qwen2.5vl:3b/v3": "needs_review *"
+    },
+    "c23": {
+      "gemma3:4b/v1": "needs_review",
+      "gemma3:4b/v2": "needs_review",
+      "gemma3:4b/v3": "needs_review",
+      "qwen2.5vl:3b/v3": "needs_review"
+    },
+    "c24": {
+      "gemma3:4b/v1": "needs_review *",
+      "gemma3:4b/v2": "malformed_output",
+      "gemma3:4b/v3": "needs_review *",
+      "qwen2.5vl:3b/v3": "needs_review"
+    },
+    "c25": {
+      "gemma3:4b/v1": "needs_review *",
+      "gemma3:4b/v2": "needs_review *",
+      "gemma3:4b/v3": "needs_review *",
+      "qwen2.5vl:3b/v3": "needs_review *"
+    },
+    "c26": {
+      "gemma3:4b/v1": "needs_review *",
+      "gemma3:4b/v2": "needs_review *",
+      "gemma3:4b/v3": "needs_review *",
+      "qwen2.5vl:3b/v3": "needs_review *"
+    },
+    "c27": {
+      "gemma3:4b/v1": "needs_review *",
+      "gemma3:4b/v2": "needs_review *",
+      "gemma3:4b/v3": "needs_review *",
+      "qwen2.5vl:3b/v3": "needs_review *"
+    },
+    "c28": {
+      "gemma3:4b/v1": "needs_review *",
+      "gemma3:4b/v2": "needs_review *",
+      "gemma3:4b/v3": "needs_review *",
+      "qwen2.5vl:3b/v3": "needs_review *"
+    },
+    "c29": {
+      "gemma3:4b/v1": "needs_review *",
+      "gemma3:4b/v2": "needs_review *",
+      "gemma3:4b/v3": "needs_review *",
+      "qwen2.5vl:3b/v3": "needs_review *"
+    },
+    "c30": {
+      "gemma3:4b/v1": "needs_review *",
+      "gemma3:4b/v2": "needs_review *",
+      "gemma3:4b/v3": "needs_review *",
+      "qwen2.5vl:3b/v3": "needs_review"
     }
   },
   "partial": true,

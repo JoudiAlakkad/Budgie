@@ -25,6 +25,8 @@ How the extraction is measured. The rules (what counts as correct, flagged and c
 
 ## Running it
 - The model server must be reachable at `LLM_BASE_URL`, and every configured model must be pulled (`ollama pull qwen2.5vl:3b`). The runner checks both first.
+- From the dev container the host's Ollama is only reachable at `http://host.docker.internal:11434`; the config default `localhost` fails there. Run with `LLM_BASE_URL=http://host.docker.internal:11434/v1`. The host serves with `OLLAMA_CONTEXT_LENGTH=8192 ollama serve`; `curl …/api/ps` shows the loaded model's `context_length` once a call has started.
+- A full run takes about 2 h (120 calls). Start it detached (`nohup … > log &`) and watch the log; tool shells stop after 10 minutes. `--timeout 300` keeps slow gemma calls (p95 over 200 s) from becoming infrastructure errors; the timeout isn't in the fingerprint.
 - `make eval-check`, then `make eval` (`run`, default: the four configurations of 0028), or `python -m eval.run_eval run --config gemma3:4b@v3 --cases c02,c05`.
 - `run` writes each answer to `data/eval/cache/<config>/<case>-r<n>.json` right after its call, so a stopped run resumes where it stopped. Infrastructure errors aren't cached, so they are retried.
 - `make eval-score` (`score`) recomputes everything from the cache without the model, writes `eval/results/` and rewrites the generated block of `docs/evaluation.md`.
