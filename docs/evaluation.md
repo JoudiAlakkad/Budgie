@@ -2,11 +2,17 @@
 
 How well Budgie's extraction works on real receipts, and whether the review status catches the wrong extractions. The method and the scoring rules are in [decision 0028](wiki/decisions/0028-evaluation-truth-and-scoring.md) and the [evaluation page](wiki/backend/evaluation.md).
 
+
+> **Status (2026-10-14): the evaluation will be redone completely.** The results below come from the first run on 20 cases and will be replaced. The dataset now has 30 cases (c21–c30 added: 3 more injection receipts and 3 receipts that need review by nature: no merchant or no date printed). The new run will call the model again for **every** case and configuration, with a fresh cache, so all four configurations run under the same Ollama settings (`OLLAMA_CONTEXT_LENGTH=8192`). The first run's gemma answers were made at 4,096. The text below will then be updated to the new numbers.
+
 ## Dataset
-<!-- Student: the case mix, how the ground truth was labelled, what is not covered. -->
+For evaluation 20 cases were evaluated, 16 normal receipts (Aldi, Lidl, Netto, Petrol Station, etc.), 2 receipts with injected text and 2 photos that aren't receipts. The cases were labelled by hand from the photo, were stored localy and were git ignored to preserve privacy. The cases didn't contain hand written receipts, english receipts and were only German. Only 2 receipts were AI generated (c02 and c03) since we wanted to add injected receipts.
+The prompt v2 and v3 contained examples from case 07. (The examples were given since v2 and v3 couldn't distinguish between line items and multi-line items during development).
+
 
 ## Method
-<!-- Student: configurations, scoring rules in short, one run at temperature 0, image downsizing. -->
+[decision 0028](wiki/decisions/0028-evaluation-truth-and-scoring.md) 
+4 Configuration were used and each 1 run at temparature 0, with images shrunk to 2000 px like the app does. They were scored after code guard and not the raw model answer. only 1 case was 'needs_review'
 
 ## Results
 
@@ -126,10 +132,12 @@ Status of the stored expense, or the failure code; `*` = wrong by the derived tr
 <!-- eval:end -->
 
 ## Comparisons
-<!-- Student: prompt v1 vs v2 vs v3; gemma3:4b vs qwen2.5vl:3b. -->
+1. Prompts v1, v2 and v3 on gemma
+2. Gemma vs Qwen on v3.
+
 
 ## Failure discussion
-<!-- Student: the top error categories, with example cases. -->
+Gemma should weaker evaluation than Qwen on the 20 cases. It got missing items or added extra items and got often the dates wrong. Case 18 was tried 5 times but each time it failed with server error and so is v1 scored on 19 cases instead of 20. Although Qwen showed better evaluation, it still followed the injection of c03 just like Gemma on v2.
 
 ## Uncertainty
 <!-- Student: precision and recall of needs_review against both truths; see wiki/backend/uncertainty.md. -->
