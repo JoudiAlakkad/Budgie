@@ -352,43 +352,39 @@ Limitation: every agent passed all automated checks, yet three review layers eac
 - "AI-generated" badge on confirmed expenses contradicted 0018 → reviewer → `c5e1f65`.
 - `;` and ` =…` slipped past the guard → `/code-review` → student's choice, `dc99479`, `9f40f1b`.
 
-## Episode 11 — F11: evaluation runner, two review rounds and the qwen context limit
-- **Date:** 2026-10-13 · **Feature:** F11 · **Commits:** `af00b23..bdf6c7c` · **Outcome:** partial
+## Episode 11 — F11: evaluation runner, review rounds, the qwen context limit and the 30-case rerun
+- **Date:** 2026-10-13 to 2026-10-15 · **Feature:** F11 · **Commits:** `af00b23..cdc462e` · **Outcome:** partial
 
 **1. Development task given to the agent**
-Plan F11 and assign the work. `backend-dev`: make the pipeline's post-extraction step public and build `eval/` (dataset check, scoring, cache, results, report, CLI), with no model calls. `eval-runner`: run 4 configurations (gemma3:4b v1/v2/v3, qwen2.5vl:3b v3) against the host's Ollama.
+Plan F11 and assign the work. `backend-dev`: make the post-extraction step public and build `eval/`, with no model calls. `eval-runner`: run 4 configurations (gemma3:4b v1/v2/v3, qwen2.5vl:3b v3). Later: plan and run a full rerun on 30 cases from an empty cache at an 8,192 context.
 
 **2. Relevant context and instructions**
-- Wiki first: roadmap, decisions 0004, 0017, 0026 and 0027, and the new [0028](wiki/decisions/0028-evaluation-truth-and-scoring.md), committed before any agent started (`af00b23`).
-- The student's decisions: the two comparisons, the derived truth for "should have been flagged", and no category labels.
-- The brief named the base hash.
+- Wiki first: decisions 0004, 0017, 0026, 0027 and the new [0028](wiki/decisions/0028-evaluation-truth-and-scoring.md), committed before any agent started (`af00b23`).
+- The student's decisions: the comparisons, the derived truth, no category labels, partial results.
 
 **3. Agent's proposed contribution**
-- The `process_extraction` refactor (`1964291`).
-- 9 `eval/` modules with tests in `tests/eval/` (`642bb97`).
-- 79 of 80 model answers cached. The results are committed as partial (`1f31c49`).
+- `process_extraction` refactor and 9 `eval/` modules with tests (`1964291`, `642bb97`).
+- First run on 20 cases (`1f31c49`). Rerun: 119 of 120 calls, one `eval-runner` at a time (`cdc462e`).
 
 **4. Tools or permissions used by the agent**
 - `backend-dev`: in a worktree, scope widened to `eval/` and the `Makefile`.
-- `reviewer`: read-only.
-- `eval-runner`: Bash, network only to `host.docker.internal:11434`.
-- The sandbox refused subagent Bash commands containing the word "eval".
+- `eval-runner`: Bash, network only to `host.docker.internal:11434`. `reviewer`: read-only.
+- The sandbox refused subagent Bash commands containing "eval".
 
 **5. How the result was verified**
-- `make check`: 3,678 passed, 6 import contracts kept.
-- `reviewer`: 1 blocker, 6 should-fix.
-- `/code-review`, twice: 10 findings each.
-- The rescore diff showed no metric change.
-- The privacy scan withheld 6 strings.
+- `make check`: 3,678 passed. `/code-review` twice, 10 findings each.
+- `reviewer` on the code (1 blocker, 6 should-fix) and on the rerun's results (privacy scan clean).
+- `/api/ps` confirmed the 8,192 context.
 
 **6. What was accepted, modified or rejected**
 Accepted: the plan of the agent, while rejecting to evaluate the categories, since the evaluation was targeting the LLM model extraction.
 
 **7. Observed benefit, limitation or risk**
-Benefit: qwen introduced better results than gemma but required a bigger context window. Risk: an hour-long run plus a stale snapshot nearly overwrote the report (caught by the reviewer agent).
+Benefit: qwen introduced better results than gemma but required a bigger context window, and it's on the plan to change to Qwen instead of Gemma. One limitation is that Qwen follows the injection and this needs attention to solve.
 
 **Detected and corrected** (required for partial or failed)
-- Report written back from a pre-run snapshot → `reviewer` → re-read and atomic write (`642bb97`).
-- Subset and `--force` runs replaced committed results as complete → `/code-review` → complete-scope rule (`9afc939`), separate call and scoring scopes (`bdf6c7c`).
-- qwen HTTP 400 on 17/20 cases → main session: image tokens exceed the 4,096 context → host restarted with 8,192.
-- `backend-dev` tried once to quote past the "eval" guard → refused; self-reported.
+- Report written back from a stale snapshot → `reviewer` → re-read and atomic write (`642bb97`).
+- Subset and `--force` runs written as complete → `/code-review` → separate call and scoring scopes (`9afc939`, `bdf6c7c`).
+- qwen HTTP 400 on 17/20 cases → main session: 4,096 context too small → host restarted at 8,192.
+- `backend-dev` tried to quote past the "eval" guard → refused; self-reported.
+- Rerun: plan kept the old cache → student → deleted. 0028 "18 receipts" stale → `reviewer` → fixed (`cdc462e`).
