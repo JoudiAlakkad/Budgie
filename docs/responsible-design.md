@@ -55,7 +55,7 @@ This page covers how Budgie handles limitations, failure modes, privacy, securit
 - **Supply chain.**
   - Python dependencies are pinned to ranges, and ruff exactly.
   - The Ollama image is pinned (`0.35.1`).
-  - The model is pinned by tag only, and a tag can be re-pushed. The Ollama library listed `qwen2.5vl:3b` as manifest `fb90415cde1e` on 2026-10-20; `ollama list` shows the local digest.
+  - The model is pinned by tag only, and a tag can be re-pushed. On 2026-10-20 the Ollama library page showed `fb90415cde1e` for `qwen2.5vl:3b`, while the copy on the student's host has ID `79d497978752` (`ollama ps`). The two may be different hashes of the same model, or the tag may have been re-pushed since the pull; this wasn't resolved. Check with `ollama list`.
 - **Agent-assisted development.** The coding agent ran in a hardened dev container without credentials, and every push went through the student and protected CI ([0011](wiki/decisions/0011-sandbox-hardening.md), README "Sandboxed agent setup").
 
 ## Potential misuse

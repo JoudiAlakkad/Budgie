@@ -120,7 +120,7 @@ Statuses are shown as words with an icon, never only as a colour, and never as a
 - **Licence:** Ollama's page shows Apache-2.0 for `qwen2.5vl:3b`, but it shows that same licence file for the 7B and 72B too. Upstream, the 3B is under the **Qwen Research License**: non-commercial use only, "research or evaluation purposes". Converting the weights doesn't relicense them, so Budgie treats the 3B as research-only. That fits this study project. For commercial use, switch to `gemma3:4b` (Gemma Terms of Use). Sources, checked 2026-10-20, not legal advice: [Ollama library](https://ollama.com/library/qwen2.5vl:3b), [Qwen2.5-VL-3B LICENSE](https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct/blob/main/LICENSE), [7B card (Apache-2.0)](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct), [72B card (Qwen licence)](https://huggingface.co/Qwen/Qwen2.5-VL-72B-Instruct).
 
 **Hardware:**
-- No GPU is required. Plan for at least **8 GB RAM** (16 GB is comfortable): the model takes about 3.2 GB on disk and about [__] GB in memory with the 8 K context (`ollama ps` on the student's host, [date]).
+- No GPU is required. Plan for at least **8 GB RAM** (16 GB is comfortable): the model takes about 3.2 GB on disk and **3.2 GB in memory** with the 8 K context (`ollama ps` on the student's Apple Silicon host, 2026-10-20: `SIZE 3.2 GB`, `100% GPU`, `CONTEXT 8192`). Add headroom for the OS, Docker and the browser.
 - The measured latency (p50 about 51 s, p95 about 131 s per receipt) comes from an Apple Silicon Mac, where Ollama uses the GPU through Metal. A CPU-only laptop is slower, and so is Ollama inside Docker on a Mac, which has no GPU access.
 
 **Install, start and verify the inference server (host install, recommended on a Mac):**
@@ -186,7 +186,7 @@ echo "LLM_BASE_URL=http://ollama:11434/v1" >> .env   # remove it again before `m
 docker compose --profile ollama up -d --build
 docker compose exec ollama ollama pull qwen2.5vl:3b
 ```
-Compose names the data volume `budgie_budgie-data` (project `budgie`). The plain `docker run` below uses `budgie-data`, a different volume, so data doesn't carry over between the two. `BUDGIE_PORT` changes the host port (default 8000).
+Compose names the data volume `budgie_budgie-data` (project `budgie`). The plain `docker run` below uses `budgie-data`, a different volume, so data doesn't carry over between the two. `BUDGIE_PORT` changes the host port (default 8000). If compose reports `bind: address already in use`, something else holds port 8000: find it with `lsof -nP -iTCP:8000 -sTCP:LISTEN` (often a VS Code port forward of `make run` in the dev container), or start with `BUDGIE_PORT=8001 docker compose up -d`.
 
 The app also starts without any model server. `/api/health` then reports `llm: down`, uploads fail with `llm_unavailable` and offer Retry or manual entry, and everything else (manual expenses, budgets, dashboard, export) keeps working.
 

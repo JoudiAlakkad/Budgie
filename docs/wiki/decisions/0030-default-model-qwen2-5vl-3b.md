@@ -18,7 +18,7 @@
 The latency was measured on the student's Apple Silicon host ([ai-spike](../backend/ai-spike.md)), not on a CPU-only laptop.
 
 ## Decision
-- The `LLM_MODEL` default becomes `qwen2.5vl:3b` (Ollama tag; Q4_K_M, about 3.2 GB download, 3.75 B parameters, image + text input). The Ollama library listed it as manifest `fb90415cde1e` on 2026-10-20; the copy the evaluation used wasn't checked by digest.
+- The `LLM_MODEL` default becomes `qwen2.5vl:3b` (Ollama tag; Q4_K_M, about 3.2 GB download, 3.75 B parameters, image + text input). On 2026-10-20 the Ollama library page showed `fb90415cde1e`; the student's local copy has ID `79d497978752` (`ollama ps`). Whether these are the same model under different hashes or a re-pushed tag wasn't resolved, and the evaluated copy wasn't checked by digest. Memory on the host: `SIZE 3.2 GB`, `100% GPU`, `CONTEXT 8192` (`ollama ps`, 2026-10-20).
 - `gemma3:4b` stays the fallback: set `LLM_MODEL=gemma3:4b`, no code change. Prompts v1–v3 and the eval keep both models.
 - **Context length:** qwen keeps more image resolution, so the Ollama server must run with `OLLAMA_CONTEXT_LENGTH=8192`. At 4,096, every 2,000 px photo failed with HTTP 400. The compose `ollama` profile sets it, and the README documents it for a host install.
 - **Licence:** the 3B is not under Apache 2.0, even though Ollama shows Apache 2.0.
@@ -34,4 +34,7 @@ The latency was measured on the student's Apple Silicon host ([ai-spike](../back
 - About 10 s more latency per receipt (p50), which the async extraction absorbs ([0007](0007-async-extraction-with-polling.md)).
 - An Ollama server at the default 4,096 context fails on full-size photos with HTTP 400, which surfaces as a failed extraction. The README's setup step prevents this.
 - Recorded test fixtures stay on `gemma3:4b`. They test the parser and the pipeline, not the model.
-- A host test is required: `docker compose up` with `db: ok`, then one demo receipt uploaded with the new default. **Open** until the student records it here (date, model, outcome).
+- A host test is required: `docker compose up` with `db: ok`, then one demo receipt uploaded with the new default.
+  - 2026-10-20: `make docker-check` passed twice with the new default (health `db: ok`, `llm: down`, `model: qwen2.5vl:3b`).
+  - The first `docker compose up -d --build` built the image and created the volume and network, but couldn't start: port 8000 was already taken on the host (`bind: address already in use`). That's the environment, not the compose file; the README now explains `BUDGIE_PORT`.
+  - **Open:** the compose start and one demo upload.
