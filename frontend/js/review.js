@@ -662,9 +662,9 @@ function itemRow(row, index, readOnly, flagsByItemId) {
   const selectId = `item-${row.key}-category`;
   const categoryFlags = flags.filter((flag) => flag.code === "uncategorized_item");
   const catExtra = [];
-  const describedBy = [];
+  const flagIds = [];
   categoryFlags.forEach((flag, i) => {
-    describedBy.push(`${selectId}-flag-${i}`);
+    flagIds.push(`${selectId}-flag-${i}`);
     catExtra.push(flagNode(flag, `${selectId}-flag-${i}`));
   });
   const missingNote = h(
@@ -674,7 +674,6 @@ function itemRow(row, index, readOnly, flagsByItemId) {
     " Choose a category before confirming.",
   );
   missingNote.hidden = row.category !== UNCATEGORIZED || categoryFlags.length > 0 || readOnly;
-  describedBy.push(missingNote.id);
   const sourceHint = h("span", { className: "hint" });
   const updateSourceHint = () => {
     const hint =
@@ -684,10 +683,15 @@ function itemRow(row, index, readOnly, flagsByItemId) {
   };
   updateSourceHint();
   const categoryErrors = errorsFor(`line_items.${index}.category`);
+  const errorIds = [];
   categoryErrors.forEach((err, i) => {
-    describedBy.push(`${selectId}-err-${i}`);
+    errorIds.push(`${selectId}-err-${i}`);
     catExtra.push(errorNode(err.message, `${selectId}-err-${i}`));
   });
+  // aria-describedby reads a referenced node even when it is hidden, so the
+  // missing-category note is listed only while it is shown (found by /code-review).
+  const describedBy = () =>
+    flagIds.concat(missingNote.hidden ? [] : [missingNote.id], errorIds).join(" ") || null;
   const select = h(
     "select",
     {
@@ -695,7 +699,7 @@ function itemRow(row, index, readOnly, flagsByItemId) {
       disabled: readOnly,
       required: true,
       attrs: {
-        "aria-describedby": describedBy.join(" ") || null,
+        "aria-describedby": describedBy(),
         "aria-invalid": categoryErrors.length ? "true" : null,
       },
     },
@@ -707,6 +711,9 @@ function itemRow(row, index, readOnly, flagsByItemId) {
     tr.classList.toggle("needs-category", row.category === UNCATEGORIZED);
     missingNote.hidden = row.category !== UNCATEGORIZED || categoryFlags.length > 0;
     updateSourceHint();
+    const ids = describedBy();
+    if (ids) select.setAttribute("aria-describedby", ids);
+    else select.removeAttribute("aria-describedby");
     updateActions();
   });
   tr.append(
