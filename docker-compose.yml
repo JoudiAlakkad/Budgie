@@ -10,7 +10,8 @@
 #
 # Settings are env vars read by backend/app/config.py, which holds the defaults
 # (docs/wiki/backend/configuration.md). Each variable below is passed through only when
-# it is set in the shell or in .env; otherwise the app's own default applies. There are
+# it is set in the shell or in .env; otherwise the app's own default applies. The model
+# server's URL is the exception: compose reads BUDGIE_LLM_BASE_URL, not LLM_BASE_URL. There are
 # no secrets: LLM_API_KEY is a dummy value unless your server wants a real bearer token.
 name: budgie
 
@@ -23,9 +24,10 @@ services:
     ports:
       - "127.0.0.1:${BUDGIE_PORT:-8000}:8000"
     environment:
-      # The one container-specific default: the app's own default (localhost) would be
-      # the container itself.
-      - LLM_BASE_URL=${LLM_BASE_URL:-http://host.docker.internal:11434/v1}
+      # Container-specific, so it has its own name: a host value such as
+      # LLM_BASE_URL=http://localhost:11434/v1 in .env (right for `make run`) would point
+      # the container at itself. Set BUDGIE_LLM_BASE_URL to use another server.
+      - LLM_BASE_URL=${BUDGIE_LLM_BASE_URL:-http://host.docker.internal:11434/v1}
       - LLM_MODEL
       - LLM_API_KEY
       - LLM_TIMEOUT_S

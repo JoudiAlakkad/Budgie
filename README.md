@@ -147,7 +147,7 @@ curl http://localhost:8000/api/health              # "llm":"ok"
 
 **Replacing the model or the server** is a configuration change only. The model is reached through the OpenAI-compatible API, so nothing in the core logic changes:
 - another Ollama model: `ollama pull <tag>`, then `LLM_MODEL=<tag>` (e.g. `gemma3:4b`)
-- llama.cpp server, LM Studio or vLLM: set `LLM_BASE_URL` to its `/v1` URL and `LLM_MODEL` to its model name. Set `LLM_API_KEY` if the server wants a bearer token.
+- llama.cpp server, LM Studio or vLLM: set `LLM_BASE_URL` (under compose: `BUDGIE_LLM_BASE_URL`) to its `/v1` URL and `LLM_MODEL` to its model name. Set `LLM_API_KEY` if the server wants a bearer token.
 - `GET /api/health` reports the configured model. The evaluation (`make eval EVAL_ARGS="--config <model>@v3"`) measures a new model on the same cases.
 
 ## Configuration
@@ -155,7 +155,7 @@ All settings are environment variables (pydantic-settings). Nothing is hard-code
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `LLM_BASE_URL` | `http://localhost:11434/v1` | OpenAI-compatible server. In Docker and in the dev container use `http://host.docker.internal:11434/v1` (compose sets it) |
+| `LLM_BASE_URL` | `http://localhost:11434/v1` | OpenAI-compatible server. In Docker and in the dev container use `http://host.docker.internal:11434/v1`. Compose sets it from `BUDGIE_LLM_BASE_URL` (that default), never from `LLM_BASE_URL` |
 | `LLM_MODEL` | `qwen2.5vl:3b` | model name/tag |
 | `LLM_API_KEY` | `ollama` | dummy bearer token for servers that require one |
 | `LLM_TIMEOUT_S` | `180` | read timeout per request |
@@ -180,15 +180,15 @@ docker compose up -d --build                     # app on http://localhost:8000 
 docker compose exec app python -m app.demo_seed  # optional: demo history for scenarios 2–3 (empty DB only, so before any upload)
 docker compose logs -f app                       # follow the logs; `docker compose down` stops it (data stays on the volume)
 ```
-Ollama in a container instead of on the host: the override file [docker-compose.ollama.yml](docker-compose.ollama.yml) adds the `ollama` service and points the app at it. Use both files on every command:
+Ollama in a container instead of on the host: the override file [docker-compose.ollama.yml](docker-compose.ollama.yml) adds the `ollama` service and points the app at it. Name both files on every command:
 ```bash
-export COMPOSE_FILE=docker-compose.yml:docker-compose.ollama.yml   # or pass -f … -f … each time
-docker compose up -d --build
-docker compose exec ollama ollama pull qwen2.5vl:3b
+docker compose -f docker-compose.yml -f docker-compose.ollama.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.ollama.yml exec ollama ollama pull qwen2.5vl:3b
 ```
+Shorter on macOS/Linux: `export COMPOSE_FILE=docker-compose.yml:docker-compose.ollama.yml`, then plain `docker compose …`. On Windows the separator is `;` instead of `:`.
 This Ollama runs on the CPU (Docker on a Mac has no GPU), so extraction is much slower; the override raises `LLM_TIMEOUT_S` to 600 s.
 
-Compose passes each Budgie variable (table below) through only when it is set in the shell or in `.env`; otherwise the app's default applies. A local `.env` is also read by `make run`, so don't put container-only values such as `http://ollama:11434/v1` there.
+Compose passes the `LLM_*`, `PROMPT_VERSION`, `MAX_UPLOAD_MB` and `LOG_LEVEL` variables from the [configuration table](#configuration) through only when they are set in the shell or in `.env`; otherwise the app's default applies. `DATABASE_URL`, `UPLOAD_DIR` and `FRONTEND_DIR` are fixed by the image and not passed through. The model server's URL has its own name in compose, **`BUDGIE_LLM_BASE_URL`** (default `http://host.docker.internal:11434/v1`). That way an `LLM_BASE_URL=http://localhost:11434/v1` in `.env`, which is right for `make run`, never points the container at itself.
 Compose names the data volume `budgie_budgie-data` (project `budgie`). The plain `docker run` below uses `budgie-data`, a different volume, so data doesn't carry over between the two. `BUDGIE_PORT` changes the host port (default 8000). If compose reports `bind: address already in use`, something else holds port 8000: find it with `lsof -nP -iTCP:8000 -sTCP:LISTEN` (often a VS Code port forward of `make run` in the dev container), or start with `BUDGIE_PORT=8001 docker compose up -d`.
 
 The app also starts without any model server. `/api/health` then reports `llm: down`, uploads fail with `llm_unavailable` and offer Retry or manual entry, and everything else (manual expenses, budgets, dashboard, export) keeps working.
