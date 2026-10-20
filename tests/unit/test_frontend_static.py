@@ -10,6 +10,8 @@
    leak explanations use (F09, decision 0023).
 6. No user-visible string in `frontend/js/dashboard.js` says "leak" without "potential"
    (F09, decision 0023).
+7. The stylesheet hides `[hidden]` with `!important`, so a class with `display` can't
+   show an element the JS hid (F12 host test: "Choose a category" on categorised items).
 
 The scanned sources are `frontend/js/**/*.js` and the inline scripts of `frontend/*.html`.
 Comments are stripped first, so a comment may name a sink. Each check skips with a reason
@@ -455,3 +457,27 @@ def test_the_dashboard_never_says_leak_without_potential() -> None:
     # Not vacuous: the scanner reads the page's prose (about 50 texts in F08).
     assert len([lit for _, lit in _string_literals(code) if _visible_text(lit)]) > 20
     assert hits == [], 'the UI says "potential leak", never "leak" alone (decision 0023)'
+
+
+HIDDEN_RULE = re.compile(
+    r"(?:^|[},])\s*\[hidden\]\s*\{[^}]*display\s*:\s*none\s*!important", re.MULTILINE
+)
+
+
+@pytest.mark.parametrize(
+    ("css", "ok"),
+    [
+        ("[hidden] { display: none !important; }", True),
+        ("a {}\n[hidden]{display:none!important}", True),
+        (".error-banner[hidden] { display: none; }", False),
+        ("[hidden] { display: none; }", False),
+    ],
+)
+def test_hidden_rule_pattern(css: str, ok: bool) -> None:
+    assert bool(HIDDEN_RULE.search(css)) is ok
+
+
+def test_hidden_beats_class_display() -> None:
+    css = (FRONTEND / "css" / "style.css").read_text(encoding="utf-8")
+    hint = "add [hidden] { display: none !important; }"
+    assert HIDDEN_RULE.search(BLOCK_COMMENT.sub("", css)), hint

@@ -184,8 +184,10 @@ select:disabled {
   margin: 0;
 }
 
-.error-banner[hidden] {
-  display: none;
+/* `hidden` must win over every class that sets `display` (e.g. .flag-message), or a
+   hidden note still shows. Found in the F12 host test. */
+[hidden] {
+  display: none !important;
 }
 
 .note {
