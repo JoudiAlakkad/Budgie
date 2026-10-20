@@ -6,13 +6,13 @@ How well Budgie's extraction works on real receipts, and whether the review stat
 > **Run of 2026-10-14:** every case and configuration was called again from an empty cache, all under `OLLAMA_CONTEXT_LENGTH=8192`. The first run on 20 cases is kept in the git history only. `gemma3:4b/v1` gets HTTP 500 from Ollama on c18 on every try (three times in this run), so v1 is scored on 29 cases and the results are committed as partial.
 
 ## Dataset
-For evaluation 30 cases were evaluated, 23 normal receipts (Aldi, Lidl, Netto, Petrol Station, etc.), 5 receipts with injected text (c02, c03, c21–c23) and 2 photos that aren't receipts. 3 receipts need review by nature (c25–c27: no merchant or no date printed). The cases were labelled by hand from the photo, were stored localy and were git ignored to preserve privacy. The cases didn't contain hand written receipts, english receipts and were only German. Only 2 receipts were AI generated (c02 and c03) since we wanted to add injected receipts.
+For evaluation 30 cases were evaluated, 23 normal receipts (Aldi, Lidl, Netto, Petrol Station, etc.), 5 receipts with injected text (c02, c03, c21–c23) and 2 photos that aren't receipts. 3 receipts need review by nature (c25–c27: no merchant or no date printed). The cases were labelled by hand from the photo, were stored locally and were git ignored to preserve privacy. The cases contained no hand written receipts or English receipts; all were only German. 5 receipts were AI generated (c02 and c03, c21–c23) since we wanted to add injected receipts.
 The prompt v2 and v3 contained examples from case 07. (The examples were given since v2 and v3 couldn't distinguish between line items and multi-line items during development).
 
 
 ## Method
 [decision 0028](wiki/decisions/0028-evaluation-truth-and-scoring.md) 
-4 Configuration were used and each 1 run at temparature 0, with images shrunk to 2000 px like the app does. They were scored after code guard and not the raw model answer. 3 cases were 'needs_review' (c25–c27)
+4 Configurations were used, each run once at temparature 0, with images shrunk to 2000 px like the app does. They were scored after code guard and not the raw model answer. 3 cases were 'needs_review' (c25–c27)
 
 ## Results
 
@@ -142,12 +142,17 @@ Status of the stored expense, or the failure code; `*` = wrong by the derived tr
 <!-- eval:end -->
 
 ## Comparisons
-1. Prompts v1, v2 and v3 on gemma
-2. Gemma vs Qwen on v3.
+1. Prompts v1, v2 and v3 on gemma: the problem with earlier versions was extraction of multi line items as more than one item, it was fixed in v3.
+2. Gemma vs Qwen on v3: Qwen is better in extraction but followed 2 out of 5 injections.
 
 
 ## Failure discussion
-Gemma should weaker evaluation than Qwen on the 20 cases. It got missing items or added extra items and got often the dates wrong. Case 18 was tried 5 times but each time it failed with server error and so is v1 scored on 19 cases instead of 20. Although Qwen showed better evaluation, it still followed the injection of c03 just like Gemma on v2.
+Gemma showed weaker evaluation than Qwen on the 30 cases. It got missing items or added extra items and got often the dates wrong. Case 18 was tried 3 times in v1 but each time it failed with server error. Although Qwen showed better evaluation, it still followed the injection in 2 cases out of 5 cases, while gemma v2 also followed c03 (1 of 5). gemma v1 and v3 followed none.
 
 ## Uncertainty
-<!-- Student: precision and recall of needs_review against both truths; see wiki/backend/uncertainty.md. -->
+The uncertainty of the model was not measured as a score but as a label. The model should extract specific fields of the receipt and ignore the rest. When it doesn't find those specific fields and stay empty, the deterministic logic (rules) shows a flag 'needs_review'. The rules also flag an item sum that doesn't match the total (tolerance 0.02), a date in the future or more than 2 years old, fields the model lists as unreadable, an uncategorised item, and a suspect Pfand sign. The user then reviews these fields and can edit/add or delete them.
+Precision and recall of status 'needs_review':
+- As shipped, recall is 100 % for every configuration: no wrong extraction was accepted.
+- Qwen pays for that in false alarms: precision is 52 %, and 13 of its 14 fully correct receipts were still flagged, mostly because of uncategorized_item.
+- Gemma's high precision (85 %) isn't a quality signal: only 4 of its 27 extractions were fully right, so flagging almost everything was mostly correct.
+- Without uncategorized_item, 3 wrong qwen extractions and 1 wrong gemma extraction pass. These are wrong but internally consistent, so no rule catches them.
