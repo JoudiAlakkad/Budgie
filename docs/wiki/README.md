@@ -60,3 +60,5 @@ back; the parent records them.
 ## Project evidence
 
 - [AI development log](../ai-dev-log.md) — add episodes with `/dev-log <title>`
+- [Responsible design](../responsible-design.md) — limitations, failure modes, privacy, security, misuse (criterion 19)
+- [Project README](../../README.md) — setup and operations (criterion 18)

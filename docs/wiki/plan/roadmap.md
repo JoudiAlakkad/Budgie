@@ -31,7 +31,7 @@ Each feature is one issue, one branch (`feat/F<NN>-<slug>`) and one PR. The proc
 | F9 | Potential-leak detection (over budget, early burn, spike; [0023](../decisions/0023-leak-rules-and-thresholds.md)) + insight cards, leak patterns in the demo seed | F8 | `backend-dev` ∥ `frontend-dev` |
 | F10 | CSV export + OpenAPI export, Expenses page (list, filter, delete, export) | F5, F6 | `backend-dev` ∥ `frontend-dev` |
 | F11 | Evaluation dataset, runner, comparisons, report | F5 | `backend-dev` + `eval-runner`; the student labels the ground truth and interprets the results |
-| F12 | README, responsible design, compose file, slides | all | main session |
+| F12 | README, responsible design, compose file, slides, synthetic demo receipts, default model `qwen2.5vl:3b` ([0030](../decisions/0030-default-model-qwen2-5vl-3b.md)) | all | main session |
 | F13 | Prompt v3 (no payment/tax lines as items, Pfand sign), non-item guard and Pfand sign check in code, category revision ([0025](../decisions/0025-category-revision.md), [0026](../decisions/0026-prompt-v3-non-item-guard-and-pfand-sign.md)) | F10 | `backend-dev` ∥ `frontend-dev` |
 
 ## Acceptance criteria, by feature (summary)
@@ -74,6 +74,7 @@ Each feature is one issue, one branch (`feat/F<NN>-<slug>`) and one PR. The proc
 - **F12:**
   - The README covers every item of criterion 18 in the brief.
   - The README explains uncertainty handling (criterion 13) and links to [uncertainty](../backend/uncertainty.md).
+  - `docs/responsible-design.md` covers criterion 19; `docker compose up` starts the app; the slides cover the brief's presentation list.
 
 ## Milestones (about 120 h)
 | # | Milestone | Hours | Features |

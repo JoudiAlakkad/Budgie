@@ -16,8 +16,10 @@ services:
   app:
     build: .
     image: budgie:local
+    # Localhost only: Budgie has no login (one local user), so it must not be reachable
+    # from the network. Change this only behind your own authentication.
     ports:
-      - "${PORT:-8000}:8000"
+      - "127.0.0.1:${PORT:-8000}:8000"
     environment:
       LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:11434/v1}
       LLM_MODEL: ${LLM_MODEL:-qwen2.5vl:3b}
