@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     llm_base_url: str = "http://localhost:11434/v1"
-    llm_model: str = "gemma3:4b"
+    llm_model: str = "qwen2.5vl:3b"
     # SecretStr keeps the key out of repr() and logs; read it with get_secret_value().
     llm_api_key: SecretStr = SecretStr("ollama")
     llm_timeout_s: float = 180

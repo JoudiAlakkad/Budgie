@@ -1,6 +1,6 @@
 # 0004 — Vision model direct via Ollama
 
-**Status:** Accepted (2026-09-28). Approach confirmed by the [AI spike](../backend/ai-spike.md) on 2026-10-03. `gemma3:4b` stays the default **provisionally**: it reads short receipts well, but invents dates and totals on long ones, and it called a photo that isn't a receipt a receipt in every run (in strict mode with an invented shop, date and total). The comparison with `qwen2.5vl:3b` moves to the F11 evaluation and should include non-receipt photos.
+**Status:** Accepted (2026-09-28); default model revised by [0030](0030-default-model-qwen2-5vl-3b.md) (2026-10-20). Approach confirmed by the [AI spike](../backend/ai-spike.md) on 2026-10-03. `gemma3:4b` stays the default **provisionally**: it reads short receipts well, but invents dates and totals on long ones, and it called a photo that isn't a receipt a receipt in every run (in strict mode with an invented shop, date and total). The comparison with `qwen2.5vl:3b` moves to the F11 evaluation and should include non-receipt photos.
 
 ## Context
 Receipts arrive as photos. The brief requires a locally run model behind an OpenAI-compatible API, with the model and server replaceable through configuration. The target hardware is a laptop without a GPU (8–16 GB RAM).
@@ -21,3 +21,6 @@ Receipts arrive as photos. The brief requires a locally run model behind an Open
 
 ## F11 result (2026-10-12)
 The deferred comparison ran in F11 ([0028](0028-evaluation-truth-and-scoring.md), `docs/evaluation.md`): on 18 real receipts with prompt v3, `qwen2.5vl:3b` was clearly better than `gemma3:4b` (total 94 % vs 67 %, item F1 0.90 vs 0.43) at a similar latency. It needs an 8,192-token context on the Ollama server. `gemma3:4b` stays the default until a separate decision ([roadmap](../plan/roadmap.md#future-work)).
+
+## F12 revision (2026-10-20)
+The default model is now `qwen2.5vl:3b` ([0030](0030-default-model-qwen2-5vl-3b.md)). The full 30-case run favoured it on every field. It needs `OLLAMA_CONTEXT_LENGTH=8192` and comes under the Qwen Research License (non-commercial). `gemma3:4b` stays the fallback, set through `LLM_MODEL`. The rest of this decision is unchanged.

@@ -49,6 +49,7 @@ back; the parent records them.
 - [0027 — Fixes from the first v3 host test](decisions/0027-host-test-fixes-for-v3-and-upload.md)
 - [0028 — Evaluation truth and scoring](decisions/0028-evaluation-truth-and-scoring.md)
 - [0029 — Tutor agent for exam preparation](decisions/0029-tutor-agent-for-exam-preparation.md)
+- [0030 — Default model `qwen2.5vl:3b`](decisions/0030-default-model-qwen2-5vl-3b.md)
 
 ## Areas
 

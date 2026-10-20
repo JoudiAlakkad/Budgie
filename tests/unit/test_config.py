@@ -10,7 +10,7 @@ from app.services.dependencies import get_extractor_factory, get_llm_client
 
 DEFAULTS = {
     "llm_base_url": "http://localhost:11434/v1",
-    "llm_model": "gemma3:4b",
+    "llm_model": "qwen2.5vl:3b",
     "llm_api_key": "ollama",
     "llm_timeout_s": 180,
     "llm_max_retries": 1,

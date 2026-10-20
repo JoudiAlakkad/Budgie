@@ -91,7 +91,6 @@ Progress is tracked in the repo's issues and milestones, not on this page.
 
 ## Future work
 Not planned for a feature yet. Each would need its thresholds fixed in a decision first.
-- **Default model `qwen2.5vl:3b`:** in F11 (30 cases, run of 2026-10-14) it beat `gemma3:4b` on every field on v3 (merchant 89 % vs 79 %, date 82 % vs 43 %, total 93 % vs 71 %, item F1 0.89 vs 0.47, no false rejection), at a similar latency (p50 51 s vs 40 s), but it followed 2 of 5 injections (c03, c22), gemma v3 none. It keeps more image resolution, so the Ollama server needs `OLLAMA_CONTEXT_LENGTH=8192` (at 4096 every 2,000 px photo failed with HTTP 400). Switching needs its own decision revising [0004](../decisions/0004-vision-model-direct-via-ollama.md), the config default, the README/compose note and a host test (the student's decision, 2026-10-12).
 - **`small_frequent` leak:** many small purchases in a category that add up, e.g. at least M purchases under X € making up at least Y % of the category's spend. Out of F9 by the student's decision ([0023](../decisions/0023-leak-rules-and-thresholds.md)). The contract's `Leak.type` already has the value.
 - **Month on `GET /insights/leaks`:** the response doesn't say which month it covers (found in F09). A `month` field or a wrapper object would let the dashboard match it to the summary at a month boundary.
 - **`recurring` leak:** the same merchant or the same normalised item at least N times in a month; it would set `Leak.merchant`. Also already in the contract's enum.
