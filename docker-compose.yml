@@ -1,10 +1,11 @@
 # Budgie with Docker Compose (README "Run with Docker Compose").
 #
-#   docker compose up --build
+#   docker compose up -d --build
 #     The app only. It uses an Ollama running natively on the host
 #     (faster on a Mac, where the container has no GPU).
 #
-#   LLM_BASE_URL=http://ollama:11434/v1 docker compose --profile ollama up --build
+#   echo LLM_BASE_URL=http://ollama:11434/v1 >> .env   (once; compose reads .env)
+#   docker compose --profile ollama up -d --build
 #   docker compose exec ollama ollama pull qwen2.5vl:3b
 #     Also starts Ollama in a container. Pull the model once; it stays on the volume.
 #
@@ -19,7 +20,7 @@ services:
     # Localhost only: Budgie has no login (one local user), so it must not be reachable
     # from the network. Change this only behind your own authentication.
     ports:
-      - "127.0.0.1:${PORT:-8000}:8000"
+      - "127.0.0.1:${BUDGIE_PORT:-8000}:8000"
     environment:
       LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:11434/v1}
       LLM_MODEL: ${LLM_MODEL:-qwen2.5vl:3b}

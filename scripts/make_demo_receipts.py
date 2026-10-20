@@ -64,7 +64,7 @@ RECEIPTS: tuple[DemoReceipt, ...] = (
             ("KAESEKUCHEN", Decimal("3.90")),
         ),
         printed_total=Decimal("9.50"),
-        purpose="eating out; kaesekuchen is uncategorised, and the choice is reused next time",
+        purpose="eating out, with one uncategorised item (kaesekuchen)",
     ),
     DemoReceipt(
         file="demo-03-kiosk-total-mismatch.png",
@@ -73,10 +73,12 @@ RECEIPTS: tuple[DemoReceipt, ...] = (
         items=(
             ("BIER", Decimal("1.20")),
             ("BIER", Decimal("1.20")),
+            ("CHIPS PAPRIKA", Decimal("1.89")),
             ("HARIBO GOLDBAEREN", Decimal("1.49")),
         ),
-        printed_total=Decimal("4.89"),
-        purpose="the printed total is 1.00 more than the items, so the review shows a sum flag",
+        printed_total=Decimal("6.78"),
+        purpose="chips paprika again, so the category chosen on demo-01 is reused; the printed"
+        " total is 1.00 more than the items, so the review shows a sum flag",
     ),
 )
 

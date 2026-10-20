@@ -44,6 +44,7 @@ This page covers how Budgie handles limitations, failure modes, privacy, securit
   - The evaluation still found that `qwen2.5vl:3b` followed 2 of 5 injected receipts (`gemma3:4b` v3: 0 of 5). Both injected receipts ended `needs_review`, so the user saw the flag.
   - The protection is the code (the sum and date rules, the plausibility rule, the non-item guard) plus the user's confirmation, not the model's obedience ([0030](wiki/decisions/0030-default-model-qwen2-5vl-3b.md)).
 - **No login, so localhost only.** Budgie assumes one local user, as the brief allows. Compose publishes the port on `127.0.0.1` only; anyone who can reach the port can read and change all data, so it must not be exposed without an authenticating proxy.
+- **Ollama has no login either.** On a Linux host, the README binds it to the docker bridge address, never to `0.0.0.0`, which would let anyone on the network use the model server.
 - **Input handling.**
   - Uploads are limited by type (JPEG/PNG/WebP) and size (`MAX_UPLOAD_MB`, 10 MB).
   - The redaction rules read at most 65,536 characters and are tested against ReDoS inputs.
@@ -54,7 +55,7 @@ This page covers how Budgie handles limitations, failure modes, privacy, securit
 - **Supply chain.**
   - Python dependencies are pinned to ranges, and ruff exactly.
   - The Ollama image is pinned (`0.35.1`).
-  - The model is pinned by tag only. A tag can be re-pushed; the evaluated `qwen2.5vl:3b` had manifest `fb90415cde1e`.
+  - The model is pinned by tag only, and a tag can be re-pushed. The Ollama library listed `qwen2.5vl:3b` as manifest `fb90415cde1e` on 2026-10-20; `ollama list` shows the local digest.
 - **Agent-assisted development.** The coding agent ran in a hardened dev container without credentials, and every push went through the student and protected CI ([0011](wiki/decisions/0011-sandbox-hardening.md), README "Sandboxed agent setup").
 
 ## Potential misuse
