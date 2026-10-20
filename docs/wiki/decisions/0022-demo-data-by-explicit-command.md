@@ -19,3 +19,11 @@ Scenarios 2 and 3 must work "on the seeded demo data" ([roadmap](../plan/roadmap
 - **F09 leak patterns** ([0023](0023-leak-rules-and-thresholds.md)): the eating-out budget is 50 € with 41,00 € on day 1, so the eating-out burn card shows on every day of the first half; a 7,99 € wine purchase on day 1 makes alcohol spike against the two previous months (since [0025](0025-category-revision.md): Rotwein + Sekt, 19,98 €, make `drinks` spike). Side effects: health also burns in the first half, eating out turns over budget and then spike in the second half, and the goal card is Behind until day 3.
 - On a storage failure or any other app error during the seed (exit 2), the CLI says the data may be partly loaded and how to recover. A programming error still shows a traceback.
 - The emptiness check runs in its own transaction, before the inserts. While the app is running, a write between the check and the inserts mixes demo data into real data; seed a fresh database with the app stopped or idle.
+
+## F12 addition (2026-10-20)
+The seed covers scenarios 2 and 3. Scenario 1 needs a photo to upload, and the eval photos are private ([0028](0028-evaluation-truth-and-scoring.md)). So `scripts/make_demo_receipts.py` (`make demo-receipts`, tested in `tests/unit/test_make_demo_receipts.py`) renders three synthetic receipts into `data/demo/receipts/`, and they are committed:
+- a supermarket with seed categories, a Pfand line and one unknown item
+- a café with an unknown item, whose category is reused the next time
+- a kiosk whose printed total is 1,00 more than the items, which gives a sum flag
+
+The shops are fictional and the receipts carry no address or payment data. The text is ASCII because Pillow's bundled font has no umlauts or euro sign. The printed dates are October 2026, so after October 2028 they fall outside the 2-year date rule and get flagged.

@@ -1,0 +1,48 @@
+# Budgie with Docker Compose (README "Run with Docker Compose").
+#
+#   docker compose up --build
+#     The app only. It uses an Ollama running natively on the host
+#     (faster on a Mac, where the container has no GPU).
+#
+#   LLM_BASE_URL=http://ollama:11434/v1 docker compose --profile ollama up --build
+#   docker compose exec ollama ollama pull qwen2.5vl:3b
+#     Also starts Ollama in a container. Pull the model once; it stays on the volume.
+#
+# Settings are env vars (docs/wiki/backend/configuration.md). There are no secrets:
+# LLM_API_KEY is a dummy value for servers that want a bearer token.
+name: budgie
+
+services:
+  app:
+    build: .
+    image: budgie:local
+    ports:
+      - "${PORT:-8000}:8000"
+    environment:
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:11434/v1}
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5vl:3b}
+      LLM_TIMEOUT_S: ${LLM_TIMEOUT_S:-180}
+      PROMPT_VERSION: ${PROMPT_VERSION:-v3}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-10}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    # host.docker.internal also resolves on Linux hosts.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # The database and uploads (decision 0006); nothing else mounts this volume.
+    volumes:
+      - budgie-data:/data
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:0.35.1
+    profiles: ["ollama"]
+    environment:
+      # qwen2.5vl:3b fails on full-size photos at the default 4096 (decision 0030).
+      OLLAMA_CONTEXT_LENGTH: "8192"
+    volumes:
+      - ollama-models:/root/.ollama
+    restart: unless-stopped
+
+volumes:
+  budgie-data:
+  ollama-models:
