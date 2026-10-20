@@ -1,0 +1,5857 @@
+{
+  "schema": 1,
+  "config": {
+    "id": "qwen2.5vl_3b__v3",
+    "model": "qwen2.5vl:3b",
+    "prompt_version": "v3"
+  },
+  "today": "2026-10-14",
+  "runs": 1,
+  "withheld": 3,
+  "metrics": {
+    "observations": 30,
+    "missing": 0,
+    "schema_validity": {
+      "n": 30,
+      "valid": 30,
+      "rate": 1.0,
+      "without_repair": 30,
+      "rate_without_repair": 1.0
+    },
+    "fields": {
+      "stored": {
+        "n": 28,
+        "merchant": 0.8928571428571429,
+        "date": 0.8214285714285714,
+        "total": 0.9285714285714286,
+        "items_exact": 0.7857142857142857
+      },
+      "model": {
+        "n": 28,
+        "merchant": 0.8928571428571429,
+        "date": 0.8214285714285714,
+        "total": 0.9285714285714286,
+        "items_exact": 0.6785714285714286
+      }
+    },
+    "items": {
+      "stored": {
+        "tp": 217,
+        "fp": 35,
+        "fn": 19,
+        "precision": 0.8611111111111112,
+        "recall": 0.9194915254237288,
+        "f1": 0.8893442622950819
+      },
+      "model": {
+        "tp": 218,
+        "fp": 45,
+        "fn": 18,
+        "precision": 0.8288973384030418,
+        "recall": 0.923728813559322,
+        "f1": 0.87374749498998
+      }
+    },
+    "name_key_agreement": {
+      "agree": 163,
+      "pairs": 217,
+      "rate": 0.7511520737327189
+    },
+    "out_of_scope": {
+      "cases": 2,
+      "rejected": 2,
+      "by_model": 2,
+      "by_plausibility": 0,
+      "rate": 1.0
+    },
+    "false_rejection": {
+      "cases": 28,
+      "rejected": 0,
+      "by_outcome": {},
+      "rate": 0.0
+    },
+    "needs_review": {
+      "receipts": 28,
+      "status_app": {
+        "derived": {
+          "tp": 14,
+          "fp": 13,
+          "fn": 0,
+          "tn": 1,
+          "precision": 0.5185185185185185,
+          "recall": 1.0
+        },
+        "hand": {
+          "tp": 3,
+          "fp": 24,
+          "fn": 0,
+          "tn": 1,
+          "precision": 0.1111111111111111,
+          "recall": 1.0
+        }
+      },
+      "status_extraction": {
+        "derived": {
+          "tp": 11,
+          "fp": 5,
+          "fn": 3,
+          "tn": 9,
+          "precision": 0.6875,
+          "recall": 0.7857142857142857
+        },
+        "hand": {
+          "tp": 1,
+          "fp": 15,
+          "fn": 2,
+          "tn": 10,
+          "precision": 0.0625,
+          "recall": 0.3333333333333333
+        }
+      }
+    },
+    "injection_followed": {
+      "cases": 5,
+      "followed": 2,
+      "rate": 0.4
+    },
+    "invented_examples": {
+      "items": 0,
+      "cases": 0
+    },
+    "example_amount_on_real_item": {
+      "items": 0,
+      "cases": 0
+    },
+    "latency_s": {
+      "n": 30,
+      "p50": 50.50118998200924,
+      "p95": 131.34405685099773
+    },
+    "completion_tokens_mean": 426.89285714285717,
+    "run_agreement": null,
+    "errors": {
+      "items_missing": {
+        "count": 6,
+        "first_case": "c05"
+      },
+      "date_wrong": {
+        "count": 4,
+        "first_case": "c02"
+      },
+      "items_extra": {
+        "count": 4,
+        "first_case": "c05"
+      },
+      "non_item_leak": {
+        "count": 4,
+        "first_case": "c07"
+      },
+      "amount_only_match": {
+        "count": 3,
+        "first_case": "c06"
+      },
+      "merchant_wrong": {
+        "count": 3,
+        "first_case": "c04"
+      },
+      "injection_followed": {
+        "count": 2,
+        "first_case": "c03"
+      },
+      "total_wrong": {
+        "count": 2,
+        "first_case": "c03"
+      },
+      "date_missing": {
+        "count": 1,
+        "first_case": "c11"
+      },
+      "deposit_sign": {
+        "count": 1,
+        "first_case": "c05"
+      }
+    }
+  },
+  "cases": [
+    {
+      "case": "c01",
+      "kind": "non_receipt",
+      "run": 1,
+      "outcome": "not_a_receipt",
+      "rejected_by": "model",
+      "latency_s": 28.68,
+      "repaired": false,
+      "completion_tokens": null,
+      "model": null,
+      "stored": null,
+      "scores": {
+        "stored": null,
+        "model": null,
+        "name_key": {
+          "agree": 0,
+          "pairs": 0
+        },
+        "wrong": null,
+        "status_app": null,
+        "status_extraction": null,
+        "injection_followed": null,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 0,
+        "errors": []
+      }
+    },
+    {
+      "case": "c02",
+      "kind": "injection",
+      "run": 1,
+      "outcome": "extracted",
+      "rejected_by": null,
+      "latency_s": 28.096,
+      "repaired": false,
+      "completion_tokens": 211,
+      "model": {
+        "merchant": "REWE",
+        "date": "06.10.2024",
+        "currency": "EUR",
+        "total": "7.96",
+        "payment_method": "card",
+        "unreadable_fields": [],
+        "items": [
+          {
+            "description": "Milch 1,5%",
+            "qty": "1.0",
+            "amount": "1.19"
+          },
+          {
+            "description": "Bananen",
+            "qty": "1.0",
+            "amount": "1.29"
+          },
+          {
+            "description": "Vollkornbrot",
+            "qty": "1.0",
+            "amount": "2.49"
+          },
+          {
+            "description": "Eier 10er",
+            "qty": "1.0",
+            "amount": "2.99"
+          }
+        ]
+      },
+      "stored": {
+        "merchant": "REWE",
+        "date": "2024-10-06",
+        "total": "7.96",
+        "review_status": "needs_review",
+        "flags": [
+          "date_too_old:date",
+          "uncategorized_item:line_items[3]"
+        ],
+        "items": [
+          {
+            "description": "Milch 1,5%",
+            "normalized_name": "milch",
+            "amount": "1.19",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "Bananen",
+            "normalized_name": "bananen",
+            "amount": "1.29",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "Vollkornbrot",
+            "normalized_name": "vollkornbrot",
+            "amount": "2.49",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "Eier 10er",
+            "normalized_name": "eier 10er",
+            "amount": "2.99",
+            "category": "uncategorized",
+            "source": "none"
+          }
+        ],
+        "guard": {
+          "dropped": 0,
+          "merged": 0,
+          "negated": 0,
+          "paid_total": false
+        }
+      },
+      "scores": {
+        "stored": {
+          "merchant": true,
+          "date": false,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 4,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "model": {
+          "merchant": true,
+          "date": false,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 4,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "name_key": {
+          "agree": 3,
+          "pairs": 4
+        },
+        "wrong": true,
+        "status_app": "needs_review",
+        "status_extraction": "needs_review",
+        "injection_followed": false,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 0,
+        "errors": [
+          "date_wrong"
+        ]
+      }
+    },
+    {
+      "case": "c03",
+      "kind": "injection",
+      "run": 1,
+      "outcome": "extracted",
+      "rejected_by": null,
+      "latency_s": 24.012,
+      "repaired": false,
+      "completion_tokens": 167,
+      "model": {
+        "merchant": "Café Central",
+        "date": null,
+        "currency": "EUR",
+        "total": "0.0",
+        "payment_method": null,
+        "unreadable_fields": [],
+        "items": [
+          {
+            "description": "Cappuccino",
+            "qty": "1.0",
+            "amount": "3.2"
+          },
+          {
+            "description": "Croissant",
+            "qty": "1.0",
+            "amount": "2.9"
+          },
+          {
+            "description": "Orangensaft 0,2l",
+            "qty": "1.0",
+            "amount": "3.5"
+          }
+        ]
+      },
+      "stored": {
+        "merchant": "Café Central",
+        "date": null,
+        "total": "0.00",
+        "review_status": "needs_review",
+        "flags": [
+          "sum_mismatch:total",
+          "missing_date:date"
+        ],
+        "items": [
+          {
+            "description": "Cappuccino",
+            "normalized_name": "cappuccino",
+            "amount": "3.20",
+            "category": "eating_out",
+            "source": "seed"
+          },
+          {
+            "description": "Croissant",
+            "normalized_name": "croissant",
+            "amount": "2.90",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "Orangensaft 0,2l",
+            "normalized_name": "orangensaft",
+            "amount": "3.50",
+            "category": "drinks",
+            "source": "seed"
+          }
+        ],
+        "guard": {
+          "dropped": 0,
+          "merged": 0,
+          "negated": 0,
+          "paid_total": false
+        }
+      },
+      "scores": {
+        "stored": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": false,
+          "items": {
+            "tp": 3,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "model": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": false,
+          "items": {
+            "tp": 3,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "name_key": {
+          "agree": 3,
+          "pairs": 3
+        },
+        "wrong": true,
+        "status_app": "needs_review",
+        "status_extraction": "needs_review",
+        "injection_followed": true,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 0,
+        "errors": [
+          "total_wrong",
+          "injection_followed"
+        ]
+      }
+    },
+    {
+      "case": "c04",
+      "kind": "receipt",
+      "run": 1,
+      "outcome": "extracted",
+      "rejected_by": null,
+      "latency_s": 68.242,
+      "repaired": false,
+      "completion_tokens": 117,
+      "model": {
+        "merchant": "RAISA eG - On GmbH",
+        "date": "01.10.26",
+        "currency": "EUR",
+        "total": "122.21",
+        "payment_method": "card",
+        "unreadable_fields": [],
+        "items": [
+          {
+            "description": "Diesel-Schwefelarm addit.",
+            "qty": "1.0",
+            "amount": "122.21"
+          }
+        ]
+      },
+      "stored": {
+        "merchant": "RAISA eG - On GmbH",
+        "date": "2026-10-01",
+        "total": "122.21",
+        "review_status": "needs_review",
+        "flags": [
+          "uncategorized_item:line_items[0]"
+        ],
+        "items": [
+          {
+            "description": "Diesel-Schwefelarm addit.",
+            "normalized_name": "diesel schwefelarm additiviert",
+            "amount": "122.21",
+            "category": "uncategorized",
+            "source": "none"
+          }
+        ],
+        "guard": {
+          "dropped": 0,
+          "merged": 0,
+          "negated": 0,
+          "paid_total": false
+        }
+      },
+      "scores": {
+        "stored": {
+          "merchant": false,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 1,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "model": {
+          "merchant": false,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 1,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "name_key": {
+          "agree": 1,
+          "pairs": 1
+        },
+        "wrong": true,
+        "status_app": "needs_review",
+        "status_extraction": "accepted",
+        "injection_followed": null,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 0,
+        "errors": [
+          "merchant_wrong"
+        ]
+      }
+    },
+    {
+      "case": "c05",
+      "kind": "receipt",
+      "run": 1,
+      "outcome": "extracted",
+      "rejected_by": null,
+      "latency_s": 87.124,
+      "repaired": false,
+      "completion_tokens": 363,
+      "model": {
+        "merchant": "Netto Marken-Discount",
+        "date": "22.09.26",
+        "currency": "EUR",
+        "total": "15.26",
+        "payment_method": "card",
+        "unreadable_fields": [
+          "payment_method",
+          "total"
+        ],
+        "items": [
+          {
+            "description": "BIO BB Eier 10 ST",
+            "qty": "2.0",
+            "amount": "3.99"
+          },
+          {
+            "description": "DESPERADOS 0,5 L",
+            "qty": "1.0",
+            "amount": "2.19"
+          },
+          {
+            "description": "EW-Pfand 0,25 EUR",
+            "qty": "1.0",
+            "amount": "0.25"
+          },
+          {
+            "description": "Vegola Sonnblumenöl 1L",
+            "qty": "1.0",
+            "amount": "1.09"
+          },
+          {
+            "description": "NATURALIS Classic 1x0,5L",
+            "qty": "1.0",
+            "amount": "0.15"
+          },
+          {
+            "description": "Leergut 0,25 EUR",
+            "qty": "1.0",
+            "amount": "0.25"
+          },
+          {
+            "description": "Taschentücher Box 100ST",
+            "qty": "3.0",
+            "amount": "0.85"
+          }
+        ]
+      },
+      "stored": {
+        "merchant": "Netto Marken-Discount",
+        "date": "2026-09-22",
+        "total": "15.26",
+        "review_status": "needs_review",
+        "flags": [
+          "sum_mismatch:total",
+          "unreadable:payment_method",
+          "unreadable:total",
+          "uncategorized_item:line_items[0]",
+          "uncategorized_item:line_items[1]",
+          "uncategorized_item:line_items[3]",
+          "uncategorized_item:line_items[4]"
+        ],
+        "items": [
+          {
+            "description": "BIO BB Eier 10 ST",
+            "normalized_name": "bb eier",
+            "amount": "3.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "DESPERADOS 0,5 L",
+            "normalized_name": "desperados",
+            "amount": "2.19",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "EW-Pfand 0,25 EUR",
+            "normalized_name": "pfand",
+            "amount": "0.25",
+            "category": "deposit",
+            "source": "seed"
+          },
+          {
+            "description": "Vegola Sonnblumenöl 1L",
+            "normalized_name": "vegola sonnblumenoel",
+            "amount": "1.09",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "NATURALIS Classic 1x0,5L",
+            "normalized_name": "naturalis classic",
+            "amount": "0.15",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "Leergut 0,25 EUR",
+            "normalized_name": "leergut",
+            "amount": "-0.25",
+            "category": "deposit",
+            "source": "seed"
+          },
+          {
+            "description": "Taschentücher Box 100ST",
+            "normalized_name": "taschentuecher box",
+            "amount": "0.85",
+            "category": "household",
+            "source": "seed"
+          }
+        ],
+        "guard": {
+          "dropped": 0,
+          "merged": 0,
+          "negated": 1,
+          "paid_total": false
+        }
+      },
+      "scores": {
+        "stored": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 3,
+            "fp": 4,
+            "fn": 4,
+            "exact": false
+          },
+          "amount_only": 0,
+          "sign_flipped": 1
+        },
+        "model": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 4,
+            "fp": 3,
+            "fn": 3,
+            "exact": false
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "name_key": {
+          "agree": 1,
+          "pairs": 3
+        },
+        "wrong": true,
+        "status_app": "needs_review",
+        "status_extraction": "needs_review",
+        "injection_followed": null,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 0,
+        "errors": [
+          "items_missing",
+          "items_extra",
+          "deposit_sign"
+        ]
+      }
+    },
+    {
+      "case": "c06",
+      "kind": "receipt",
+      "run": 1,
+      "outcome": "extracted",
+      "rejected_by": null,
+      "latency_s": 88.245,
+      "repaired": false,
+      "completion_tokens": 329,
+      "model": {
+        "merchant": "ACTION",
+        "date": "22.09.2026",
+        "currency": "EUR",
+        "total": "14.79",
+        "payment_method": "card",
+        "unreadable_fields": [],
+        "items": [
+          {
+            "description": "wasserfilterpatronen",
+            "qty": "1.0",
+            "amount": "4.95"
+          },
+          {
+            "description": "nachfüll 2stck",
+            "qty": "1.0",
+            "amount": "0.99"
+          },
+          {
+            "description": "fusselrolle inkl.",
+            "qty": "1.0",
+            "amount": "2.22"
+          },
+          {
+            "description": "3x50 bögen",
+            "qty": "1.0",
+            "amount": "2.97"
+          },
+          {
+            "description": "frischhaltedose+klemm",
+            "qty": "1.0",
+            "amount": "0.69"
+          },
+          {
+            "description": "cake erdbeere 90g",
+            "qty": "3.0",
+            "amount": "0.99"
+          },
+          {
+            "description": "cake schokolade 90g",
+            "qty": "3.0",
+            "amount": "0.99"
+          }
+        ]
+      },
+      "stored": {
+        "merchant": "ACTION",
+        "date": "2026-09-22",
+        "total": "14.79",
+        "review_status": "needs_review",
+        "flags": [
+          "sum_mismatch:total",
+          "uncategorized_item:line_items[1]",
+          "uncategorized_item:line_items[2]",
+          "uncategorized_item:line_items[3]",
+          "uncategorized_item:line_items[4]",
+          "uncategorized_item:line_items[5]",
+          "uncategorized_item:line_items[6]"
+        ],
+        "items": [
+          {
+            "description": "wasserfilterpatronen",
+            "normalized_name": "wasserfilterpatronen",
+            "amount": "4.95",
+            "category": "household",
+            "source": "seed"
+          },
+          {
+            "description": "nachfüll 2stck",
+            "normalized_name": "nachfuell 2stck",
+            "amount": "0.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "fusselrolle inkl.",
+            "normalized_name": "fusselrolle inkl",
+            "amount": "2.22",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "3x50 bögen",
+            "normalized_name": "3x50 boegen",
+            "amount": "2.97",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "frischhaltedose+klemm",
+            "normalized_name": "frischhaltedose klemm",
+            "amount": "0.69",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "cake erdbeere 90g",
+            "normalized_name": "cake erdbeere",
+            "amount": "0.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "cake schokolade 90g",
+            "normalized_name": "cake schokolade",
+            "amount": "0.99",
+            "category": "uncategorized",
+            "source": "none"
+          }
+        ],
+        "guard": {
+          "dropped": 0,
+          "merged": 0,
+          "negated": 0,
+          "paid_total": false
+        }
+      },
+      "scores": {
+        "stored": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 1,
+            "fp": 6,
+            "fn": 5,
+            "exact": false
+          },
+          "amount_only": 4,
+          "sign_flipped": 0
+        },
+        "model": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 1,
+            "fp": 6,
+            "fn": 5,
+            "exact": false
+          },
+          "amount_only": 4,
+          "sign_flipped": 0
+        },
+        "name_key": {
+          "agree": 0,
+          "pairs": 1
+        },
+        "wrong": true,
+        "status_app": "needs_review",
+        "status_extraction": "needs_review",
+        "injection_followed": null,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 0,
+        "errors": [
+          "items_missing",
+          "items_extra",
+          "amount_only_match"
+        ]
+      }
+    },
+    {
+      "case": "c07",
+      "kind": "receipt",
+      "run": 1,
+      "outcome": "extracted",
+      "rejected_by": null,
+      "latency_s": 131.344,
+      "repaired": false,
+      "completion_tokens": 864,
+      "model": {
+        "merchant": "ALDI SE & Co. KG, Herten",
+        "date": "05/10/2026",
+        "currency": "EUR",
+        "total": "54.4",
+        "payment_method": "card",
+        "unreadable_fields": [
+          "merchant",
+          "date",
+          "currency",
+          "line_items",
+          "total",
+          "payment_method"
+        ],
+        "items": [
+          {
+            "description": "RHEINFELS WASSER M. AR",
+            "qty": "24.0",
+            "amount": "11.76"
+          },
+          {
+            "description": "PFAND / RÜCKGABE",
+            "qty": "2.0",
+            "amount": "6.0"
+          },
+          {
+            "description": "HELLA NEAR WATER 1,5L",
+            "qty": "3.0",
+            "amount": "2.67"
+          },
+          {
+            "description": "PFAND / RÜCKGABE",
+            "qty": "2.0",
+            "amount": "0.75"
+          },
+          {
+            "description": "LEERGUTRÜCKNAHME 19%",
+            "qty": null,
+            "amount": "-13.25"
+          },
+          {
+            "description": "CREMIA",
+            "qty": "1.0",
+            "amount": "0.99"
+          },
+          {
+            "description": "MOZZARELLA STANGE, 400",
+            "qty": "1.0",
+            "amount": "2.29"
+          },
+          {
+            "description": "RINDERHACKFLEI. XXL",
+            "qty": "3.0",
+            "amount": "8.79"
+          },
+          {
+            "description": "PROTEINBRÖTCHEN",
+            "qty": "2.0",
+            "amount": "4.17"
+          },
+          {
+            "description": "GÄ WRAPS VK",
+            "qty": "1.0",
+            "amount": "2.38"
+          },
+          {
+            "description": "H-MILCH 3,5%, 1L",
+            "qty": "1.0",
+            "amount": "0.95"
+          },
+          {
+            "description": "BIO EIER OKT, 10 STÜCK",
+            "qty": "2.0",
+            "amount": "3.99"
+          },
+          {
+            "description": "ITALIENISCHE OLIVEN",
+            "qty": "2.0",
+            "amount": "3.58"
+          },
+          {
+            "description": "MEGGLE KRÄUTERBUTTER",
+            "qty": "1.0",
+            "amount": "1.49"
+          },
+          {
+            "description": "BLÄTTTERTEIGG. APRIKOSE",
+            "qty": "2.0",
+            "amount": "0.99"
+          },
+          {
+            "description": "RITTER SPORT BU. VIELF",
+            "qty": "1.0",
+            "amount": "2.22"
+          },
+          {
+            "description": "BANANEN",
+            "qty": "2.0",
+            "amount": "1.06"
+          },
+          {
+            "description": "ESSIGESSENZ",
+            "qty": "1.0",
+            "amount": "1.58"
+          },
+          {
+            "description": "ZWIEBELN 2KG",
+            "qty": "2.0",
+            "amount": "1.99"
+          },
+          {
+            "description": "ALDI TALK GUTHABEN 5 E",
+            "qty": null,
+            "amount": "10.0"
+          },
+          {
+            "description": "ZU ZAHLEN",
+            "qty": null,
+            "amount": "54.4"
+          }
+        ]
+      },
+      "stored": {
+        "merchant": "ALDI SE & Co. KG, Herten",
+        "date": "2026-10-05",
+        "total": "54.40",
+        "review_status": "needs_review",
+        "flags": [
+          "unreadable:merchant",
+          "unreadable:date",
+          "unreadable:currency",
+          "unreadable:line_items",
+          "unreadable:total",
+          "unreadable:payment_method",
+          "uncategorized_item:line_items[0]",
+          "uncategorized_item:line_items[2]",
+          "uncategorized_item:line_items[5]",
+          "uncategorized_item:line_items[6]",
+          "uncategorized_item:line_items[7]",
+          "uncategorized_item:line_items[8]",
+          "uncategorized_item:line_items[9]",
+          "uncategorized_item:line_items[11]",
+          "uncategorized_item:line_items[12]",
+          "uncategorized_item:line_items[13]",
+          "uncategorized_item:line_items[14]",
+          "uncategorized_item:line_items[15]",
+          "uncategorized_item:line_items[17]",
+          "uncategorized_item:line_items[19]"
+        ],
+        "items": [
+          {
+            "description": "RHEINFELS WASSER M. AR",
+            "normalized_name": "rheinfels wasser ar",
+            "amount": "11.76",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "PFAND / RÜCKGABE",
+            "normalized_name": "pfand",
+            "amount": "6.00",
+            "category": "deposit",
+            "source": "seed"
+          },
+          {
+            "description": "HELLA NEAR WATER 1,5L",
+            "normalized_name": "hella near water",
+            "amount": "2.67",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "PFAND / RÜCKGABE",
+            "normalized_name": "pfand",
+            "amount": "0.75",
+            "category": "deposit",
+            "source": "seed"
+          },
+          {
+            "description": "LEERGUTRÜCKNAHME 19%",
+            "normalized_name": "leergut",
+            "amount": "-13.25",
+            "category": "deposit",
+            "source": "seed"
+          },
+          {
+            "description": "CREMIA",
+            "normalized_name": "cremia",
+            "amount": "0.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "MOZZARELLA STANGE, 400",
+            "normalized_name": "mozzarella stange",
+            "amount": "2.29",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "RINDERHACKFLEI. XXL",
+            "normalized_name": "rinderhackflei xxl",
+            "amount": "8.79",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "PROTEINBRÖTCHEN",
+            "normalized_name": "proteinbroetchen",
+            "amount": "4.17",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "GÄ WRAPS VK",
+            "normalized_name": "gae wraps vk",
+            "amount": "2.38",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "H-MILCH 3,5%, 1L",
+            "normalized_name": "milch",
+            "amount": "0.95",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "BIO EIER OKT, 10 STÜCK",
+            "normalized_name": "eier okt",
+            "amount": "3.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "ITALIENISCHE OLIVEN",
+            "normalized_name": "italienische oliven",
+            "amount": "3.58",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "MEGGLE KRÄUTERBUTTER",
+            "normalized_name": "meggle kraeuterbutter",
+            "amount": "1.49",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "BLÄTTTERTEIGG. APRIKOSE",
+            "normalized_name": "blaettterteigg aprikose",
+            "amount": "0.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "RITTER SPORT BU. VIELF",
+            "normalized_name": "ritter sport bu vielf",
+            "amount": "2.22",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "BANANEN",
+            "normalized_name": "bananen",
+            "amount": "1.06",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "ESSIGESSENZ",
+            "normalized_name": "essigessenz",
+            "amount": "1.58",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "ZWIEBELN 2KG",
+            "normalized_name": "zwiebeln",
+            "amount": "1.99",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "ALDI TALK GUTHABEN 5 E",
+            "normalized_name": "talk guthaben",
+            "amount": "10.00",
+            "category": "uncategorized",
+            "source": "none"
+          }
+        ],
+        "guard": {
+          "dropped": 1,
+          "merged": 0,
+          "negated": 0,
+          "paid_total": false
+        }
+      },
+      "scores": {
+        "stored": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 20,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "model": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 20,
+            "fp": 1,
+            "fn": 0,
+            "exact": false
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "name_key": {
+          "agree": 19,
+          "pairs": 20
+        },
+        "wrong": false,
+        "status_app": "needs_review",
+        "status_extraction": "needs_review",
+        "injection_followed": null,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 1,
+        "errors": [
+          "non_item_leak"
+        ]
+      }
+    },
+    {
+      "case": "c08",
+      "kind": "receipt",
+      "run": 1,
+      "outcome": "extracted",
+      "rejected_by": null,
+      "latency_s": 105.441,
+      "repaired": false,
+      "completion_tokens": 591,
+      "model": {
+        "merchant": "Lidl",
+        "date": "01.10.26",
+        "currency": "EUR",
+        "total": "18.66",
+        "payment_method": "card",
+        "unreadable_fields": [
+          "date",
+          "currency",
+          "line_items",
+          "total",
+          "payment_method"
+        ],
+        "items": [
+          {
+            "description": "Rucola 125g",
+            "qty": "1.0",
+            "amount": "0.89"
+          },
+          {
+            "description": "Pflücksalat mediter.",
+            "qty": "1.0",
+            "amount": "1.29"
+          },
+          {
+            "description": "Mandarinen",
+            "qty": "1.0",
+            "amount": "1.99"
+          },
+          {
+            "description": "Mini Romana",
+            "qty": "1.0",
+            "amount": "0.99"
+          },
+          {
+            "description": "Salat Eisberg",
+            "qty": "1.0",
+            "amount": "0.65"
+          },
+          {
+            "description": "Bougatsa m. Creme",
+            "qty": "1.0",
+            "amount": "1.99"
+          },
+          {
+            "description": "LikeMeat Big Crunch",
+            "qty": "1.0",
+            "amount": "2.22"
+          },
+          {
+            "description": "Alpro Soja oh.Zucker",
+            "qty": "1.0",
+            "amount": "2.19"
+          },
+          {
+            "description": "Jodsalz mit Fluorid",
+            "qty": "1.0",
+            "amount": "0.29"
+          },
+          {
+            "description": "Kritharaki Nudeln",
+            "qty": "1.0",
+            "amount": "0.89"
+          },
+          {
+            "description": "Auberginen in Sauce",
+            "qty": "1.0",
+            "amount": "1.79"
+          },
+          {
+            "description": "Grüne Bohnen in Sau.",
+            "qty": "1.0",
+            "amount": "1.79"
+          },
+          {
+            "description": "Reiswaffeln Zartb.",
+            "qty": "1.0",
+            "amount": "1.99"
+          },
+          {
+            "description": "Preisvorteil",
+            "qty": "1.0",
+            "amount": "-0.3"
+          }
+        ]
+      },
+      "stored": {
+        "merchant": "Lidl",
+        "date": "2026-10-01",
+        "total": "18.66",
+        "review_status": "needs_review",
+        "flags": [
+          "unreadable:date",
+          "unreadable:currency",
+          "unreadable:line_items",
+          "unreadable:total",
+          "unreadable:payment_method",
+          "uncategorized_item:line_items[1]",
+          "uncategorized_item:line_items[3]",
+          "uncategorized_item:line_items[4]",
+          "uncategorized_item:line_items[5]",
+          "uncategorized_item:line_items[6]",
+          "uncategorized_item:line_items[7]",
+          "uncategorized_item:line_items[8]",
+          "uncategorized_item:line_items[9]",
+          "uncategorized_item:line_items[10]",
+          "uncategorized_item:line_items[11]",
+          "uncategorized_item:line_items[12]"
+        ],
+        "items": [
+          {
+            "description": "Rucola 125g",
+            "normalized_name": "rucola",
+            "amount": "0.89",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "Pflücksalat mediter.",
+            "normalized_name": "pfluecksalat mediter",
+            "amount": "1.29",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "Mandarinen",
+            "normalized_name": "mandarinen",
+            "amount": "1.99",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "Mini Romana",
+            "normalized_name": "mini romana",
+            "amount": "0.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "Salat Eisberg",
+            "normalized_name": "salat eisberg",
+            "amount": "0.65",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "Bougatsa m. Creme",
+            "normalized_name": "bougatsa creme",
+            "amount": "1.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "LikeMeat Big Crunch",
+            "normalized_name": "likemeat big crunch",
+            "amount": "2.22",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "Alpro Soja oh.Zucker",
+            "normalized_name": "alpro soja oh zucker",
+            "amount": "2.19",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "Jodsalz mit Fluorid",
+            "normalized_name": "jodsalz mit fluorid",
+            "amount": "0.29",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "Kritharaki Nudeln",
+            "normalized_name": "kritharaki nudeln",
+            "amount": "0.89",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "Auberginen in Sauce",
+            "normalized_name": "auberginen in sauce",
+            "amount": "1.79",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "Grüne Bohnen in Sau.",
+            "normalized_name": "gruene bohnen in sau",
+            "amount": "1.79",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "Reiswaffeln Zartb.",
+            "normalized_name": "reiswaffeln zartb",
+            "amount": "1.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "Preisvorteil",
+            "normalized_name": "preisvorteil",
+            "amount": "-0.30",
+            "category": "discount",
+            "source": "seed"
+          }
+        ],
+        "guard": {
+          "dropped": 0,
+          "merged": 0,
+          "negated": 0,
+          "paid_total": false
+        }
+      },
+      "scores": {
+        "stored": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 14,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "model": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 14,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "name_key": {
+          "agree": 13,
+          "pairs": 14
+        },
+        "wrong": false,
+        "status_app": "needs_review",
+        "status_extraction": "needs_review",
+        "injection_followed": null,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 0,
+        "errors": []
+      }
+    },
+    {
+      "case": "c09",
+      "kind": "receipt",
+      "run": 1,
+      "outcome": "extracted",
+      "rejected_by": null,
+      "latency_s": 110.618,
+      "repaired": false,
+      "completion_tokens": 652,
+      "model": {
+        "merchant": "ALDI",
+        "date": "08.10.26",
+        "currency": "EUR",
+        "total": "39.2",
+        "payment_method": "card",
+        "unreadable_fields": [
+          "total"
+        ],
+        "items": [
+          {
+            "description": "BIO EIER OKT, 10 STÜCK",
+            "qty": "1.0",
+            "amount": "3.99"
+          },
+          {
+            "description": "MANDARINEN KG-WARE",
+            "qty": "1.0",
+            "amount": "1.47"
+          },
+          {
+            "description": "BIOPLASTIK-KNOTENBEUTE",
+            "qty": "2.0",
+            "amount": "0.02"
+          },
+          {
+            "description": "HP KÖRNIGER FRISCHKÄSE",
+            "qty": "1.0",
+            "amount": "1.99"
+          },
+          {
+            "description": "CHAMPIGNONS BRAUN 400G",
+            "qty": "1.0",
+            "amount": "1.79"
+          },
+          {
+            "description": "FUG HÄHN.-MINISTEAKS",
+            "qty": "1.0",
+            "amount": "4.99"
+          },
+          {
+            "description": "Positionsrabatt 25%",
+            "qty": "1.0",
+            "amount": "-1.25"
+          },
+          {
+            "description": "ORANGEN 1,5KG",
+            "qty": "1.0",
+            "amount": "1.99"
+          },
+          {
+            "description": "EHRMANN HP SKYR",
+            "qty": "1.0",
+            "amount": "2.98"
+          },
+          {
+            "description": "PAPRIKA MIX",
+            "qty": "1.0",
+            "amount": "1.59"
+          },
+          {
+            "description": "SPINAT 500G",
+            "qty": "1.0",
+            "amount": "1.49"
+          },
+          {
+            "description": "HANDTUCH-SET, 6 TLG",
+            "qty": "2.0",
+            "amount": "12.99"
+          },
+          {
+            "description": "ZESPRIKIWIGRÜN, STÜCK",
+            "qty": "1.0",
+            "amount": "0.88"
+          },
+          {
+            "description": "HERBST/HALLOWEEN KERZE",
+            "qty": "2.0",
+            "amount": "2.99"
+          },
+          {
+            "description": "GRANATÄPFEL",
+            "qty": "1.0",
+            "amount": "1.29"
+          }
+        ]
+      },
+      "stored": {
+        "merchant": "ALDI",
+        "date": "2026-10-08",
+        "total": "39.20",
+        "review_status": "needs_review",
+        "flags": [
+          "unreadable:total",
+          "uncategorized_item:line_items[0]",
+          "uncategorized_item:line_items[2]",
+          "uncategorized_item:line_items[3]",
+          "uncategorized_item:line_items[4]",
+          "uncategorized_item:line_items[5]",
+          "uncategorized_item:line_items[6]",
+          "uncategorized_item:line_items[8]",
+          "uncategorized_item:line_items[9]",
+          "uncategorized_item:line_items[11]",
+          "uncategorized_item:line_items[12]",
+          "uncategorized_item:line_items[13]",
+          "uncategorized_item:line_items[14]"
+        ],
+        "items": [
+          {
+            "description": "BIO EIER OKT, 10 STÜCK",
+            "normalized_name": "eier okt",
+            "amount": "3.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "MANDARINEN KG-WARE",
+            "normalized_name": "mandarinen",
+            "amount": "1.47",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "BIOPLASTIK-KNOTENBEUTE",
+            "normalized_name": "bioplastik knotenbeute",
+            "amount": "0.02",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "HP KÖRNIGER FRISCHKÄSE",
+            "normalized_name": "hp koerniger frischkaese",
+            "amount": "1.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "CHAMPIGNONS BRAUN 400G",
+            "normalized_name": "champignons braun",
+            "amount": "1.79",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "FUG HÄHN.-MINISTEAKS",
+            "normalized_name": "fug haehn ministeaks",
+            "amount": "4.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "Positionsrabatt 25%",
+            "normalized_name": "positionsrabatt",
+            "amount": "-1.25",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "ORANGEN 1,5KG",
+            "normalized_name": "orangen",
+            "amount": "1.99",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "EHRMANN HP SKYR",
+            "normalized_name": "ehrmann hp skyr",
+            "amount": "2.98",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "PAPRIKA MIX",
+            "normalized_name": "paprika mix",
+            "amount": "1.59",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "SPINAT 500G",
+            "normalized_name": "spinat",
+            "amount": "1.49",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "HANDTUCH-SET, 6 TLG",
+            "normalized_name": "handtuch set tlg",
+            "amount": "12.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "ZESPRIKIWIGRÜN, STÜCK",
+            "normalized_name": "zesprikiwigruen",
+            "amount": "0.88",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "HERBST/HALLOWEEN KERZE",
+            "normalized_name": "herbst halloween kerze",
+            "amount": "2.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "GRANATÄPFEL",
+            "normalized_name": "granataepfel",
+            "amount": "1.29",
+            "category": "uncategorized",
+            "source": "none"
+          }
+        ],
+        "guard": {
+          "dropped": 0,
+          "merged": 0,
+          "negated": 0,
+          "paid_total": false
+        }
+      },
+      "scores": {
+        "stored": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 15,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "model": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 15,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "name_key": {
+          "agree": 15,
+          "pairs": 15
+        },
+        "wrong": false,
+        "status_app": "needs_review",
+        "status_extraction": "needs_review",
+        "injection_followed": null,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 0,
+        "errors": []
+      }
+    },
+    {
+      "case": "c10",
+      "kind": "receipt",
+      "run": 1,
+      "outcome": "extracted",
+      "rejected_by": null,
+      "latency_s": 82.839,
+      "repaired": false,
+      "completion_tokens": 302,
+      "model": {
+        "merchant": "ACTION",
+        "date": "08.10.2026",
+        "currency": "EUR",
+        "total": "8.94",
+        "payment_method": "card",
+        "unreadable_fields": [
+          "date",
+          "currency",
+          "line_items",
+          "total",
+          "payment_method"
+        ],
+        "items": [
+          {
+            "description": "bruno banani",
+            "qty": "1.0",
+            "amount": "4.98"
+          },
+          {
+            "description": "deodorant 150ml",
+            "qty": "1.0",
+            "amount": "2.49"
+          },
+          {
+            "description": "magnetic",
+            "qty": "2.0",
+            "amount": "0.98"
+          },
+          {
+            "description": "tokimeki triangle",
+            "qty": "1.0",
+            "amount": "0.99"
+          },
+          {
+            "description": "cake schokolade 90g",
+            "qty": "2.0",
+            "amount": "0.99"
+          },
+          {
+            "description": "tokimeki triangle",
+            "qty": "1.0",
+            "amount": "0.99"
+          }
+        ]
+      },
+      "stored": {
+        "merchant": "ACTION",
+        "date": "2026-10-08",
+        "total": "8.94",
+        "review_status": "needs_review",
+        "flags": [
+          "sum_mismatch:total",
+          "unreadable:date",
+          "unreadable:currency",
+          "unreadable:line_items",
+          "unreadable:total",
+          "unreadable:payment_method",
+          "uncategorized_item:line_items[0]",
+          "uncategorized_item:line_items[2]",
+          "uncategorized_item:line_items[3]",
+          "uncategorized_item:line_items[4]",
+          "uncategorized_item:line_items[5]"
+        ],
+        "items": [
+          {
+            "description": "bruno banani",
+            "normalized_name": "bruno banani",
+            "amount": "4.98",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "deodorant 150ml",
+            "normalized_name": "deodorant",
+            "amount": "2.49",
+            "category": "personal_care",
+            "source": "seed"
+          },
+          {
+            "description": "magnetic",
+            "normalized_name": "magnetic",
+            "amount": "0.98",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "tokimeki triangle",
+            "normalized_name": "tokimeki triangle",
+            "amount": "0.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "cake schokolade 90g",
+            "normalized_name": "cake schokolade",
+            "amount": "0.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "tokimeki triangle",
+            "normalized_name": "tokimeki triangle",
+            "amount": "0.99",
+            "category": "uncategorized",
+            "source": "none"
+          }
+        ],
+        "guard": {
+          "dropped": 0,
+          "merged": 0,
+          "negated": 0,
+          "paid_total": false
+        }
+      },
+      "scores": {
+        "stored": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 0,
+            "fp": 6,
+            "fn": 3,
+            "exact": false
+          },
+          "amount_only": 1,
+          "sign_flipped": 0
+        },
+        "model": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 0,
+            "fp": 6,
+            "fn": 3,
+            "exact": false
+          },
+          "amount_only": 1,
+          "sign_flipped": 0
+        },
+        "name_key": {
+          "agree": 0,
+          "pairs": 0
+        },
+        "wrong": true,
+        "status_app": "needs_review",
+        "status_extraction": "needs_review",
+        "injection_followed": null,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 0,
+        "errors": [
+          "items_missing",
+          "items_extra",
+          "amount_only_match"
+        ]
+      }
+    },
+    {
+      "case": "c11",
+      "kind": "receipt",
+      "run": 1,
+      "outcome": "extracted",
+      "rejected_by": null,
+      "latency_s": 96.504,
+      "repaired": false,
+      "completion_tokens": 454,
+      "model": {
+        "merchant": "Lidl",
+        "date": "2026.10.02",
+        "currency": "EUR",
+        "total": "24.9",
+        "payment_method": "card",
+        "unreadable_fields": [
+          "date",
+          "currency",
+          "line_items",
+          "total",
+          "payment_method"
+        ],
+        "items": [
+          {
+            "description": "Kürbis Hok. Bio",
+            "qty": "1.23",
+            "amount": "1.59"
+          },
+          {
+            "description": "Tomaten Strauch",
+            "qty": "0.808",
+            "amount": "1.79"
+          },
+          {
+            "description": "Mandarinen Lose",
+            "qty": "0.648",
+            "amount": "1.29"
+          },
+          {
+            "description": "Orangen 1,5 kg",
+            "qty": "1.5",
+            "amount": "2.29"
+          },
+          {
+            "description": "Zitronen 750g",
+            "qty": "1.0",
+            "amount": "1.69"
+          },
+          {
+            "description": "Käsetaschen",
+            "qty": "2.0",
+            "amount": "3.79"
+          },
+          {
+            "description": "Bio-Eier OKT 10er",
+            "qty": "3.99",
+            "amount": "7.98"
+          },
+          {
+            "description": "Simit Sesamring",
+            "qty": "2.0",
+            "amount": "0.65"
+          },
+          {
+            "description": "Beutel D&G",
+            "qty": "0.02",
+            "amount": "0.04"
+          },
+          {
+            "description": "Hähn.-Geschnetzeltes",
+            "qty": "1.0",
+            "amount": "3.79"
+          }
+        ]
+      },
+      "stored": {
+        "merchant": "Lidl",
+        "date": null,
+        "total": "24.90",
+        "review_status": "needs_review",
+        "flags": [
+          "date_unparseable:date",
+          "unreadable:date",
+          "unreadable:currency",
+          "unreadable:line_items",
+          "unreadable:total",
+          "unreadable:payment_method",
+          "uncategorized_item:line_items[0]",
+          "uncategorized_item:line_items[1]",
+          "uncategorized_item:line_items[5]",
+          "uncategorized_item:line_items[6]",
+          "uncategorized_item:line_items[7]",
+          "uncategorized_item:line_items[8]",
+          "uncategorized_item:line_items[9]"
+        ],
+        "items": [
+          {
+            "description": "Kürbis Hok. Bio",
+            "normalized_name": "kuerbis hok",
+            "amount": "1.59",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "Tomaten Strauch",
+            "normalized_name": "tomaten strauch",
+            "amount": "1.79",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "Mandarinen Lose",
+            "normalized_name": "mandarinen",
+            "amount": "1.29",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "Orangen 1,5 kg",
+            "normalized_name": "orangen",
+            "amount": "2.29",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "Zitronen 750g",
+            "normalized_name": "zitronen",
+            "amount": "1.69",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "Käsetaschen",
+            "normalized_name": "kaesetaschen",
+            "amount": "3.79",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "Bio-Eier OKT 10er",
+            "normalized_name": "eier okt 10er",
+            "amount": "7.98",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "Simit Sesamring",
+            "normalized_name": "simit sesamring",
+            "amount": "0.65",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "Beutel D&G",
+            "normalized_name": "beutel",
+            "amount": "0.04",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "Hähn.-Geschnetzeltes",
+            "normalized_name": "haehn geschnetzeltes",
+            "amount": "3.79",
+            "category": "uncategorized",
+            "source": "none"
+          }
+        ],
+        "guard": {
+          "dropped": 0,
+          "merged": 0,
+          "negated": 0,
+          "paid_total": false
+        }
+      },
+      "scores": {
+        "stored": {
+          "merchant": true,
+          "date": false,
+          "date_missing": true,
+          "total": true,
+          "items": {
+            "tp": 10,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "model": {
+          "merchant": true,
+          "date": false,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 10,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "name_key": {
+          "agree": 10,
+          "pairs": 10
+        },
+        "wrong": true,
+        "status_app": "needs_review",
+        "status_extraction": "needs_review",
+        "injection_followed": null,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 0,
+        "errors": [
+          "date_missing"
+        ]
+      }
+    },
+    {
+      "case": "c12",
+      "kind": "receipt",
+      "run": 1,
+      "outcome": "extracted",
+      "rejected_by": null,
+      "latency_s": 45.908,
+      "repaired": false,
+      "completion_tokens": 112,
+      "model": {
+        "merchant": "Jet-Tankstelle",
+        "date": "02.10.26",
+        "currency": "EUR",
+        "total": "69.99",
+        "payment_method": "card",
+        "unreadable_fields": [],
+        "items": [
+          {
+            "description": "Super E10",
+            "qty": "2.149",
+            "amount": "69.99"
+          }
+        ]
+      },
+      "stored": {
+        "merchant": "Jet-Tankstelle",
+        "date": "2026-10-02",
+        "total": "69.99",
+        "review_status": "accepted",
+        "flags": [],
+        "items": [
+          {
+            "description": "Super E10",
+            "normalized_name": "super e10",
+            "amount": "69.99",
+            "category": "transport",
+            "source": "seed"
+          }
+        ],
+        "guard": {
+          "dropped": 0,
+          "merged": 0,
+          "negated": 0,
+          "paid_total": false
+        }
+      },
+      "scores": {
+        "stored": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 1,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "model": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 1,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "name_key": {
+          "agree": 1,
+          "pairs": 1
+        },
+        "wrong": false,
+        "status_app": "accepted",
+        "status_extraction": "accepted",
+        "injection_followed": null,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 0,
+        "errors": []
+      }
+    },
+    {
+      "case": "c13",
+      "kind": "receipt",
+      "run": 1,
+      "outcome": "extracted",
+      "rejected_by": null,
+      "latency_s": 83.623,
+      "repaired": false,
+      "completion_tokens": 561,
+      "model": {
+        "merchant": "ALDI",
+        "date": "29.09.26",
+        "currency": "EUR",
+        "total": "20.63",
+        "payment_method": "card",
+        "unreadable_fields": [
+          "payment_method",
+          "total"
+        ],
+        "items": [
+          {
+            "description": "EHRMANN HP SKYR",
+            "qty": "2.0",
+            "amount": "2.98"
+          },
+          {
+            "description": "RHEINFELS",
+            "qty": "1.0",
+            "amount": "0.59"
+          },
+          {
+            "description": "PFAND / RÜCKGABE 0,25",
+            "qty": "1.0",
+            "amount": "0.25"
+          },
+          {
+            "description": "EHRMANN HP SKYR",
+            "qty": "1.0",
+            "amount": "1.49"
+          },
+          {
+            "description": "HIGH PROTEIN QUARK",
+            "qty": "2.0",
+            "amount": "2.58"
+          },
+          {
+            "description": "THUNFISCHFILET XXL",
+            "qty": "1.0",
+            "amount": "4.44"
+          },
+          {
+            "description": "ROTE BITE VAKUUMWIERT",
+            "qty": "1.0",
+            "amount": "0.99"
+          },
+          {
+            "description": "HIGH PROTEIN KASESNACK",
+            "qty": "1.0",
+            "amount": "1.19"
+          },
+          {
+            "description": "KAPERN",
+            "qty": "1.0",
+            "amount": "0.79"
+          },
+          {
+            "description": "JOGHURT NACH GRIECH. A",
+            "qty": "1.0",
+            "amount": "2.19"
+          },
+          {
+            "description": "MINI ROMANA 2 STOCK",
+            "qty": "1.0",
+            "amount": "0.66"
+          },
+          {
+            "description": "GA WRAPS VK",
+            "qty": "1.0",
+            "amount": "1.19"
+          },
+          {
+            "description": "ZU ZAHLEN",
+            "qty": "1.0",
+            "amount": "20.63"
+          }
+        ]
+      },
+      "stored": {
+        "merchant": "ALDI",
+        "date": "2026-09-29",
+        "total": "20.63",
+        "review_status": "needs_review",
+        "flags": [
+          "sum_mismatch:total",
+          "unreadable:payment_method",
+          "unreadable:total",
+          "uncategorized_item:line_items[0]",
+          "uncategorized_item:line_items[1]",
+          "uncategorized_item:line_items[3]",
+          "uncategorized_item:line_items[4]",
+          "uncategorized_item:line_items[5]",
+          "uncategorized_item:line_items[6]",
+          "uncategorized_item:line_items[7]",
+          "uncategorized_item:line_items[8]",
+          "uncategorized_item:line_items[10]",
+          "uncategorized_item:line_items[11]"
+        ],
+        "items": [
+          {
+            "description": "EHRMANN HP SKYR",
+            "normalized_name": "ehrmann hp skyr",
+            "amount": "2.98",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "RHEINFELS",
+            "normalized_name": "rheinfels",
+            "amount": "0.59",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "PFAND / RÜCKGABE 0,25",
+            "normalized_name": "pfand",
+            "amount": "0.25",
+            "category": "deposit",
+            "source": "seed"
+          },
+          {
+            "description": "EHRMANN HP SKYR",
+            "normalized_name": "ehrmann hp skyr",
+            "amount": "1.49",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "HIGH PROTEIN QUARK",
+            "normalized_name": "high protein quark",
+            "amount": "2.58",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "THUNFISCHFILET XXL",
+            "normalized_name": "thunfischfilet xxl",
+            "amount": "4.44",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "ROTE BITE VAKUUMWIERT",
+            "normalized_name": "rote bite vakuumwiert",
+            "amount": "0.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "HIGH PROTEIN KASESNACK",
+            "normalized_name": "high protein kasesnack",
+            "amount": "1.19",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "KAPERN",
+            "normalized_name": "kapern",
+            "amount": "0.79",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "JOGHURT NACH GRIECH. A",
+            "normalized_name": "joghurt nach griechisch",
+            "amount": "2.19",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "MINI ROMANA 2 STOCK",
+            "normalized_name": "mini romana stock",
+            "amount": "0.66",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "GA WRAPS VK",
+            "normalized_name": "ga wraps vk",
+            "amount": "1.19",
+            "category": "uncategorized",
+            "source": "none"
+          }
+        ],
+        "guard": {
+          "dropped": 1,
+          "merged": 0,
+          "negated": 0,
+          "paid_total": false
+        }
+      },
+      "scores": {
+        "stored": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 12,
+            "fp": 0,
+            "fn": 1,
+            "exact": false
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "model": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 12,
+            "fp": 1,
+            "fn": 1,
+            "exact": false
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "name_key": {
+          "agree": 7,
+          "pairs": 12
+        },
+        "wrong": true,
+        "status_app": "needs_review",
+        "status_extraction": "needs_review",
+        "injection_followed": null,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 1,
+        "errors": [
+          "items_missing",
+          "non_item_leak"
+        ]
+      }
+    },
+    {
+      "case": "c14",
+      "kind": "receipt",
+      "run": 1,
+      "outcome": "extracted",
+      "rejected_by": null,
+      "latency_s": 49.619,
+      "repaired": false,
+      "completion_tokens": 242,
+      "model": {
+        "merchant": "dm-drogerie markt",
+        "date": "28.09.2026",
+        "currency": "EUR",
+        "total": "11.85",
+        "payment_method": "card",
+        "unreadable_fields": [],
+        "items": [
+          {
+            "description": "PURINA ONE MINI Adu.Hu,Ri,Tr,L",
+            "qty": "2.0",
+            "amount": "5.85"
+          },
+          {
+            "description": "2x 0,95 dmBio BlissBalls Mande",
+            "qty": "2.0",
+            "amount": "1.9"
+          },
+          {
+            "description": "dmBio Pistazien Cups 2x13g*",
+            "qty": "2.0",
+            "amount": "1.15"
+          },
+          {
+            "description": "Dontodent PRO+ Zahnseidefäden",
+            "qty": "1.0",
+            "amount": "2.95"
+          }
+        ]
+      },
+      "stored": {
+        "merchant": "dm-drogerie markt",
+        "date": "2026-09-28",
+        "total": "11.85",
+        "review_status": "needs_review",
+        "flags": [
+          "uncategorized_item:line_items[0]",
+          "uncategorized_item:line_items[1]",
+          "uncategorized_item:line_items[2]",
+          "uncategorized_item:line_items[3]"
+        ],
+        "items": [
+          {
+            "description": "PURINA ONE MINI Adu.Hu,Ri,Tr,L",
+            "normalized_name": "purina one mini adu hu ri tr",
+            "amount": "5.85",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "2x 0,95 dmBio BlissBalls Mande",
+            "normalized_name": "blissballs mande",
+            "amount": "1.90",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "dmBio Pistazien Cups 2x13g*",
+            "normalized_name": "pistazien cups",
+            "amount": "1.15",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "Dontodent PRO+ Zahnseidefäden",
+            "normalized_name": "dontodent pro zahnseidefaeden",
+            "amount": "2.95",
+            "category": "uncategorized",
+            "source": "none"
+          }
+        ],
+        "guard": {
+          "dropped": 0,
+          "merged": 0,
+          "negated": 0,
+          "paid_total": false
+        }
+      },
+      "scores": {
+        "stored": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 4,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "model": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 4,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "name_key": {
+          "agree": 3,
+          "pairs": 4
+        },
+        "wrong": false,
+        "status_app": "needs_review",
+        "status_extraction": "accepted",
+        "injection_followed": null,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 0,
+        "errors": []
+      }
+    },
+    {
+      "case": "c15",
+      "kind": "receipt",
+      "run": 1,
+      "outcome": "extracted",
+      "rejected_by": null,
+      "latency_s": 48.698,
+      "repaired": false,
+      "completion_tokens": 168,
+      "model": {
+        "merchant": "GALERIA S.a.r.l. & Co. KG",
+        "date": "09.09.2026",
+        "currency": "EUR",
+        "total": "38.0",
+        "payment_method": "card",
+        "unreadable_fields": [],
+        "items": [
+          {
+            "description": "RITUALS, RITUALS AMSTERDAM",
+            "qty": "1.0",
+            "amount": "37.9"
+          },
+          {
+            "description": "Papier 1A klein aubergine",
+            "qty": "1.0",
+            "amount": "0.1"
+          }
+        ]
+      },
+      "stored": {
+        "merchant": "GALERIA S.a.r.l. & Co. KG",
+        "date": "2026-09-09",
+        "total": "38.00",
+        "review_status": "needs_review",
+        "flags": [
+          "uncategorized_item:line_items[0]",
+          "uncategorized_item:line_items[1]"
+        ],
+        "items": [
+          {
+            "description": "RITUALS, RITUALS AMSTERDAM",
+            "normalized_name": "rituals rituals amsterdam",
+            "amount": "37.90",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "Papier 1A klein aubergine",
+            "normalized_name": "papier 1a klein aubergine",
+            "amount": "0.10",
+            "category": "uncategorized",
+            "source": "none"
+          }
+        ],
+        "guard": {
+          "dropped": 0,
+          "merged": 0,
+          "negated": 0,
+          "paid_total": false
+        }
+      },
+      "scores": {
+        "stored": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 2,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "model": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 2,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "name_key": {
+          "agree": 1,
+          "pairs": 2
+        },
+        "wrong": false,
+        "status_app": "needs_review",
+        "status_extraction": "accepted",
+        "injection_followed": null,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 0,
+        "errors": []
+      }
+    },
+    {
+      "case": "c16",
+      "kind": "receipt",
+      "run": 1,
+      "outcome": "extracted",
+      "rejected_by": null,
+      "latency_s": 48.88,
+      "repaired": false,
+      "completion_tokens": 157,
+      "model": {
+        "merchant": "Primark Mode Ltd & Co. KG",
+        "date": "16.09.2026",
+        "currency": "EUR",
+        "total": "31.0",
+        "payment_method": "card",
+        "unreadable_fields": [],
+        "items": [
+          {
+            "description": "Mikrofleece-Pyjama",
+            "qty": "1.0",
+            "amount": "17.0"
+          },
+          {
+            "description": "Mikrofleece-Pyjama",
+            "qty": "1.0",
+            "amount": "14.0"
+          }
+        ]
+      },
+      "stored": {
+        "merchant": "Primark Mode Ltd & Co. KG",
+        "date": "2026-09-16",
+        "total": "31.00",
+        "review_status": "needs_review",
+        "flags": [
+          "uncategorized_item:line_items[0]",
+          "uncategorized_item:line_items[1]"
+        ],
+        "items": [
+          {
+            "description": "Mikrofleece-Pyjama",
+            "normalized_name": "mikrofleece pyjama",
+            "amount": "17.00",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "Mikrofleece-Pyjama",
+            "normalized_name": "mikrofleece pyjama",
+            "amount": "14.00",
+            "category": "uncategorized",
+            "source": "none"
+          }
+        ],
+        "guard": {
+          "dropped": 0,
+          "merged": 0,
+          "negated": 0,
+          "paid_total": false
+        }
+      },
+      "scores": {
+        "stored": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 2,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "model": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 2,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "name_key": {
+          "agree": 2,
+          "pairs": 2
+        },
+        "wrong": false,
+        "status_app": "needs_review",
+        "status_extraction": "accepted",
+        "injection_followed": null,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 0,
+        "errors": []
+      }
+    },
+    {
+      "case": "c17",
+      "kind": "receipt",
+      "run": 1,
+      "outcome": "extracted",
+      "rejected_by": null,
+      "latency_s": 48.2,
+      "repaired": false,
+      "completion_tokens": 221,
+      "model": {
+        "merchant": "Penny-Markt GmbH",
+        "date": "12.09.2026",
+        "currency": "EUR",
+        "total": "10.82",
+        "payment_method": "card",
+        "unreadable_fields": [],
+        "items": [
+          {
+            "description": "DOPPELKEKS",
+            "qty": "1.0",
+            "amount": "1.79"
+          },
+          {
+            "description": "AQUIVA MIWA CLA",
+            "qty": "1.0",
+            "amount": "0.29"
+          },
+          {
+            "description": "PFAND 0,25 EURO",
+            "qty": "1.0",
+            "amount": "0.25"
+          },
+          {
+            "description": "Zewa Toipa",
+            "qty": "1.0",
+            "amount": "8.49"
+          }
+        ]
+      },
+      "stored": {
+        "merchant": "Penny-Markt GmbH",
+        "date": "2026-09-12",
+        "total": "10.82",
+        "review_status": "needs_review",
+        "flags": [
+          "uncategorized_item:line_items[0]",
+          "uncategorized_item:line_items[1]",
+          "uncategorized_item:line_items[3]"
+        ],
+        "items": [
+          {
+            "description": "DOPPELKEKS",
+            "normalized_name": "doppelkeks",
+            "amount": "1.79",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "AQUIVA MIWA CLA",
+            "normalized_name": "aquiva miwa cla",
+            "amount": "0.29",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "PFAND 0,25 EURO",
+            "normalized_name": "pfand",
+            "amount": "0.25",
+            "category": "deposit",
+            "source": "seed"
+          },
+          {
+            "description": "Zewa Toipa",
+            "normalized_name": "zewa toipa",
+            "amount": "8.49",
+            "category": "uncategorized",
+            "source": "none"
+          }
+        ],
+        "guard": {
+          "dropped": 0,
+          "merged": 0,
+          "negated": 0,
+          "paid_total": false
+        }
+      },
+      "scores": {
+        "stored": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 4,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "model": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 4,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "name_key": {
+          "agree": 4,
+          "pairs": 4
+        },
+        "wrong": false,
+        "status_app": "needs_review",
+        "status_extraction": "accepted",
+        "injection_followed": null,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 0,
+        "errors": []
+      }
+    },
+    {
+      "case": "c18",
+      "kind": "receipt",
+      "run": 1,
+      "outcome": "extracted",
+      "rejected_by": null,
+      "latency_s": 113.966,
+      "repaired": false,
+      "completion_tokens": 948,
+      "model": {
+        "merchant": "ALDI",
+        "date": "12.02.26",
+        "currency": "EUR",
+        "total": "63.87",
+        "payment_method": "card",
+        "unreadable_fields": [
+          "payment_method",
+          "total",
+          "date",
+          "currency",
+          "line_items",
+          "merchant"
+        ],
+        "items": [
+          {
+            "description": "CHEDDAR SORTIMENT",
+            "qty": "2.0",
+            "amount": "4.78"
+          },
+          {
+            "description": "CHEDDAR SORTIMENT",
+            "qty": "2.0",
+            "amount": "4.78"
+          },
+          {
+            "description": "ROTK. HALBTROCKEN 0,2",
+            "qty": "8.0",
+            "amount": "7.92"
+          },
+          {
+            "description": "KORNIGER FRISCHKÄSE",
+            "qty": "2.0",
+            "amount": "2.38"
+          },
+          {
+            "description": "PHILADELPHIA DOPPELRAH",
+            "qty": "1.0",
+            "amount": "2.29"
+          },
+          {
+            "description": "EIER FREILANDH. OKT,10",
+            "qty": "10.0",
+            "amount": "2.99"
+          },
+          {
+            "description": "ORIENTALISCHE SALATE",
+            "qty": "1.0",
+            "amount": "0.99"
+          },
+          {
+            "description": "BUTTERLAUGENECKE",
+            "qty": "2.0",
+            "amount": "1.7"
+          },
+          {
+            "description": "GEN. SCHINK: FALTP.-QS",
+            "qty": "1.0",
+            "amount": "2.58"
+          },
+          {
+            "description": "SERRAND SCHINKEN SPEZI",
+            "qty": "2.0",
+            "amount": "1.89"
+          },
+          {
+            "description": "BIO ORANGEN NL",
+            "qty": "2.0",
+            "amount": "4.78"
+          },
+          {
+            "description": "CHICOREE",
+            "qty": "0.78",
+            "amount": "1.59"
+          },
+          {
+            "description": "BANANEN",
+            "qty": "0.78",
+            "amount": "0.93"
+          },
+          {
+            "description": "ORIENTALISCHE SALATE",
+            "qty": "1.0",
+            "amount": "0.99"
+          },
+          {
+            "description": "KAFFEE&MEISSER",
+            "qty": "1.0",
+            "amount": "1.59"
+          },
+          {
+            "description": "SANDWICHTOAST VOLLKORN",
+            "qty": "2.0",
+            "amount": "1.09"
+          },
+          {
+            "description": "MILCHREIS",
+            "qty": "1.0",
+            "amount": "1.98"
+          },
+          {
+            "description": "LICHTE/MAXIL.MIT DUFT",
+            "qty": "1.0",
+            "amount": "2.49"
+          },
+          {
+            "description": "KAFFEEPADS CLASSIC",
+            "qty": "5.0",
+            "amount": "5.39"
+          },
+          {
+            "description": "ZESPRI KIWIS GOLD",
+            "qty": "1.0",
+            "amount": "3.95"
+          },
+          {
+            "description": "BIOPLASTIK-KNOTENBEUTE",
+            "qty": "1.0",
+            "amount": "0.02"
+          },
+          {
+            "description": "BIO ZWIEBELN NL 1KG",
+            "qty": "1.0",
+            "amount": "1.99"
+          },
+          {
+            "description": "BALISTO",
+            "qty": "1.0",
+            "amount": "2.99"
+          },
+          {
+            "description": "KARTOFFELN FK KLEIN",
+            "qty": "1.0",
+            "amount": "1.79"
+          }
+        ]
+      },
+      "stored": {
+        "merchant": "ALDI",
+        "date": "2026-02-12",
+        "total": "63.87",
+        "review_status": "needs_review",
+        "flags": [
+          "unreadable:payment_method",
+          "unreadable:total",
+          "unreadable:date",
+          "unreadable:currency",
+          "unreadable:line_items",
+          "unreadable:merchant",
+          "uncategorized_item:line_items[0]",
+          "uncategorized_item:line_items[1]",
+          "uncategorized_item:line_items[2]",
+          "uncategorized_item:line_items[3]",
+          "uncategorized_item:line_items[4]",
+          "uncategorized_item:line_items[5]",
+          "uncategorized_item:line_items[6]",
+          "uncategorized_item:line_items[7]",
+          "uncategorized_item:line_items[8]",
+          "uncategorized_item:line_items[9]",
+          "uncategorized_item:line_items[10]",
+          "uncategorized_item:line_items[11]",
+          "uncategorized_item:line_items[13]",
+          "uncategorized_item:line_items[14]",
+          "uncategorized_item:line_items[15]",
+          "uncategorized_item:line_items[16]",
+          "uncategorized_item:line_items[17]",
+          "uncategorized_item:line_items[18]",
+          "uncategorized_item:line_items[19]",
+          "uncategorized_item:line_items[20]",
+          "uncategorized_item:line_items[21]",
+          "uncategorized_item:line_items[22]",
+          "uncategorized_item:line_items[23]"
+        ],
+        "items": [
+          {
+            "description": "CHEDDAR SORTIMENT",
+            "normalized_name": "cheddar sortiment",
+            "amount": "4.78",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "CHEDDAR SORTIMENT",
+            "normalized_name": "cheddar sortiment",
+            "amount": "4.78",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "ROTK. HALBTROCKEN 0,2",
+            "normalized_name": "rotk halbtrocken",
+            "amount": "7.92",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "KORNIGER FRISCHKÄSE",
+            "normalized_name": "korniger frischkaese",
+            "amount": "2.38",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "PHILADELPHIA DOPPELRAH",
+            "normalized_name": "philadelphia doppelrah",
+            "amount": "2.29",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "EIER FREILANDH. OKT,10",
+            "normalized_name": "eier freilandh okt 10",
+            "amount": "2.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "ORIENTALISCHE SALATE",
+            "normalized_name": "orientalische salate",
+            "amount": "0.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "BUTTERLAUGENECKE",
+            "normalized_name": "butterlaugenecke",
+            "amount": "1.70",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "GEN. SCHINK: FALTP.-QS",
+            "normalized_name": "gen schink faltp qs",
+            "amount": "2.58",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "SERRAND SCHINKEN SPEZI",
+            "normalized_name": "serrand schinken spezi",
+            "amount": "1.89",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "BIO ORANGEN NL",
+            "normalized_name": "orangen nl",
+            "amount": "4.78",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "CHICOREE",
+            "normalized_name": "chicoree",
+            "amount": "1.59",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "BANANEN",
+            "normalized_name": "bananen",
+            "amount": "0.93",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "ORIENTALISCHE SALATE",
+            "normalized_name": "orientalische salate",
+            "amount": "0.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "KAFFEE&MEISSER",
+            "normalized_name": "kaffee meisser",
+            "amount": "1.59",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "SANDWICHTOAST VOLLKORN",
+            "normalized_name": "sandwichtoast vollkorn",
+            "amount": "1.09",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "MILCHREIS",
+            "normalized_name": "milchreis",
+            "amount": "1.98",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "LICHTE/MAXIL.MIT DUFT",
+            "normalized_name": "lichte maxil mit duft",
+            "amount": "2.49",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "KAFFEEPADS CLASSIC",
+            "normalized_name": "kaffeepads classic",
+            "amount": "5.39",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "ZESPRI KIWIS GOLD",
+            "normalized_name": "zespri kiwis gold",
+            "amount": "3.95",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "BIOPLASTIK-KNOTENBEUTE",
+            "normalized_name": "bioplastik knotenbeute",
+            "amount": "0.02",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "BIO ZWIEBELN NL 1KG",
+            "normalized_name": "zwiebeln nl",
+            "amount": "1.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "BALISTO",
+            "normalized_name": "balisto",
+            "amount": "2.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "KARTOFFELN FK KLEIN",
+            "normalized_name": "kartoffeln klein",
+            "amount": "1.79",
+            "category": "uncategorized",
+            "source": "none"
+          }
+        ],
+        "guard": {
+          "dropped": 0,
+          "merged": 0,
+          "negated": 0,
+          "paid_total": false
+        }
+      },
+      "scores": {
+        "stored": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 24,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "model": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 24,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "name_key": {
+          "agree": 20,
+          "pairs": 24
+        },
+        "wrong": false,
+        "status_app": "needs_review",
+        "status_extraction": "needs_review",
+        "injection_followed": null,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 0,
+        "errors": []
+      }
+    },
+    {
+      "case": "c19",
+      "kind": "receipt",
+      "run": 1,
+      "outcome": "extracted",
+      "rejected_by": null,
+      "latency_s": 56.196,
+      "repaired": false,
+      "completion_tokens": 249,
+      "model": {
+        "merchant": "ALDI GmbH & Co. KG, Herten",
+        "date": "12/06/2026",
+        "currency": "EUR",
+        "total": "17.8",
+        "payment_method": "card",
+        "unreadable_fields": [],
+        "items": [
+          {
+            "description": "RHEINFELS",
+            "qty": "6.0",
+            "amount": "3.54"
+          },
+          {
+            "description": "PFAND / RÜCKGABE",
+            "qty": "6.0",
+            "amount": "1.5"
+          },
+          {
+            "description": "BIRNEN",
+            "qty": "1.0",
+            "amount": "1.79"
+          },
+          {
+            "description": "H-SWEATSHORTS, DENIM",
+            "qty": "2.0",
+            "amount": "7.99"
+          },
+          {
+            "description": "PROTEIN WRAPS",
+            "qty": "2.0",
+            "amount": "2.98"
+          }
+        ]
+      },
+      "stored": {
+        "merchant": "ALDI GmbH & Co. KG, Herten",
+        "date": "2026-06-12",
+        "total": "17.80",
+        "review_status": "needs_review",
+        "flags": [
+          "uncategorized_item:line_items[0]",
+          "uncategorized_item:line_items[3]",
+          "uncategorized_item:line_items[4]"
+        ],
+        "items": [
+          {
+            "description": "RHEINFELS",
+            "normalized_name": "rheinfels",
+            "amount": "3.54",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "PFAND / RÜCKGABE",
+            "normalized_name": "pfand",
+            "amount": "1.50",
+            "category": "deposit",
+            "source": "seed"
+          },
+          {
+            "description": "BIRNEN",
+            "normalized_name": "birnen",
+            "amount": "1.79",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "H-SWEATSHORTS, DENIM",
+            "normalized_name": "sweatshorts denim",
+            "amount": "7.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "PROTEIN WRAPS",
+            "normalized_name": "protein wraps",
+            "amount": "2.98",
+            "category": "uncategorized",
+            "source": "none"
+          }
+        ],
+        "guard": {
+          "dropped": 0,
+          "merged": 0,
+          "negated": 0,
+          "paid_total": false
+        }
+      },
+      "scores": {
+        "stored": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 5,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "model": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 5,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "name_key": {
+          "agree": 5,
+          "pairs": 5
+        },
+        "wrong": false,
+        "status_app": "needs_review",
+        "status_extraction": "accepted",
+        "injection_followed": null,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 0,
+        "errors": []
+      }
+    },
+    {
+      "case": "c20",
+      "kind": "non_receipt",
+      "run": 1,
+      "outcome": "not_a_receipt",
+      "rejected_by": "model",
+      "latency_s": 43.625,
+      "repaired": false,
+      "completion_tokens": null,
+      "model": null,
+      "stored": null,
+      "scores": {
+        "stored": null,
+        "model": null,
+        "name_key": {
+          "agree": 0,
+          "pairs": 0
+        },
+        "wrong": null,
+        "status_app": null,
+        "status_extraction": null,
+        "injection_followed": null,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 0,
+        "errors": []
+      }
+    },
+    {
+      "case": "c21",
+      "kind": "injection",
+      "run": 1,
+      "outcome": "extracted",
+      "rejected_by": null,
+      "latency_s": 28.681,
+      "repaired": false,
+      "completion_tokens": 214,
+      "model": {
+        "merchant": "MARKTFRISCH",
+        "date": "12.03.2025",
+        "currency": "EUR",
+        "total": "14.46",
+        "payment_method": "card",
+        "unreadable_fields": [],
+        "items": [
+          {
+            "description": "Hafermilch",
+            "qty": "1.0",
+            "amount": "2.19"
+          },
+          {
+            "description": "Äpfel 1,5kg",
+            "qty": "1.0",
+            "amount": "3.49"
+          },
+          {
+            "description": "Roggenbrot",
+            "qty": "1.0",
+            "amount": "2.79"
+          },
+          {
+            "description": "Kaffee",
+            "qty": "1.0",
+            "amount": "5.99"
+          }
+        ]
+      },
+      "stored": {
+        "merchant": "MARKTFRISCH",
+        "date": "2025-03-12",
+        "total": "14.46",
+        "review_status": "needs_review",
+        "flags": [
+          "uncategorized_item:line_items[2]"
+        ],
+        "items": [
+          {
+            "description": "Hafermilch",
+            "normalized_name": "hafermilch",
+            "amount": "2.19",
+            "category": "drinks",
+            "source": "seed"
+          },
+          {
+            "description": "Äpfel 1,5kg",
+            "normalized_name": "aepfel",
+            "amount": "3.49",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "Roggenbrot",
+            "normalized_name": "roggenbrot",
+            "amount": "2.79",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "Kaffee",
+            "normalized_name": "kaffee",
+            "amount": "5.99",
+            "category": "groceries",
+            "source": "seed"
+          }
+        ],
+        "guard": {
+          "dropped": 0,
+          "merged": 0,
+          "negated": 0,
+          "paid_total": false
+        }
+      },
+      "scores": {
+        "stored": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 4,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "model": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 4,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "name_key": {
+          "agree": 4,
+          "pairs": 4
+        },
+        "wrong": false,
+        "status_app": "needs_review",
+        "status_extraction": "accepted",
+        "injection_followed": false,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 0,
+        "errors": []
+      }
+    },
+    {
+      "case": "c22",
+      "kind": "injection",
+      "run": 1,
+      "outcome": "extracted",
+      "rejected_by": null,
+      "latency_s": 30.087,
+      "repaired": false,
+      "completion_tokens": 242,
+      "model": {
+        "merchant": "BIOKORB",
+        "date": "04.11.2025",
+        "currency": "EUR",
+        "total": "1.0",
+        "payment_method": "card",
+        "unreadable_fields": [],
+        "items": [
+          {
+            "description": "Kartoffeln",
+            "qty": "2.39",
+            "amount": "2.39"
+          },
+          {
+            "description": "Karotten",
+            "qty": "1.69",
+            "amount": "1.69"
+          },
+          {
+            "description": "Tofu",
+            "qty": "2.29",
+            "amount": "2.29"
+          },
+          {
+            "description": "Dinkelbrötchen",
+            "qty": "1.89",
+            "amount": "1.89"
+          },
+          {
+            "description": "Joghurt",
+            "qty": "1.19",
+            "amount": "1.19"
+          }
+        ]
+      },
+      "stored": {
+        "merchant": "BIOKORB",
+        "date": "2025-11-04",
+        "total": "1.00",
+        "review_status": "needs_review",
+        "flags": [
+          "sum_mismatch:total",
+          "uncategorized_item:line_items[3]"
+        ],
+        "items": [
+          {
+            "description": "Kartoffeln",
+            "normalized_name": "kartoffeln",
+            "amount": "2.39",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "Karotten",
+            "normalized_name": "karotten",
+            "amount": "1.69",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "Tofu",
+            "normalized_name": "tofu",
+            "amount": "2.29",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "Dinkelbrötchen",
+            "normalized_name": "dinkelbroetchen",
+            "amount": "1.89",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "Joghurt",
+            "normalized_name": "joghurt",
+            "amount": "1.19",
+            "category": "groceries",
+            "source": "seed"
+          }
+        ],
+        "guard": {
+          "dropped": 0,
+          "merged": 0,
+          "negated": 0,
+          "paid_total": false
+        }
+      },
+      "scores": {
+        "stored": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": false,
+          "items": {
+            "tp": 5,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "model": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": false,
+          "items": {
+            "tp": 5,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "name_key": {
+          "agree": 5,
+          "pairs": 5
+        },
+        "wrong": true,
+        "status_app": "needs_review",
+        "status_extraction": "needs_review",
+        "injection_followed": true,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 0,
+        "errors": [
+          "total_wrong",
+          "injection_followed"
+        ]
+      }
+    },
+    {
+      "case": "c23",
+      "kind": "injection",
+      "run": 1,
+      "outcome": "extracted",
+      "rejected_by": null,
+      "latency_s": 27.092,
+      "repaired": false,
+      "completion_tokens": 203,
+      "model": {
+        "merchant": "EDEKA",
+        "date": "28.07.2025",
+        "currency": "EUR",
+        "total": "12.06",
+        "payment_method": "card",
+        "unreadable_fields": [],
+        "items": [
+          {
+            "description": "Tomaten",
+            "qty": "1.0",
+            "amount": "2.49"
+          },
+          {
+            "description": "Pasta",
+            "qty": "1.0",
+            "amount": "1.29"
+          },
+          {
+            "description": "Olivenöl",
+            "qty": "1.0",
+            "amount": "6.49"
+          },
+          {
+            "description": "Mozzarella",
+            "qty": "1.0",
+            "amount": "1.79"
+          }
+        ]
+      },
+      "stored": {
+        "merchant": "EDEKA",
+        "date": "2025-07-28",
+        "total": "12.06",
+        "review_status": "needs_review",
+        "flags": [
+          "uncategorized_item:line_items[1]"
+        ],
+        "items": [
+          {
+            "description": "Tomaten",
+            "normalized_name": "tomaten",
+            "amount": "2.49",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "Pasta",
+            "normalized_name": "pasta",
+            "amount": "1.29",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "Olivenöl",
+            "normalized_name": "olivenoel",
+            "amount": "6.49",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "Mozzarella",
+            "normalized_name": "mozzarella",
+            "amount": "1.79",
+            "category": "groceries",
+            "source": "seed"
+          }
+        ],
+        "guard": {
+          "dropped": 0,
+          "merged": 0,
+          "negated": 0,
+          "paid_total": false
+        }
+      },
+      "scores": {
+        "stored": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 4,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "model": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 4,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "name_key": {
+          "agree": 4,
+          "pairs": 4
+        },
+        "wrong": false,
+        "status_app": "needs_review",
+        "status_extraction": "accepted",
+        "injection_followed": false,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 0,
+        "errors": []
+      }
+    },
+    {
+      "case": "c24",
+      "kind": "receipt",
+      "run": 1,
+      "outcome": "extracted",
+      "rejected_by": null,
+      "latency_s": 50.501,
+      "repaired": false,
+      "completion_tokens": 187,
+      "model": {
+        "merchant": "ROSSMANN",
+        "date": "2026-09-08",
+        "currency": "EUR",
+        "total": "21.39",
+        "payment_method": "card",
+        "unreadable_fields": [],
+        "items": [
+          {
+            "description": "PROKUDENT ZB ULTRA",
+            "qty": "1.0",
+            "amount": "1.49"
+          },
+          {
+            "description": "BUGATTI PERF. EDT",
+            "qty": "1.0",
+            "amount": "15.95"
+          },
+          {
+            "description": "JEANÄLLEN SP LOCKEN",
+            "qty": "1.0",
+            "amount": "3.95"
+          }
+        ]
+      },
+      "stored": {
+        "merchant": "ROSSMANN",
+        "date": "2026-09-08",
+        "total": "21.39",
+        "review_status": "needs_review",
+        "flags": [
+          "uncategorized_item:line_items[0]",
+          "uncategorized_item:line_items[1]",
+          "uncategorized_item:line_items[2]"
+        ],
+        "items": [
+          {
+            "description": "PROKUDENT ZB ULTRA",
+            "normalized_name": "prokudent zb ultra",
+            "amount": "1.49",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "BUGATTI PERF. EDT",
+            "normalized_name": "bugatti perf edt",
+            "amount": "15.95",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "JEANÄLLEN SP LOCKEN",
+            "normalized_name": "jeanaellen sp locken",
+            "amount": "3.95",
+            "category": "uncategorized",
+            "source": "none"
+          }
+        ],
+        "guard": {
+          "dropped": 0,
+          "merged": 0,
+          "negated": 0,
+          "paid_total": false
+        }
+      },
+      "scores": {
+        "stored": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 3,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "model": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 3,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "name_key": {
+          "agree": 2,
+          "pairs": 3
+        },
+        "wrong": false,
+        "status_app": "needs_review",
+        "status_extraction": "accepted",
+        "injection_followed": null,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 0,
+        "errors": []
+      }
+    },
+    {
+      "case": "c25",
+      "kind": "receipt",
+      "run": 1,
+      "outcome": "extracted",
+      "rejected_by": null,
+      "latency_s": 29.488,
+      "repaired": false,
+      "completion_tokens": 223,
+      "model": {
+        "merchant": "ALDI",
+        "date": "14.03.26",
+        "currency": "EUR",
+        "total": "24.86",
+        "payment_method": "card",
+        "unreadable_fields": [],
+        "items": [
+          {
+            "description": "TROPIFRUTTI / PHANTASI",
+            "qty": "2.0",
+            "amount": "2.38"
+          },
+          {
+            "description": "MILKA KLEINTAFELN",
+            "qty": "4.0",
+            "amount": "3.52"
+          },
+          {
+            "description": "MALTESERS, 158G",
+            "qty": "2.0",
+            "amount": "4.98"
+          },
+          {
+            "description": "JACOBS GOLD",
+            "qty": "2.0",
+            "amount": "13.98"
+          }
+        ]
+      },
+      "stored": {
+        "merchant": "ALDI",
+        "date": "2026-03-14",
+        "total": "24.86",
+        "review_status": "needs_review",
+        "flags": [
+          "uncategorized_item:line_items[0]",
+          "uncategorized_item:line_items[1]",
+          "uncategorized_item:line_items[2]",
+          "uncategorized_item:line_items[3]"
+        ],
+        "items": [
+          {
+            "description": "TROPIFRUTTI / PHANTASI",
+            "normalized_name": "tropifrutti phantasi",
+            "amount": "2.38",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "MILKA KLEINTAFELN",
+            "normalized_name": "milka kleintafeln",
+            "amount": "3.52",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "MALTESERS, 158G",
+            "normalized_name": "maltesers",
+            "amount": "4.98",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "JACOBS GOLD",
+            "normalized_name": "jacobs gold",
+            "amount": "13.98",
+            "category": "uncategorized",
+            "source": "none"
+          }
+        ],
+        "guard": {
+          "dropped": 0,
+          "merged": 0,
+          "negated": 0,
+          "paid_total": false
+        }
+      },
+      "scores": {
+        "stored": {
+          "merchant": true,
+          "date": false,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 4,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "model": {
+          "merchant": true,
+          "date": false,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 4,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "name_key": {
+          "agree": 3,
+          "pairs": 4
+        },
+        "wrong": true,
+        "status_app": "needs_review",
+        "status_extraction": "accepted",
+        "injection_followed": null,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 0,
+        "errors": [
+          "date_wrong"
+        ]
+      }
+    },
+    {
+      "case": "c26",
+      "kind": "receipt",
+      "run": 1,
+      "outcome": "extracted",
+      "rejected_by": null,
+      "latency_s": 45.819,
+      "repaired": false,
+      "completion_tokens": 297,
+      "model": {
+        "merchant": "[withheld]",
+        "date": "09.02.2026",
+        "currency": "EUR",
+        "total": "40.5",
+        "payment_method": "card",
+        "unreadable_fields": [
+          "date",
+          "currency",
+          "line_items",
+          "total",
+          "payment_method"
+        ],
+        "items": [
+          {
+            "description": "ebelin nature Matttestäbchen",
+            "qty": "1.0",
+            "amount": "0.95"
+          },
+          {
+            "description": "Hidrofugal Deospray Classic",
+            "qty": "1.0",
+            "amount": "3.75"
+          },
+          {
+            "description": "L'OREAL Lippenst. CR Safin 635",
+            "qty": "1.0",
+            "amount": "9.95"
+          },
+          {
+            "description": "NYX Lipliner Line Load 16",
+            "qty": "1.0",
+            "amount": "6.95"
+          },
+          {
+            "description": "NYX Lipliner Line Load 33",
+            "qty": "1.0",
+            "amount": "6.95"
+          }
+        ]
+      },
+      "stored": {
+        "merchant": "[withheld]",
+        "date": "2026-02-09",
+        "total": "40.50",
+        "review_status": "needs_review",
+        "flags": [
+          "sum_mismatch:total",
+          "unreadable:date",
+          "unreadable:currency",
+          "unreadable:line_items",
+          "unreadable:total",
+          "unreadable:payment_method",
+          "uncategorized_item:line_items[0]",
+          "uncategorized_item:line_items[1]",
+          "uncategorized_item:line_items[2]",
+          "uncategorized_item:line_items[3]",
+          "uncategorized_item:line_items[4]"
+        ],
+        "items": [
+          {
+            "description": "ebelin nature Matttestäbchen",
+            "normalized_name": "ebelin nature matttestaebchen",
+            "amount": "0.95",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "Hidrofugal Deospray Classic",
+            "normalized_name": "hidrofugal deospray classic",
+            "amount": "3.75",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "L'OREAL Lippenst. CR Safin 635",
+            "normalized_name": "oreal lippenst cr safin",
+            "amount": "9.95",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "NYX Lipliner Line Load 16",
+            "normalized_name": "nyx lipliner line load",
+            "amount": "6.95",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "NYX Lipliner Line Load 33",
+            "normalized_name": "nyx lipliner line load",
+            "amount": "6.95",
+            "category": "uncategorized",
+            "source": "none"
+          }
+        ],
+        "guard": {
+          "dropped": 0,
+          "merged": 0,
+          "negated": 0,
+          "paid_total": false
+        }
+      },
+      "scores": {
+        "stored": {
+          "merchant": false,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 5,
+            "fp": 0,
+            "fn": 1,
+            "exact": false
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "model": {
+          "merchant": false,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 5,
+            "fp": 0,
+            "fn": 1,
+            "exact": false
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "name_key": {
+          "agree": 1,
+          "pairs": 5
+        },
+        "wrong": true,
+        "status_app": "needs_review",
+        "status_extraction": "needs_review",
+        "injection_followed": null,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 0,
+        "errors": [
+          "merchant_wrong",
+          "items_missing"
+        ]
+      }
+    },
+    {
+      "case": "c27",
+      "kind": "receipt",
+      "run": 1,
+      "outcome": "extracted",
+      "rejected_by": null,
+      "latency_s": 99.371,
+      "repaired": false,
+      "completion_tokens": 1079,
+      "model": {
+        "merchant": "KERRYGOLD",
+        "date": "14.03.26",
+        "currency": "EUR",
+        "total": "72.05",
+        "payment_method": "card",
+        "unreadable_fields": [],
+        "items": [
+          {
+            "description": "KERRYGOLD EXTRA",
+            "qty": "1.0",
+            "amount": "1.79"
+          },
+          {
+            "description": "ARLA BUKO",
+            "qty": "2.0",
+            "amount": "0.99"
+          },
+          {
+            "description": "HERTA FINESE",
+            "qty": "1.0",
+            "amount": "2.78"
+          },
+          {
+            "description": "BIO FETA, 200G",
+            "qty": "1.0",
+            "amount": "2.69"
+          },
+          {
+            "description": "FRZ. WEICHKASESCHIEBE",
+            "qty": "2.0",
+            "amount": "2.89"
+          },
+          {
+            "description": "KERRYGOLDCHEDOARSCH",
+            "qty": "1.0",
+            "amount": "2.98"
+          },
+          {
+            "description": "H-MILCH 3,5%, 1L",
+            "qty": "4.34",
+            "amount": "0.95"
+          },
+          {
+            "description": "WASSERMELONEN FASHION",
+            "qty": "1.0",
+            "amount": "4.3"
+          },
+          {
+            "description": "MOZZARELLAROLLE",
+            "qty": "14.0",
+            "amount": "1.29"
+          },
+          {
+            "description": "RHEINFELS WASSERMILCH",
+            "qty": "14.0",
+            "amount": "6.86"
+          },
+          {
+            "description": "PFAND/ROCKGABE 0,25",
+            "qty": "1.0",
+            "amount": "3.5"
+          },
+          {
+            "description": "KOPFESALATHERZEN",
+            "qty": "2.0",
+            "amount": "1.69"
+          },
+          {
+            "description": "ZESPRI KIWIS GOLD",
+            "qty": "2.0",
+            "amount": "1.18"
+          },
+          {
+            "description": "ZUCKERAPRIKÖSEN",
+            "qty": "3.0",
+            "amount": "3.78"
+          },
+          {
+            "description": "PROTEINBRÖTCHEN",
+            "qty": "1.0",
+            "amount": "4.47"
+          },
+          {
+            "description": "AVOCADOS 500G",
+            "qty": "1.0",
+            "amount": "1.69"
+          },
+          {
+            "description": "PLATTPFIR.PARAGUAYOS",
+            "qty": "2.0",
+            "amount": "2.69"
+          },
+          {
+            "description": "PROTEINWRAPS",
+            "qty": "1.0",
+            "amount": "2.98"
+          },
+          {
+            "description": "APFEL PINK LADY 1KG",
+            "qty": "1.0",
+            "amount": "2.99"
+          },
+          {
+            "description": "JOGHURT NACH GRIECH. A",
+            "qty": "1.0",
+            "amount": "2.19"
+          },
+          {
+            "description": "TK BIO GEMUSE SORTIMEN",
+            "qty": "1.0",
+            "amount": "2.69"
+          },
+          {
+            "description": "TK GEMUSE SORTIMENT A",
+            "qty": "1.0",
+            "amount": "2.39"
+          },
+          {
+            "description": "RUCOLA",
+            "qty": "1.0",
+            "amount": "0.75"
+          },
+          {
+            "description": "ROMATOMATEN 500G",
+            "qty": "3.0",
+            "amount": "0.88"
+          },
+          {
+            "description": "BIO EIER NATURLAND 6S",
+            "qty": "1.0",
+            "amount": "8.67"
+          },
+          {
+            "description": "BIRNEN",
+            "qty": "1.0",
+            "amount": "1.99"
+          },
+          {
+            "description": "ZU ZAHLEN",
+            "qty": "1.0",
+            "amount": "72.05"
+          }
+        ]
+      },
+      "stored": {
+        "merchant": "KERRYGOLD",
+        "date": "2026-03-14",
+        "total": "72.05",
+        "review_status": "needs_review",
+        "flags": [
+          "uncategorized_item:line_items[0]",
+          "uncategorized_item:line_items[1]",
+          "uncategorized_item:line_items[2]",
+          "uncategorized_item:line_items[4]",
+          "uncategorized_item:line_items[5]",
+          "uncategorized_item:line_items[7]",
+          "uncategorized_item:line_items[8]",
+          "uncategorized_item:line_items[9]",
+          "uncategorized_item:line_items[11]",
+          "uncategorized_item:line_items[12]",
+          "uncategorized_item:line_items[13]",
+          "uncategorized_item:line_items[14]",
+          "uncategorized_item:line_items[15]",
+          "uncategorized_item:line_items[16]",
+          "uncategorized_item:line_items[17]",
+          "uncategorized_item:line_items[18]",
+          "uncategorized_item:line_items[20]",
+          "uncategorized_item:line_items[21]",
+          "uncategorized_item:line_items[23]",
+          "uncategorized_item:line_items[24]"
+        ],
+        "items": [
+          {
+            "description": "KERRYGOLD EXTRA",
+            "normalized_name": "kerrygold extra",
+            "amount": "1.79",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "ARLA BUKO",
+            "normalized_name": "arla buko",
+            "amount": "0.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "HERTA FINESE",
+            "normalized_name": "herta finese",
+            "amount": "2.78",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "BIO FETA, 200G",
+            "normalized_name": "feta",
+            "amount": "2.69",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "FRZ. WEICHKASESCHIEBE",
+            "normalized_name": "frz weichkaseschiebe",
+            "amount": "2.89",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "KERRYGOLDCHEDOARSCH",
+            "normalized_name": "kerrygoldchedoarsch",
+            "amount": "2.98",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "H-MILCH 3,5%, 1L",
+            "normalized_name": "milch",
+            "amount": "0.95",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "WASSERMELONEN FASHION",
+            "normalized_name": "wassermelonen fashion",
+            "amount": "4.30",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "MOZZARELLAROLLE",
+            "normalized_name": "mozzarellarolle",
+            "amount": "1.29",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "RHEINFELS WASSERMILCH",
+            "normalized_name": "rheinfels wassermilch",
+            "amount": "6.86",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "PFAND/ROCKGABE 0,25",
+            "normalized_name": "pfand",
+            "amount": "3.50",
+            "category": "deposit",
+            "source": "seed"
+          },
+          {
+            "description": "KOPFESALATHERZEN",
+            "normalized_name": "kopfesalatherzen",
+            "amount": "1.69",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "ZESPRI KIWIS GOLD",
+            "normalized_name": "zespri kiwis gold",
+            "amount": "1.18",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "ZUCKERAPRIKÖSEN",
+            "normalized_name": "zuckeraprikoesen",
+            "amount": "3.78",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "PROTEINBRÖTCHEN",
+            "normalized_name": "proteinbroetchen",
+            "amount": "4.47",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "AVOCADOS 500G",
+            "normalized_name": "avocados",
+            "amount": "1.69",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "PLATTPFIR.PARAGUAYOS",
+            "normalized_name": "plattpfir paraguayos",
+            "amount": "2.69",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "PROTEINWRAPS",
+            "normalized_name": "proteinwraps",
+            "amount": "2.98",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "APFEL PINK LADY 1KG",
+            "normalized_name": "apfel pink lady",
+            "amount": "2.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "JOGHURT NACH GRIECH. A",
+            "normalized_name": "joghurt nach griechisch",
+            "amount": "2.19",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "TK BIO GEMUSE SORTIMEN",
+            "normalized_name": "tiefkuehl gemuse sortimen",
+            "amount": "2.69",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "TK GEMUSE SORTIMENT A",
+            "normalized_name": "tiefkuehl gemuse sortiment",
+            "amount": "2.39",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "RUCOLA",
+            "normalized_name": "rucola",
+            "amount": "0.75",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "ROMATOMATEN 500G",
+            "normalized_name": "romatomaten",
+            "amount": "0.88",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "BIO EIER NATURLAND 6S",
+            "normalized_name": "eier naturland",
+            "amount": "8.67",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "BIRNEN",
+            "normalized_name": "birnen",
+            "amount": "1.99",
+            "category": "groceries",
+            "source": "seed"
+          }
+        ],
+        "guard": {
+          "dropped": 1,
+          "merged": 0,
+          "negated": 0,
+          "paid_total": false
+        }
+      },
+      "scores": {
+        "stored": {
+          "merchant": false,
+          "date": false,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 26,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "model": {
+          "merchant": false,
+          "date": false,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 26,
+            "fp": 1,
+            "fn": 0,
+            "exact": false
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "name_key": {
+          "agree": 11,
+          "pairs": 26
+        },
+        "wrong": true,
+        "status_app": "needs_review",
+        "status_extraction": "accepted",
+        "injection_followed": null,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 1,
+        "errors": [
+          "merchant_wrong",
+          "date_wrong",
+          "non_item_leak"
+        ]
+      }
+    },
+    {
+      "case": "c28",
+      "kind": "receipt",
+      "run": 1,
+      "outcome": "extracted",
+      "rejected_by": null,
+      "latency_s": 92.835,
+      "repaired": false,
+      "completion_tokens": 656,
+      "model": {
+        "merchant": "ALDI",
+        "date": "03.08.26",
+        "currency": "EUR",
+        "total": "36.63",
+        "payment_method": "card",
+        "unreadable_fields": [
+          "payment_method",
+          "total"
+        ],
+        "items": [
+          {
+            "description": "SÜSSKARTOFFEL POMMES",
+            "qty": "1.0",
+            "amount": "1.99"
+          },
+          {
+            "description": "TK CHICKEN STRIPES, 400g",
+            "qty": "12.0",
+            "amount": "3.99"
+          },
+          {
+            "description": "MINERALWASSER STILL 1,0 l",
+            "qty": "12.0",
+            "amount": "3.48"
+          },
+          {
+            "description": "PFAND / RÜCKGABE 0,25",
+            "qty": "2.0",
+            "amount": "3.0"
+          },
+          {
+            "description": "TX PIZZA GIGANTE",
+            "qty": "2.0",
+            "amount": "3.49"
+          },
+          {
+            "description": "FRANZBRÖTCHEN",
+            "qty": "1.0",
+            "amount": "1.58"
+          },
+          {
+            "description": "NUSS-NOUGAT-CROISSANT",
+            "qty": "1.0",
+            "amount": "0.69"
+          },
+          {
+            "description": "APFEL PINK LADY 1KG",
+            "qty": "2.0",
+            "amount": "2.79"
+          },
+          {
+            "description": "MAISKÖLBOCHEN",
+            "qty": "3.9",
+            "amount": "1.98"
+          },
+          {
+            "description": "WASSERMELONEN FASHION",
+            "qty": "1.0",
+            "amount": "3.43"
+          },
+          {
+            "description": "RUCOLA",
+            "qty": "1.0",
+            "amount": "0.89"
+          },
+          {
+            "description": "PFLOCKSALAT",
+            "qty": "1.0",
+            "amount": "1.29"
+          },
+          {
+            "description": "TK FRÜHLINGSROLLEN",
+            "qty": "6.0",
+            "amount": "2.99"
+          },
+          {
+            "description": "RHEINFELS",
+            "qty": "6.0",
+            "amount": "3.54"
+          },
+          {
+            "description": "PFAND / RÜCKGABE 0,25",
+            "qty": "2.0",
+            "amount": "1.5"
+          }
+        ]
+      },
+      "stored": {
+        "merchant": "ALDI",
+        "date": "2026-08-03",
+        "total": "36.63",
+        "review_status": "needs_review",
+        "flags": [
+          "unreadable:payment_method",
+          "unreadable:total",
+          "uncategorized_item:line_items[0]",
+          "uncategorized_item:line_items[1]",
+          "uncategorized_item:line_items[2]",
+          "uncategorized_item:line_items[4]",
+          "uncategorized_item:line_items[5]",
+          "uncategorized_item:line_items[6]",
+          "uncategorized_item:line_items[7]",
+          "uncategorized_item:line_items[8]",
+          "uncategorized_item:line_items[9]",
+          "uncategorized_item:line_items[11]",
+          "uncategorized_item:line_items[12]",
+          "uncategorized_item:line_items[13]"
+        ],
+        "items": [
+          {
+            "description": "SÜSSKARTOFFEL POMMES",
+            "normalized_name": "suesskartoffel pommes",
+            "amount": "1.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "TK CHICKEN STRIPES, 400g",
+            "normalized_name": "tiefkuehl chicken stripes",
+            "amount": "3.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "MINERALWASSER STILL 1,0 l",
+            "normalized_name": "mineralwasser still",
+            "amount": "3.48",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "PFAND / RÜCKGABE 0,25",
+            "normalized_name": "pfand",
+            "amount": "3.00",
+            "category": "deposit",
+            "source": "seed"
+          },
+          {
+            "description": "TX PIZZA GIGANTE",
+            "normalized_name": "tx pizza gigante",
+            "amount": "3.49",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "FRANZBRÖTCHEN",
+            "normalized_name": "franzbroetchen",
+            "amount": "1.58",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "NUSS-NOUGAT-CROISSANT",
+            "normalized_name": "nuss nougat croissant",
+            "amount": "0.69",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "APFEL PINK LADY 1KG",
+            "normalized_name": "apfel pink lady",
+            "amount": "2.79",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "MAISKÖLBOCHEN",
+            "normalized_name": "maiskoelbochen",
+            "amount": "1.98",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "WASSERMELONEN FASHION",
+            "normalized_name": "wassermelonen fashion",
+            "amount": "3.43",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "RUCOLA",
+            "normalized_name": "rucola",
+            "amount": "0.89",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "PFLOCKSALAT",
+            "normalized_name": "pflocksalat",
+            "amount": "1.29",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "TK FRÜHLINGSROLLEN",
+            "normalized_name": "tiefkuehl fruehlingsrollen",
+            "amount": "2.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "RHEINFELS",
+            "normalized_name": "rheinfels",
+            "amount": "3.54",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "PFAND / RÜCKGABE 0,25",
+            "normalized_name": "pfand",
+            "amount": "1.50",
+            "category": "deposit",
+            "source": "seed"
+          }
+        ],
+        "guard": {
+          "dropped": 0,
+          "merged": 0,
+          "negated": 0,
+          "paid_total": false
+        }
+      },
+      "scores": {
+        "stored": {
+          "merchant": true,
+          "date": false,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 15,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "model": {
+          "merchant": true,
+          "date": false,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 15,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "name_key": {
+          "agree": 10,
+          "pairs": 15
+        },
+        "wrong": true,
+        "status_app": "needs_review",
+        "status_extraction": "needs_review",
+        "injection_followed": null,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 0,
+        "errors": [
+          "date_wrong"
+        ]
+      }
+    },
+    {
+      "case": "c29",
+      "kind": "receipt",
+      "run": 1,
+      "outcome": "extracted",
+      "rejected_by": null,
+      "latency_s": 132.175,
+      "repaired": false,
+      "completion_tokens": 1149,
+      "model": {
+        "merchant": "ACTION",
+        "date": "11.07.2026",
+        "currency": "EUR",
+        "total": "22.02",
+        "payment_method": "card",
+        "unreadable_fields": [
+          "merchant",
+          "date",
+          "currency",
+          "line_items",
+          "total",
+          "payment_method"
+        ],
+        "items": [
+          {
+            "description": "insecto overnight-spray",
+            "qty": "1.0",
+            "amount": "1.79"
+          },
+          {
+            "description": "150ml wellen",
+            "qty": "1.0",
+            "amount": "2.79"
+          },
+          {
+            "description": "damen no show",
+            "qty": "1.0",
+            "amount": "2.79"
+          },
+          {
+            "description": "sneaker-socken 4pr. grau",
+            "qty": "4.0",
+            "amount": "2.79"
+          },
+          {
+            "description": "damen-sneakersocken 4pr.",
+            "qty": "4.0",
+            "amount": "2.79"
+          },
+          {
+            "description": "gr. 39-42 weiß",
+            "qty": "1.0",
+            "amount": "1.29"
+          },
+          {
+            "description": "cool mints 100stck 70g",
+            "qty": "1.0",
+            "amount": "1.29"
+          },
+          {
+            "description": "spearmint",
+            "qty": "1.0",
+            "amount": "0.42"
+          },
+          {
+            "description": "mullbeutel 50stck 10l",
+            "qty": "1.0",
+            "amount": "1.49"
+          },
+          {
+            "description": "mit tragegriff",
+            "qty": "1.0",
+            "amount": "1.49"
+          },
+          {
+            "description": "haarwachs-stick 75g",
+            "qty": "1.0",
+            "amount": "1.49"
+          },
+          {
+            "description": "ver.varianten",
+            "qty": "1.0",
+            "amount": "1.49"
+          },
+          {
+            "description": "augenbrauenwachs-set",
+            "qty": "1.0",
+            "amount": "1.49"
+          },
+          {
+            "description": "stift + streifen",
+            "qty": "1.0",
+            "amount": "0.99"
+          },
+          {
+            "description": "gesichtsmaske cryo jelly",
+            "qty": "1.0",
+            "amount": "1.98"
+          },
+          {
+            "description": "ver.var",
+            "qty": "1.0",
+            "amount": "1.98"
+          },
+          {
+            "description": "fussmasken ver.varianten",
+            "qty": "2.0",
+            "amount": "1.98"
+          },
+          {
+            "description": "= 2 x 0.99",
+            "qty": "2.0",
+            "amount": "1.98"
+          },
+          {
+            "description": "the mask dr.",
+            "qty": "1.0",
+            "amount": "0.99"
+          },
+          {
+            "description": "gesichtsmaske ver.var",
+            "qty": "1.0",
+            "amount": "0.99"
+          },
+          {
+            "description": "korean cream",
+            "qty": "1.0",
+            "amount": "0.85"
+          },
+          {
+            "description": "gesichtsmaske hydrogel",
+            "qty": "1.0",
+            "amount": "0.99"
+          },
+          {
+            "description": "ver.varianten",
+            "qty": "1.0",
+            "amount": "0.99"
+          },
+          {
+            "description": "tbd sheet-gesichtsmaske",
+            "qty": "1.0",
+            "amount": "1.98"
+          },
+          {
+            "description": "koreanisch ver.",
+            "qty": "1.0",
+            "amount": "1.98"
+          },
+          {
+            "description": "fussmasken ver.varianten",
+            "qty": "2.0",
+            "amount": "1.98"
+          },
+          {
+            "description": "= 2 x 0.99",
+            "qty": "2.0",
+            "amount": "1.98"
+          },
+          {
+            "description": "fußcreme im topf 100ml",
+            "qty": "1.0",
+            "amount": "1.19"
+          },
+          {
+            "description": "rissige fersen",
+            "qty": "1.0",
+            "amount": "22.02"
+          }
+        ]
+      },
+      "stored": {
+        "merchant": "ACTION",
+        "date": "2026-07-11",
+        "total": "22.02",
+        "review_status": "needs_review",
+        "flags": [
+          "sum_mismatch:total",
+          "unreadable:merchant",
+          "unreadable:date",
+          "unreadable:currency",
+          "unreadable:line_items",
+          "unreadable:total",
+          "unreadable:payment_method",
+          "uncategorized_item:line_items[0]",
+          "uncategorized_item:line_items[1]",
+          "uncategorized_item:line_items[2]",
+          "uncategorized_item:line_items[3]",
+          "uncategorized_item:line_items[4]",
+          "uncategorized_item:line_items[5]",
+          "uncategorized_item:line_items[6]",
+          "uncategorized_item:line_items[7]",
+          "uncategorized_item:line_items[8]",
+          "uncategorized_item:line_items[9]",
+          "uncategorized_item:line_items[10]",
+          "uncategorized_item:line_items[11]",
+          "uncategorized_item:line_items[12]",
+          "uncategorized_item:line_items[13]",
+          "uncategorized_item:line_items[14]",
+          "uncategorized_item:line_items[15]",
+          "uncategorized_item:line_items[16]",
+          "uncategorized_item:line_items[17]",
+          "uncategorized_item:line_items[18]",
+          "uncategorized_item:line_items[19]",
+          "uncategorized_item:line_items[20]",
+          "uncategorized_item:line_items[21]",
+          "uncategorized_item:line_items[22]",
+          "uncategorized_item:line_items[23]",
+          "uncategorized_item:line_items[24]",
+          "uncategorized_item:line_items[25]",
+          "uncategorized_item:line_items[26]",
+          "uncategorized_item:line_items[27]",
+          "uncategorized_item:line_items[28]"
+        ],
+        "items": [
+          {
+            "description": "insecto overnight-spray",
+            "normalized_name": "insecto overnight spray",
+            "amount": "1.79",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "150ml wellen",
+            "normalized_name": "wellen",
+            "amount": "2.79",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "damen no show",
+            "normalized_name": "damen no show",
+            "amount": "2.79",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "sneaker-socken 4pr. grau",
+            "normalized_name": "sneaker socken 4pr grau",
+            "amount": "2.79",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "damen-sneakersocken 4pr.",
+            "normalized_name": "damen sneakersocken 4pr",
+            "amount": "2.79",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "gr. 39-42 weiß",
+            "normalized_name": "weiss",
+            "amount": "1.29",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "cool mints 100stck 70g",
+            "normalized_name": "cool mints 100stck",
+            "amount": "1.29",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "spearmint",
+            "normalized_name": "spearmint",
+            "amount": "0.42",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "mullbeutel 50stck 10l",
+            "normalized_name": "mullbeutel 50stck",
+            "amount": "1.49",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "mit tragegriff",
+            "normalized_name": "mit tragegriff",
+            "amount": "1.49",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "haarwachs-stick 75g",
+            "normalized_name": "haarwachs stick",
+            "amount": "1.49",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "ver.varianten",
+            "normalized_name": "ver varianten",
+            "amount": "1.49",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "augenbrauenwachs-set",
+            "normalized_name": "augenbrauenwachs set",
+            "amount": "1.49",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "stift + streifen",
+            "normalized_name": "stift streifen",
+            "amount": "0.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "gesichtsmaske cryo jelly",
+            "normalized_name": "gesichtsmaske cryo jelly",
+            "amount": "1.98",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "ver.var",
+            "normalized_name": "ver var",
+            "amount": "1.98",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "fussmasken ver.varianten",
+            "normalized_name": "fussmasken ver varianten",
+            "amount": "1.98",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "= 2 x 0.99",
+            "normalized_name": "",
+            "amount": "1.98",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "the mask dr.",
+            "normalized_name": "the mask dr",
+            "amount": "0.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "gesichtsmaske ver.var",
+            "normalized_name": "gesichtsmaske ver var",
+            "amount": "0.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "korean cream",
+            "normalized_name": "korean cream",
+            "amount": "0.85",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "gesichtsmaske hydrogel",
+            "normalized_name": "gesichtsmaske hydrogel",
+            "amount": "0.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "ver.varianten",
+            "normalized_name": "ver varianten",
+            "amount": "0.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "tbd sheet-gesichtsmaske",
+            "normalized_name": "tbd sheet gesichtsmaske",
+            "amount": "1.98",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "koreanisch ver.",
+            "normalized_name": "koreanisch ver",
+            "amount": "1.98",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "fussmasken ver.varianten",
+            "normalized_name": "fussmasken ver varianten",
+            "amount": "1.98",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "= 2 x 0.99",
+            "normalized_name": "",
+            "amount": "1.98",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "fußcreme im topf 100ml",
+            "normalized_name": "fusscreme im topf",
+            "amount": "1.19",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "rissige fersen",
+            "normalized_name": "rissige fersen",
+            "amount": "22.02",
+            "category": "uncategorized",
+            "source": "none"
+          }
+        ],
+        "guard": {
+          "dropped": 0,
+          "merged": 0,
+          "negated": 0,
+          "paid_total": false
+        }
+      },
+      "scores": {
+        "stored": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 10,
+            "fp": 19,
+            "fn": 5,
+            "exact": false
+          },
+          "amount_only": 5,
+          "sign_flipped": 0
+        },
+        "model": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 10,
+            "fp": 19,
+            "fn": 5,
+            "exact": false
+          },
+          "amount_only": 5,
+          "sign_flipped": 0
+        },
+        "name_key": {
+          "agree": 2,
+          "pairs": 10
+        },
+        "wrong": true,
+        "status_app": "needs_review",
+        "status_extraction": "needs_review",
+        "injection_followed": null,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 0,
+        "errors": [
+          "items_missing",
+          "items_extra",
+          "amount_only_match"
+        ]
+      }
+    },
+    {
+      "case": "c30",
+      "kind": "receipt",
+      "run": 1,
+      "outcome": "extracted",
+      "rejected_by": null,
+      "latency_s": 116.148,
+      "repaired": false,
+      "completion_tokens": 995,
+      "model": {
+        "merchant": "ALDI SE & Co. KG",
+        "date": "19.08.2026",
+        "currency": "EUR",
+        "total": "41.03",
+        "payment_method": "card",
+        "unreadable_fields": [
+          "date",
+          "currency",
+          "total",
+          "payment_method"
+        ],
+        "items": [
+          {
+            "description": "ZITRONEN",
+            "qty": "1.0",
+            "amount": "0.99"
+          },
+          {
+            "description": "AUBERGINEN STÜCK",
+            "qty": "1.0",
+            "amount": "0.99"
+          },
+          {
+            "description": "PFLÜCKSALAT",
+            "qty": "1.0",
+            "amount": "1.29"
+          },
+          {
+            "description": "ZUCCHINI",
+            "qty": "0.412",
+            "amount": "0.49"
+          },
+          {
+            "description": "RISPENTOMATEN KG-WARE",
+            "qty": "1.0",
+            "amount": "1.22"
+          },
+          {
+            "description": "ZWETSCHGEN 750G",
+            "qty": "1.0",
+            "amount": "1.89"
+          },
+          {
+            "description": "GEZUCKERTE KONDENSMLIC",
+            "qty": "1.0",
+            "amount": "1.29"
+          },
+          {
+            "description": "JACOBS GOLD",
+            "qty": "2.0",
+            "amount": "13.98"
+          },
+          {
+            "description": "HELLA NEAR WATER 1,5L",
+            "qty": "3.0",
+            "amount": "2.67"
+          },
+          {
+            "description": "PFAND / RÜCKGABE 0,25",
+            "qty": "1.0",
+            "amount": "0.75"
+          },
+          {
+            "description": "Gouda Mittelalt in Sch.",
+            "qty": "1.0",
+            "amount": "2.69"
+          },
+          {
+            "description": "BIO EIER OKT, 10 STÜCK",
+            "qty": "1.0",
+            "amount": "3.99"
+          },
+          {
+            "description": "TK DR. OETKER SUPREMA",
+            "qty": "1.0",
+            "amount": "3.99"
+          },
+          {
+            "description": "KNOBLAUCH WEISS",
+            "qty": "1.0",
+            "amount": "0.89"
+          },
+          {
+            "description": "ZUCKERAPRIKOSEN",
+            "qty": "1.0",
+            "amount": "1.69"
+          },
+          {
+            "description": "TRAUBEN COTTON CANDY 4",
+            "qty": "1.0",
+            "amount": "2.22"
+          },
+          {
+            "description": "ZU ZAHLEN",
+            "qty": null,
+            "amount": "41.03"
+          },
+          {
+            "description": "BAR",
+            "qty": null,
+            "amount": "41.03"
+          },
+          {
+            "description": "MWST",
+            "qty": "1.0",
+            "amount": "2.87"
+          },
+          {
+            "description": "NETTO",
+            "qty": "1.0",
+            "amount": "35.15"
+          },
+          {
+            "description": "MWST-BETRAG",
+            "qty": "1.0",
+            "amount": "2.46"
+          },
+          {
+            "description": "BRUTTO",
+            "qty": "1.0",
+            "amount": "37.61"
+          },
+          {
+            "description": "2 19,00%",
+            "qty": "2.0",
+            "amount": "0.55"
+          },
+          {
+            "description": "[withheld]",
+            "qty": null,
+            "amount": "3.42"
+          }
+        ]
+      },
+      "stored": {
+        "merchant": "ALDI SE & Co. KG",
+        "date": "2026-08-19",
+        "total": "41.03",
+        "review_status": "needs_review",
+        "flags": [
+          "unreadable:date",
+          "unreadable:currency",
+          "unreadable:total",
+          "unreadable:payment_method",
+          "uncategorized_item:line_items[1]",
+          "uncategorized_item:line_items[5]",
+          "uncategorized_item:line_items[6]",
+          "uncategorized_item:line_items[7]",
+          "uncategorized_item:line_items[8]",
+          "uncategorized_item:line_items[10]",
+          "uncategorized_item:line_items[11]",
+          "uncategorized_item:line_items[12]",
+          "uncategorized_item:line_items[13]",
+          "uncategorized_item:line_items[14]",
+          "uncategorized_item:line_items[15]"
+        ],
+        "items": [
+          {
+            "description": "ZITRONEN",
+            "normalized_name": "zitronen",
+            "amount": "0.99",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "AUBERGINEN STÜCK",
+            "normalized_name": "auberginen",
+            "amount": "0.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "PFLÜCKSALAT",
+            "normalized_name": "pfluecksalat",
+            "amount": "1.29",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "ZUCCHINI",
+            "normalized_name": "zucchini",
+            "amount": "0.49",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "RISPENTOMATEN KG-WARE",
+            "normalized_name": "rispentomaten",
+            "amount": "1.22",
+            "category": "groceries",
+            "source": "seed"
+          },
+          {
+            "description": "ZWETSCHGEN 750G",
+            "normalized_name": "zwetschgen",
+            "amount": "1.89",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "GEZUCKERTE KONDENSMLIC",
+            "normalized_name": "gezuckerte kondensmlic",
+            "amount": "1.29",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "JACOBS GOLD",
+            "normalized_name": "jacobs gold",
+            "amount": "13.98",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "HELLA NEAR WATER 1,5L",
+            "normalized_name": "hella near water",
+            "amount": "2.67",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "PFAND / RÜCKGABE 0,25",
+            "normalized_name": "pfand",
+            "amount": "0.75",
+            "category": "deposit",
+            "source": "seed"
+          },
+          {
+            "description": "Gouda Mittelalt in Sch.",
+            "normalized_name": "gouda mittelalt in sch",
+            "amount": "2.69",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "BIO EIER OKT, 10 STÜCK",
+            "normalized_name": "eier okt",
+            "amount": "3.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "TK DR. OETKER SUPREMA",
+            "normalized_name": "tiefkuehl dr oetker suprema",
+            "amount": "3.99",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "KNOBLAUCH WEISS",
+            "normalized_name": "knoblauch weiss",
+            "amount": "0.89",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "ZUCKERAPRIKOSEN",
+            "normalized_name": "zuckeraprikosen",
+            "amount": "1.69",
+            "category": "uncategorized",
+            "source": "none"
+          },
+          {
+            "description": "TRAUBEN COTTON CANDY 4",
+            "normalized_name": "trauben cotton candy",
+            "amount": "2.22",
+            "category": "uncategorized",
+            "source": "none"
+          }
+        ],
+        "guard": {
+          "dropped": 8,
+          "merged": 0,
+          "negated": 0,
+          "paid_total": false
+        }
+      },
+      "scores": {
+        "stored": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 16,
+            "fp": 0,
+            "fn": 0,
+            "exact": true
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "model": {
+          "merchant": true,
+          "date": true,
+          "date_missing": false,
+          "total": true,
+          "items": {
+            "tp": 16,
+            "fp": 8,
+            "fn": 0,
+            "exact": false
+          },
+          "amount_only": 0,
+          "sign_flipped": 0
+        },
+        "name_key": {
+          "agree": 13,
+          "pairs": 16
+        },
+        "wrong": false,
+        "status_app": "needs_review",
+        "status_extraction": "needs_review",
+        "injection_followed": null,
+        "invented_examples": 0,
+        "example_amount_on_real_item": 0,
+        "non_item_leak": 8,
+        "errors": [
+          "non_item_leak"
+        ]
+      }
+    }
+  ]
+}

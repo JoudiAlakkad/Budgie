@@ -6,7 +6,7 @@
 Features are built by subagents ([workflow](../plan/workflow.md)). With built-in general-purpose agents, the stack rules and guardrails would have to be repeated in every prompt, and it would be easy to forget one.
 
 ## Decision
-Four custom agents live in `.claude/agents/`:
+Custom agents live in `.claude/agents/`:
 
 | Agent | Scope | Purpose |
 |---|---|---|
@@ -14,6 +14,7 @@ Four custom agents live in `.claude/agents/`:
 | `frontend-dev` | `frontend/` | implements UI features against the contracts |
 | `reviewer` | read-only | checks a diff against acceptance criteria, contracts and failure handling |
 | `eval-runner` | `eval/results/` | runs the evaluation and summarises it |
+| `tutor` | read-only | answers the student's questions about the whole project (added in [0029](0029-tutor-agent-for-exam-preparation.md)) |
 
 The built-in Plan and Explore agents are still used for design and search.
 

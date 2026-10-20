@@ -1,0 +1,10 @@
+# gitleaks config: the default rules, plus one allowlist.
+# Read automatically by `gitleaks git` in CI and by the pre-commit hook.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Plain decimal numbers are never secrets (F11: generic-api-key fired on \"completion_tokens_mean\": 441.8235294117647 in eval/results/summary.json)"
+regexTarget = "secret"
+regexes = ['''^-?[0-9]+\.[0-9]+$''']

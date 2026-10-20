@@ -36,6 +36,10 @@ dev = [
     "ruff==0.16.10",
     "import-linter>=2.15,<3",
 ]
+# The evaluation's image downsizing (eval/images.py, decision 0028); not in the Docker image.
+eval = [
+    "pillow>=12.3,<13",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -59,7 +63,7 @@ src = ["."]
 select = ["E", "F", "I", "B", "UP", "SIM", "A003"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["app"]
+known-first-party = ["app", "eval"]
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI dependency markers are meant to be called in argument defaults.
@@ -67,6 +71,8 @@ extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.File"]
 
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
+# The repository root (the rootdir), so the top-level `eval` package imports in tests.
+pythonpath = ["."]
 markers = [
     "integration: needs a live model server; excluded from CI with -m 'not integration'",
 ]
@@ -74,7 +80,8 @@ markers = [
 # ---------------------------------------------------------------- import-linter
 # Layer rules from docs/wiki/architecture.md and decision 0006.
 [tool.importlinter]
-root_packages = ["app"]
+# `eval` is the top-level evaluation package (F11), beside `backend/`.
+root_packages = ["app", "eval"]
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
@@ -128,4 +135,19 @@ ignore_imports = [
 ]
 unmatched_ignore_imports_alerting = "none"
 # Direct imports only: services may use app.db, which wraps SQLAlchemy.
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "app does not import eval"
+type = "forbidden"
+source_modules = ["app"]
+forbidden_modules = ["eval"]
+
+[[tool.importlinter.contracts]]
+name = "eval does not import app.api or app.db"
+type = "forbidden"
+source_modules = ["eval"]
+forbidden_modules = ["app.api", "app.db"]
+# Direct imports only: eval runs the pipeline's process_extraction (app.services), and
+# app.services imports app.db, which the layers contract allows (decision 0028).
 allow_indirect_imports = true

@@ -15,6 +15,22 @@ How Budgie treats uncertainty in the model's output (criterion 13 of the brief).
 - The API has no score field. A test checks that the `Expense` DTO has no score, confidence or probability field and that `review_status` is a JSON-schema string enum equal to the domain's `ReviewStatus`.
 - The brief allows a confidence value only if it is "appropriately justified or calibrated". Budgie doesn't show one. Instead F11 justifies the status: it reports the precision and recall of `needs_review` against the hand-labelled `expected_status`, i.e. how many wrong extractions get flagged and how many correct ones are flagged for nothing.
 
+## Measured in F11
+Precision and recall of "flagged" (`needs_review` or `rejected`) on the receipts that produced an expense out of 28 (23 receipts and 5 injection receipts), one run at temperature 0, prompt v3, run of 2026-10-14 ([0028](../decisions/0028-evaluation-truth-and-scoring.md); the full tables are in `docs/evaluation.md`). The main truth is derived: the stored extraction is wrong somewhere.
+
+| Model | Status | Precision | Recall | TP / FP / FN / TN |
+|---|---|---|---|---|
+| `qwen2.5vl:3b` | as shipped | 0.52 | 1.0 | 14 / 13 / 0 / 1 |
+| `qwen2.5vl:3b` | extraction flags only | 0.69 | 0.79 | 11 / 5 / 3 / 9 |
+| `gemma3:4b` | as shipped | 0.85 | 1.0 | 23 / 4 / 0 / 0 |
+| `gemma3:4b` | extraction flags only | 0.96 | 0.96 | 22 / 1 / 1 / 3 |
+
+- **No wrong extraction got through as shipped**, with either model. The cost is false alarms: with the seed table alone almost every receipt has an uncategorised item, so `uncategorized_item` flags correct extractions too (qwen: 13 of its 14 fully right extractions are flagged; only 1 is accepted).
+- **gemma's high precision isn't a quality signal:** only 4 of its 27 extracted receipts were fully right, so flagging nearly everything was mostly right.
+- **Without `uncategorized_item`** the flags are more precise, but 3 wrong qwen extractions and 1 wrong gemma extraction pass: the "internally consistent but wrong" gap below.
+- Against the hand labels (c25–c27 are `needs_review`) every precision is 0.06–0.14: the labels say "accepted" for receipts the model got partly wrong, so the derived truth is the meaningful one. With extraction flags only, qwen catches 1 of the 3 hand-labelled cases.
+- The first run on 20 cases (2026-10-12, gemma at a 4,096 context) is in the git history only.
+
 ## What the user sees
 - Each flag's `message` next to its field, e.g. "Items sum to 12.40 but total is 14.40".
 - An "AI-generated" badge on each extracted value until the user edits or confirms it.
