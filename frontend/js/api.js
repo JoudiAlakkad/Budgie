@@ -3,7 +3,8 @@
 
 const API_PREFIX = "/api";
 const POLL_INTERVAL_MS = 2000;
-const POLL_TIMEOUT_MS = 5 * 60 * 1000;
+const POLL_SLOW_AFTER_MS = 5 * 60 * 1000;
+const POLL_SLOW_INTERVAL_MS = 10000;
 const FINAL_STATUSES = new Set(["extracted", "failed", "confirmed"]);
 
 /** A non-2xx response, built from the error body (contracts/error-format.md). */
@@ -15,17 +16,6 @@ export class ApiError extends Error {
     this.error = error;
     this.detail = detail;
     this.fields = fields || null;
-  }
-}
-
-/** Polling gave up after 5 minutes; the receipt may still finish later. */
-export class StillProcessingError extends Error {
-  constructor() {
-    const detail =
-      "The receipt is still being processed. Reload the page in a moment to check again.";
-    super(detail);
-    this.name = "StillProcessingError";
-    this.detail = detail;
   }
 }
 
@@ -153,10 +143,12 @@ async function download(path) {
 /**
  * Polls `GET /receipts/{id}` every 2 s until the status is extracted, failed or confirmed.
  * Calls `onUpdate(receipt)` after every poll and resolves to the final receipt.
- * Rejects with `StillProcessingError` after 5 minutes, or with the `ApiError` of a failed poll.
+ * After 5 minutes it calls `onSlow()` once and keeps polling every 10 s; it never
+ * gives up on time and rejects only with the `ApiError` of a failed poll.
  */
-export function pollReceipt(id, onUpdate) {
+export function pollReceipt(id, onUpdate, onSlow) {
   const started = Date.now();
+  let slow = false;
   return new Promise((resolve, reject) => {
     const tick = async () => {
       let receipt;
@@ -169,11 +161,13 @@ export function pollReceipt(id, onUpdate) {
       if (onUpdate) onUpdate(receipt);
       if (FINAL_STATUSES.has(receipt.status)) {
         resolve(receipt);
-      } else if (Date.now() - started >= POLL_TIMEOUT_MS) {
-        reject(new StillProcessingError());
-      } else {
-        setTimeout(tick, POLL_INTERVAL_MS);
+        return;
       }
+      if (!slow && Date.now() - started >= POLL_SLOW_AFTER_MS) {
+        slow = true;
+        if (onSlow) onSlow();
+      }
+      setTimeout(tick, slow ? POLL_SLOW_INTERVAL_MS : POLL_INTERVAL_MS);
     };
     tick();
   });
@@ -212,7 +206,7 @@ export function showError(err) {
   close.addEventListener("click", clearError);
   banner.append(text, close);
   banner.hidden = false;
-  if (!(err instanceof ApiError) && !(err instanceof StillProcessingError)) {
+  if (!(err instanceof ApiError)) {
     console.error(err);
   }
 }

@@ -12,6 +12,8 @@ const SAME_RESULT_TEXT =
   "A retry with the same model usually gives the same result; it helps only after a model or prompt change.";
 const CORRECTED_NOTE = "AI-extracted, corrected by you — check the remaining values";
 const UNKNOWN_TEXT = "unknown, please fill in";
+const SLOW_PROCESSING_TEXT =
+  "Still processing. On a CPU-only model server this can take several minutes; the page keeps checking.";
 
 const SCALARS = [
   { name: "merchant", label: "Merchant", kind: "text", required: true },
@@ -404,13 +406,17 @@ async function startProcessing() {
     RECEIPT_STATUS_WORDS[state.receipt.status] || state.receipt.status,
     "…",
   );
+  // The spinner box is a live region (role="status"): the status words and, after
+  // 5 minutes, the slow note are announced when they change or appear.
+  const statusLines = h("div", {}, statusText);
+  let slowNote = null;
   panel.replaceChildren(
     panelHeader("Reading your receipt"),
     h(
       "div",
       { className: "spinner-box", attrs: { role: "status" } },
       h("div", { className: "spinner", attrs: { "aria-hidden": "true" } }),
-      statusText,
+      statusLines,
     ),
     h(
       "p",
@@ -419,14 +425,24 @@ async function startProcessing() {
     ),
   );
   try {
-    const receipt = await pollReceipt(receiptId, (update) => {
-      statusText.textContent = `${RECEIPT_STATUS_WORDS[update.status] || update.status}…`;
-    });
+    const receipt = await pollReceipt(
+      receiptId,
+      (update) => {
+        statusText.textContent = `${RECEIPT_STATUS_WORDS[update.status] || update.status}…`;
+      },
+      () => {
+        if (state.mode !== "processing" || slowNote) return;
+        slowNote = h("p", { className: "hint" }, SLOW_PROCESSING_TEXT);
+        statusLines.append(slowNote);
+      },
+    );
     if (state.mode !== "processing") return;
     route(receipt);
   } catch (err) {
     if (state.mode !== "processing") return;
     showError(err);
+    // Polling stopped, so "the page keeps checking" is no longer true.
+    if (slowNote) slowNote.remove();
     statusText.textContent = "Not finished yet.";
     panel.append(
       h(
@@ -662,18 +678,14 @@ function itemRow(row, index, readOnly, flagsByItemId) {
   const selectId = `item-${row.key}-category`;
   const categoryFlags = flags.filter((flag) => flag.code === "uncategorized_item");
   const catExtra = [];
-  const flagIds = [];
-  categoryFlags.forEach((flag, i) => {
-    flagIds.push(`${selectId}-flag-${i}`);
-    catExtra.push(flagNode(flag, `${selectId}-flag-${i}`));
-  });
+  const flagNodes = categoryFlags.map((flag, i) => flagNode(flag, `${selectId}-flag-${i}`));
+  catExtra.push(...flagNodes);
   const missingNote = h(
     "span",
     { className: "flag-message", id: `${selectId}-missing` },
     icon("⚠"),
     " Choose a category before confirming.",
   );
-  missingNote.hidden = row.category !== UNCATEGORIZED || categoryFlags.length > 0 || readOnly;
   const sourceHint = h("span", { className: "hint" });
   const updateSourceHint = () => {
     const hint =
@@ -683,15 +695,29 @@ function itemRow(row, index, readOnly, flagsByItemId) {
   };
   updateSourceHint();
   const categoryErrors = errorsFor(`line_items.${index}.category`);
-  const errorIds = [];
-  categoryErrors.forEach((err, i) => {
-    errorIds.push(`${selectId}-err-${i}`);
-    catExtra.push(errorNode(err.message, `${selectId}-err-${i}`));
-  });
-  // aria-describedby reads a referenced node even when it is hidden, so the
-  // missing-category note is listed only while it is shown (found by /code-review).
+  const errorNodes = categoryErrors.map((err, i) => errorNode(err.message, `${selectId}-err-${i}`));
+  catExtra.push(...errorNodes);
+  // While the item is uncategorised exactly one "needs a category" message shows:
+  // the server's uncategorized_item flag if there is one, else the missing note.
+  // Once a category is picked the flag is stale and hides; it shows again if the
+  // user goes back to "Choose a category…". Server category errors are stale after
+  // any change; only the next server response, which re-renders, brings them back.
+  const otherFlagCount = flags.length - categoryFlags.length;
+  const updateCategoryNotes = () => {
+    const uncategorised = row.category === UNCATEGORIZED;
+    for (const node of flagNodes) node.hidden = !uncategorised;
+    missingNote.hidden = !uncategorised || flagNodes.length > 0 || readOnly;
+    tr.classList.toggle("flagged", otherFlagCount > 0 || (uncategorised && flagNodes.length > 0));
+  };
+  updateCategoryNotes();
+  // aria-describedby reads a referenced node even when it is hidden, so only
+  // shown flags, notes and errors are listed (found by /code-review).
   const describedBy = () =>
-    flagIds.concat(missingNote.hidden ? [] : [missingNote.id], errorIds).join(" ") || null;
+    flagNodes
+      .concat([missingNote], errorNodes)
+      .filter((node) => !node.hidden)
+      .map((node) => node.id)
+      .join(" ") || null;
   const select = h(
     "select",
     {
@@ -709,7 +735,9 @@ function itemRow(row, index, readOnly, flagsByItemId) {
   select.addEventListener("change", () => {
     row.category = select.value;
     tr.classList.toggle("needs-category", row.category === UNCATEGORIZED);
-    missingNote.hidden = row.category !== UNCATEGORIZED || categoryFlags.length > 0;
+    updateCategoryNotes();
+    for (const node of errorNodes) node.hidden = true;
+    select.removeAttribute("aria-invalid");
     updateSourceHint();
     const ids = describedBy();
     if (ids) select.setAttribute("aria-describedby", ids);
@@ -756,7 +784,6 @@ function itemRow(row, index, readOnly, flagsByItemId) {
   }
   tr.append(removeCell);
 
-  if (flags.length) tr.classList.add("flagged");
   if (row.category === UNCATEGORIZED && !readOnly) tr.classList.add("needs-category");
   return tr;
 }
