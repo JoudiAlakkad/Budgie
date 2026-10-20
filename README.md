@@ -29,7 +29,7 @@ The responsibility split is:
 **Reproducible demo data:**
 - `data/demo/receipts/` holds three synthetic receipt photos for scenario 1, with fictional shops and no personal data. `make demo-receipts` re-renders them.
   - `demo-01-supermarket.png`: seed categories, a Pfand line and one unknown item (CHIPS PAPRIKA)
-  - `demo-02-cafe.png`: eating out, with one unknown item
+  - `demo-02-cafe.png` (Cafe Amsel, 10,90): all eating out, with one item to categorise (KAESEKUCHEN)
   - `demo-03-kiosk-total-mismatch.png`: no new item to categorise. CHIPS PAPRIKA gets the category you picked on demo-01, and the printed total (5,29) is 1,00 more than the items (4,29), so the review shows a sum flag. Upload the receipts in order and confirm demo-01 first.
 - `make seed-demo` (or `python -m app.demo_seed` in the container) loads several months of confirmed expenses, budgets and a goal into an **empty** database. Scenarios 2 and 3 run on this data ([0022](docs/wiki/decisions/0022-demo-data-by-explicit-command.md)). Seed first, then upload the demo receipts.
 

@@ -60,11 +60,11 @@ RECEIPTS: tuple[DemoReceipt, ...] = (
         printed_date="17.10.2026 10:15",
         items=(
             ("CAPPUCCINO", Decimal("3.40")),
-            ("CROISSANT", Decimal("2.20")),
+            ("LATTE MACCHIATO", Decimal("3.60")),
             ("KAESEKUCHEN", Decimal("3.90")),
         ),
-        printed_total=Decimal("9.50"),
-        purpose="eating out, with one uncategorised item (kaesekuchen)",
+        printed_total=Decimal("10.90"),
+        purpose="all eating out, with one uncategorised item (kaesekuchen)",
     ),
     DemoReceipt(
         file="demo-03-kiosk-total-mismatch.png",

@@ -3,8 +3,9 @@
 from decimal import Decimal
 from pathlib import Path
 
+import PIL
 import pytest
-from PIL import Image
+from PIL import Image, ImageChops, features
 
 from app.domain.categorize import normalize
 from app.services.item_categories import load_seed
@@ -52,6 +53,13 @@ def test_supermarket_and_cafe_each_have_an_item_the_seed_table_does_not_know(
     assert _unknown_names(_receipt(prefix))
 
 
+def test_cafe_items_the_seed_knows_are_all_eating_out() -> None:
+    """A cafe purchase must not land under groceries; only the unknown item is left open."""
+    seed = load_seed()
+    names = {normalize(name).name for name, _ in _receipt("demo-02").items}
+    assert {seed[n] for n in names if n in seed} == {"eating_out"}
+
+
 def test_kiosk_unknowns_all_appear_on_the_supermarket_receipt() -> None:
     """After the choice on demo-01, demo-03 is fully categorised: it shows reuse, no new pick."""
     supermarket = {normalize(name).name for name, _ in _receipt("demo-01").items}
@@ -71,3 +79,19 @@ def test_committed_receipts_exist_and_open() -> None:
             assert image.format == "PNG"
             assert image.width == demo.WIDTH
             assert image.height == 2 * demo.MARGIN + demo.LINE * len(demo.lines(receipt))
+
+
+@pytest.mark.parametrize("receipt", demo.RECEIPTS, ids=lambda r: r.file)
+def test_committed_receipts_match_the_script_pixel_for_pixel(receipt) -> None:
+    """An item edit that keeps the line count must not leave a stale PNG behind."""
+    path = COMMITTED / receipt.file
+    with Image.open(path) as image:
+        committed = image.convert("RGB")
+    rendered = demo.render(receipt)
+    assert rendered.size == committed.size, f"{path.name} is stale: run `make demo-receipts`"
+    diff = ImageChops.difference(rendered, committed).getbbox()
+    versions = f"Pillow {PIL.__version__}, FreeType {features.version('freetype2')}"
+    assert diff is None, (
+        f"{path.name} differs from the script in {diff}: run `make demo-receipts` "
+        f"({versions}; the committed PNGs were rendered with Pillow 12.3.0)"
+    )

@@ -39,6 +39,6 @@ The latency was measured on the student's Apple Silicon host ([ai-spike](../back
   - The first `docker compose up -d --build` built the image and created the volume and network, but couldn't start: port 8000 was already taken on the host (`bind: address already in use`). That's the environment, not the compose file; the README now explains `BUDGIE_PORT`.
   - `BUDGIE_PORT=8001 docker compose up -d` started; health `db: ok`, `llm: ok`, `model: qwen2.5vl:3b`.
   - **Passed (2026-10-20):** all three demo receipts were uploaded through the UI. qwen read every merchant, date, total and item correctly.
-    - demo-01 and demo-02: the unknown item (CHIPS PAPRIKA, KAESEKUCHEN) was flagged uncategorised; every other item came from the seed table.
+    - demo-01 and demo-02 (the café still with CROISSANT, since replaced): the unknown item (CHIPS PAPRIKA, KAESEKUCHEN) was flagged uncategorised; every other item came from the seed table.
     - demo-03 (the version with HARIBO GOLDBAEREN; since replaced, see [0022](0022-demo-data-by-explicit-command.md)): the sum flag fired ("Items sum to 5.78 but total is 6.78"), and CHIPS PAPRIKA was categorised "from your earlier choice".
     - The same test found a UI bug: "Choose a category before confirming" showed on items that already had a category. A class `display` rule beat `[hidden]`; it was fixed with a global `[hidden] { display: none !important; }` and a static test ([workflow](../plan/workflow.md#ci-checks)).

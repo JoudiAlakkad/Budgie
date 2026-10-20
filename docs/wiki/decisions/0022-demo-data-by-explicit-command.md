@@ -23,9 +23,11 @@ Scenarios 2 and 3 must work "on the seeded demo data" ([roadmap](../plan/roadmap
 ## F12 addition (2026-10-20)
 The seed covers scenarios 2 and 3. Scenario 1 needs a photo to upload, and the eval photos are private ([0028](0028-evaluation-truth-and-scoring.md)). So `scripts/make_demo_receipts.py` (`make demo-receipts`, tested in `tests/unit/test_make_demo_receipts.py`) renders three synthetic receipts into `data/demo/receipts/`, and they are committed:
 - a supermarket with seed categories, a Pfand line and one unknown item
-- a café with an unknown item
+- a café whose known items (cappuccino, latte macchiato) are all eating out, plus one unknown item (KAESEKUCHEN), 10,90 in total. After the second `/code-review`, CROISSANT was replaced by LATTE MACCHIATO, because the seed maps croissant to groceries, which put a café purchase under groceries. A test checks that every known item on the café receipt maps to `eating_out`.
 - a kiosk with only known items and CHIPS PAPRIKA again, so the category picked on the supermarket receipt is reused and nothing new needs a category; its printed total (5,29) is 1,00 more than the items (4,29), which gives a sum flag. After `/code-review`, HARIBO GOLDBAEREN was dropped: as a second unknown item it blocked confirming the reuse case. The test checks that every unknown item on the kiosk receipt also appears on the supermarket receipt.
 
 Seed the history first, because `make seed-demo` only loads into an empty database, then upload the receipts in order.
+
+Each committed PNG is compared pixel for pixel with the script's render, so a change to the receipt data needs `make demo-receipts` in the same commit. A newer Pillow 12.x could move glyph edges and fail this check with no change to the content; the failure message names the Pillow and FreeType versions (rendered with 12.3.0), and re-rendering fixes it. The check isn't loosened.
 
 The shops are fictional and the receipts carry no address or payment data. The text is ASCII because Pillow's bundled font has no umlauts or euro sign. The printed dates are October 2026, so after October 2028 they fall outside the 2-year date rule and get flagged.
