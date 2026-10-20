@@ -20,7 +20,7 @@ The latency was measured on the student's Apple Silicon host ([ai-spike](../back
 ## Decision
 - The `LLM_MODEL` default becomes `qwen2.5vl:3b` (Ollama tag; Q4_K_M, about 3.2 GB download, 3.75 B parameters, image + text input). On 2026-10-20 the Ollama library page showed `fb90415cde1e`; the student's local copy has ID `79d497978752` (`ollama ps`). Whether these are the same model under different hashes or a re-pushed tag wasn't resolved, and the evaluated copy wasn't checked by digest. Memory on the host: `SIZE 3.2 GB`, `100% GPU`, `CONTEXT 8192` (`ollama ps`, 2026-10-20).
 - `gemma3:4b` stays the fallback: set `LLM_MODEL=gemma3:4b`, no code change. Prompts v1–v3 and the eval keep both models.
-- **Context length:** qwen keeps more image resolution, so the Ollama server must run with `OLLAMA_CONTEXT_LENGTH=8192`. At 4,096, every 2,000 px photo failed with HTTP 400. The compose `ollama` profile sets it, and the README documents it for a host install.
+- **Context length:** qwen keeps more image resolution, so the Ollama server must run with `OLLAMA_CONTEXT_LENGTH=8192`. At 4,096, every 2,000 px photo failed with HTTP 400. `docker-compose.ollama.yml` sets it, and the README documents it for a host install.
 - **Licence:** the 3B is not under Apache 2.0, even though Ollama shows Apache 2.0.
   - Ollama's licence layer for `qwen2.5vl:3b` is Apache-2.0 (blob `832dd9e00a68`), but the same blob is used for `:7b` and `:72b`.
   - Upstream, the three sizes have different licences: the 3B is `qwen-research`, the 7B `apache-2.0`, the 72B `qwen`.

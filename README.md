@@ -103,7 +103,7 @@ Statuses are shown as words with an icon, never only as a colour, and never as a
 ## Local model and inference server
 | | |
 |---|---|
-| Inference server | **Ollama 0.35.1** (tested version; the image `ollama/ollama:0.35.1` in compose) |
+| Inference server | **Ollama 0.35.1** (tested version; the image `ollama/ollama:0.35.1` in `docker-compose.ollama.yml`) |
 | API used | OpenAI-compatible `POST {LLM_BASE_URL}/chat/completions` with an image, plus `GET /models` for health. Called through plain `httpx`, with no vendor SDK |
 | Default model | **`qwen2.5vl:3b`** (Ollama tag; Qwen2.5-VL-3B-Instruct, 3.75 B parameters, Q4_K_M, 3.2 GB download) |
 | Fallback model | `gemma3:4b` (`LLM_MODEL=gemma3:4b`) |
@@ -131,7 +131,7 @@ ollama --version                                   # expect 0.35.1 or later
 # 2. Start it with the context qwen needs
 #    Linux + Docker: Ollama listens on 127.0.0.1, which a container can't reach. Bind it to the
 #    docker bridge only, e.g. OLLAMA_HOST=172.17.0.1 (never 0.0.0.0: Ollama has no login),
-#    and then use that address instead of localhost below; or use the compose ollama profile.
+#    and then use that address instead of localhost below; or use docker-compose.ollama.yml.
 OLLAMA_CONTEXT_LENGTH=8192 ollama serve
 #    macOS app instead: launchctl setenv OLLAMA_CONTEXT_LENGTH 8192, then restart the app
 
@@ -180,12 +180,15 @@ docker compose up -d --build                     # app on http://localhost:8000 
 docker compose exec app python -m app.demo_seed  # optional: demo history for scenarios 2–3 (empty DB only, so before any upload)
 docker compose logs -f app                       # follow the logs; `docker compose down` stops it (data stays on the volume)
 ```
-Ollama in a container instead of on the host (no GPU on a Mac, so slower). Put `LLM_BASE_URL=http://ollama:11434/v1` in a local `.env` (git-ignored, read by compose), or every later `up` falls back to the host's Ollama:
+Ollama in a container instead of on the host: the override file [docker-compose.ollama.yml](docker-compose.ollama.yml) adds the `ollama` service and points the app at it. Use both files on every command:
 ```bash
-echo "LLM_BASE_URL=http://ollama:11434/v1" >> .env   # remove it again before `make run`, which reads .env too
-docker compose --profile ollama up -d --build
+export COMPOSE_FILE=docker-compose.yml:docker-compose.ollama.yml   # or pass -f … -f … each time
+docker compose up -d --build
 docker compose exec ollama ollama pull qwen2.5vl:3b
 ```
+This Ollama runs on the CPU (Docker on a Mac has no GPU), so extraction is much slower; the override raises `LLM_TIMEOUT_S` to 600 s.
+
+Compose passes each Budgie variable (table below) through only when it is set in the shell or in `.env`; otherwise the app's default applies. A local `.env` is also read by `make run`, so don't put container-only values such as `http://ollama:11434/v1` there.
 Compose names the data volume `budgie_budgie-data` (project `budgie`). The plain `docker run` below uses `budgie-data`, a different volume, so data doesn't carry over between the two. `BUDGIE_PORT` changes the host port (default 8000). If compose reports `bind: address already in use`, something else holds port 8000: find it with `lsof -nP -iTCP:8000 -sTCP:LISTEN` (often a VS Code port forward of `make run` in the dev container), or start with `BUDGIE_PORT=8001 docker compose up -d`.
 
 The app also starts without any model server. `/api/health` then reports `llm: down`, uploads fail with `llm_unavailable` and offer Retry or manual entry, and everything else (manual expenses, budgets, dashboard, export) keeps working.
@@ -256,7 +259,7 @@ Budgie was built with **Claude Code** (Anthropic; Claude Opus models) as the age
 |---|---|
 | File access | only the repo is mounted (`/workspace`); the container runs as the non-root user `vscode` |
 | No credentials in the container | SSH-agent forwarding is turned off (`remoteEnv.SSH_AUTH_SOCK=""`), and `postAttachCommand` removes the injected git credential helper. On the host, set the VS Code user settings `"dev.containers.gitCredentialHelperConfigLocation": "none"` and `"dev.containers.copyGitConfig": false` |
-| Agent permissions ([.claude/settings.json](.claude/settings.json)) | **deny:** reading `.env*`, `~/.ssh/**`, `~/.gitconfig`, `~/.git-credentials`; `sudo`; `git push --force`. **ask (confirmation):** `git commit`, `git push`, `git reset`, `git rebase`, `rm`, `docker`, `curl`, `wget`, `pip install`. **allow:** tests, lint, `make check`, read-only git |
+| Agent permissions ([.claude/settings.json](.claude/settings.json)) | **deny:** the Read tool on `.env*`, `~/.ssh/**`, `~/.gitconfig`, `~/.git-credentials`; `sudo`; `git push --force`. Shell commands such as `cat .env` are **not** matched by these rules, so they rely on the absence of secrets in the container, not on the deny list. **ask (confirmation):** `git commit`, `git push`, `git reset`, `git rebase`, `rm`, `docker`, `curl`, `wget`, `pip install`. **allow:** tests, lint, `make check`, read-only git |
 | Push model | the agent commits locally only; the student reviews and pushes from a host terminal. No git or GitHub credential or token exists in the container (only Claude Code's own login) |
 | Branch protection | `main` on GitHub accepts changes only through PRs with all CI checks green; force-push and deletion are blocked |
 | Secrets in history | gitleaks runs in CI over the whole history; no credentials are in prompts, code or config |
@@ -269,7 +272,7 @@ Budgie was built with **Claude Code** (Anthropic; Claude Opus models) as the age
 - `make check`, the `reviewer` agent and `/code-review` check every change before the student tries it by hand.
 - The project knowledge lives in a wiki that agents read first ([docs/wiki/](docs/wiki/README.md)).
 
-**To verify the sandbox in the container:** `ssh-add -l` fails, `git config --global -l` shows no `credential.helper`, and asking the agent to read `.env` is refused.
+**To verify the sandbox in the container:** `ssh-add -l` fails, `git config --global -l` shows no `credential.helper`, and the agent's Read tool is refused on `.env`. That last rule covers only the Read tool; the real protection is that no `.env` with secrets exists in the container (Budgie needs none).
 
 ## Known limitations
 - **Accuracy:** even the best model got 7 % of totals and 18 % of dates wrong in the evaluation, and a wrong extraction that is internally consistent passes the rules. The user's review is required, not optional.
@@ -291,6 +294,6 @@ Budgie was built with **Claude Code** (Anthropic; Claude Opus models) as the age
 | `eval/` | evaluation runner, scoring and results |
 | `data/demo/receipts/` | synthetic demo receipts |
 | `docs/` | [evaluation](docs/evaluation.md), [responsible design](docs/responsible-design.md), [architecture](docs/architecture.md), [OpenAPI](docs/openapi.json), [AI dev log](docs/ai-dev-log.md), [wiki](docs/wiki/README.md) |
-| `Dockerfile`, `docker-compose.yml` | container build and startup |
+| `Dockerfile`, `docker-compose.yml`, `docker-compose.ollama.yml` | container build and startup; the override adds a containerised Ollama |
 
-**Presentation slides:** [Budgie deck](https://claude.ai/artifact/JfDmFVz9CDskhLPRX2NoEs). It covers the brief's presentation list in 14 slides. The deck is a claude.ai artifact, exported to `docs/slides.pdf` for the submission.
+**Presentation slides:** [Budgie deck](https://claude.ai/artifact/JfDmFVz9CDskhLPRX2NoEs). It covers the brief's presentation list in 14 slides. The deck is a private claude.ai artifact: share it before the presentation, and for the submission export it as PDF (Share › Export) to `docs/slides.pdf`, which isn't committed yet.

@@ -1,16 +1,17 @@
-# Budgie with Docker Compose (README "Run with Docker Compose").
+# Budgie with Docker Compose (README "Build, test and start").
 #
 #   docker compose up -d --build
 #     The app only. It uses an Ollama running natively on the host
 #     (faster on a Mac, where the container has no GPU).
 #
-#   echo LLM_BASE_URL=http://ollama:11434/v1 >> .env   (once; compose reads .env)
-#   docker compose --profile ollama up -d --build
-#   docker compose exec ollama ollama pull qwen2.5vl:3b
-#     Also starts Ollama in a container. Pull the model once; it stays on the volume.
+#   docker compose -f docker-compose.yml -f docker-compose.ollama.yml up -d --build
+#   docker compose -f docker-compose.yml -f docker-compose.ollama.yml exec ollama ollama pull qwen2.5vl:3b
+#     Also runs Ollama in a container (docker-compose.ollama.yml), and points the app at it.
 #
-# Settings are env vars (docs/wiki/backend/configuration.md). There are no secrets:
-# LLM_API_KEY is a dummy value for servers that want a bearer token.
+# Settings are env vars read by backend/app/config.py, which holds the defaults
+# (docs/wiki/backend/configuration.md). Each variable below is passed through only when
+# it is set in the shell or in .env; otherwise the app's own default applies. There are
+# no secrets: LLM_API_KEY is a dummy value unless your server wants a real bearer token.
 name: budgie
 
 services:
@@ -22,12 +23,19 @@ services:
     ports:
       - "127.0.0.1:${BUDGIE_PORT:-8000}:8000"
     environment:
-      LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:11434/v1}
-      LLM_MODEL: ${LLM_MODEL:-qwen2.5vl:3b}
-      LLM_TIMEOUT_S: ${LLM_TIMEOUT_S:-180}
-      PROMPT_VERSION: ${PROMPT_VERSION:-v3}
-      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-10}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # The one container-specific default: the app's own default (localhost) would be
+      # the container itself.
+      - LLM_BASE_URL=${LLM_BASE_URL:-http://host.docker.internal:11434/v1}
+      - LLM_MODEL
+      - LLM_API_KEY
+      - LLM_TIMEOUT_S
+      - LLM_MAX_RETRIES
+      - LLM_TEMPERATURE
+      - LLM_MAX_TOKENS
+      - PROMPT_VERSION
+      - MAX_UPLOAD_MB
+      - LOG_LEVEL
+      # DATABASE_URL, UPLOAD_DIR and FRONTEND_DIR are set by the image (Dockerfile).
     # host.docker.internal also resolves on Linux hosts.
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -36,16 +44,5 @@ services:
       - budgie-data:/data
     restart: unless-stopped
 
-  ollama:
-    image: ollama/ollama:0.35.1
-    profiles: ["ollama"]
-    environment:
-      # qwen2.5vl:3b fails on full-size photos at the default 4096 (decision 0030).
-      OLLAMA_CONTEXT_LENGTH: "8192"
-    volumes:
-      - ollama-models:/root/.ollama
-    restart: unless-stopped
-
 volumes:
   budgie-data:
-  ollama-models:
