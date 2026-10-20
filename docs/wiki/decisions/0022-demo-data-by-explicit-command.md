@@ -24,7 +24,7 @@ Scenarios 2 and 3 must work "on the seeded demo data" ([roadmap](../plan/roadmap
 The seed covers scenarios 2 and 3. Scenario 1 needs a photo to upload, and the eval photos are private ([0028](0028-evaluation-truth-and-scoring.md)). So `scripts/make_demo_receipts.py` (`make demo-receipts`, tested in `tests/unit/test_make_demo_receipts.py`) renders three synthetic receipts into `data/demo/receipts/`, and they are committed:
 - a supermarket with seed categories, a Pfand line and one unknown item
 - a café with an unknown item
-- a kiosk with CHIPS PAPRIKA again, so the category picked on the supermarket receipt is reused; its printed total is 1,00 more than the items, which gives a sum flag
+- a kiosk with only known items and CHIPS PAPRIKA again, so the category picked on the supermarket receipt is reused and nothing new needs a category; its printed total (5,29) is 1,00 more than the items (4,29), which gives a sum flag. After `/code-review`, HARIBO GOLDBAEREN was dropped: as a second unknown item it blocked confirming the reuse case. The test checks that every unknown item on the kiosk receipt also appears on the supermarket receipt.
 
 Seed the history first, because `make seed-demo` only loads into an empty database, then upload the receipts in order.
 

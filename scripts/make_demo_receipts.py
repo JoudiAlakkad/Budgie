@@ -74,11 +74,10 @@ RECEIPTS: tuple[DemoReceipt, ...] = (
             ("BIER", Decimal("1.20")),
             ("BIER", Decimal("1.20")),
             ("CHIPS PAPRIKA", Decimal("1.89")),
-            ("HARIBO GOLDBAEREN", Decimal("1.49")),
         ),
-        printed_total=Decimal("6.78"),
-        purpose="chips paprika again, so the category chosen on demo-01 is reused; the printed"
-        " total is 1.00 more than the items, so the review shows a sum flag",
+        printed_total=Decimal("5.29"),
+        purpose="no new unknown item: chips paprika again, so the category chosen on demo-01 is"
+        " reused; the printed total is 1.00 more than the items, so the review shows a sum flag",
     ),
 )
 

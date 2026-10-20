@@ -35,12 +35,27 @@ def test_text_is_ascii_because_the_bundled_font_has_no_umlauts() -> None:
             assert (left + right).isascii(), left
 
 
-def test_each_receipt_has_an_item_the_seed_table_does_not_know() -> None:
-    """The demo should show the uncategorised flow, so every shop needs one unknown name."""
+def _unknown_names(receipt) -> set[str]:
     seed = load_seed()
-    for receipt in demo.RECEIPTS:
-        names = {normalize(name).name for name, _ in receipt.items}
-        assert names - set(seed), receipt.file
+    return {normalize(name).name for name, _ in receipt.items} - set(seed)
+
+
+def _receipt(prefix: str):
+    return next(r for r in demo.RECEIPTS if r.file.startswith(prefix))
+
+
+@pytest.mark.parametrize("prefix", ["demo-01", "demo-02"])
+def test_supermarket_and_cafe_each_have_an_item_the_seed_table_does_not_know(
+    prefix: str,
+) -> None:
+    """The demo shows the uncategorised flow on the first two receipts."""
+    assert _unknown_names(_receipt(prefix))
+
+
+def test_kiosk_unknowns_all_appear_on_the_supermarket_receipt() -> None:
+    """After the choice on demo-01, demo-03 is fully categorised: it shows reuse, no new pick."""
+    supermarket = {normalize(name).name for name, _ in _receipt("demo-01").items}
+    assert _unknown_names(_receipt("demo-03")) <= supermarket
 
 
 def test_render_is_deterministic(tmp_path: Path) -> None:
