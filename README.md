@@ -293,7 +293,7 @@ Budgie was built with **Claude Code** (Anthropic; Claude Opus models) as the age
 | `tests/` | unit and API tests, recorded model responses |
 | `eval/` | evaluation runner, scoring and results |
 | `data/demo/receipts/` | synthetic demo receipts |
-| `docs/` | [evaluation](docs/evaluation.md), [responsible design](docs/responsible-design.md), [architecture](docs/architecture.md), [OpenAPI](docs/openapi.json), [AI dev log](docs/ai-dev-log.md), [wiki](docs/wiki/README.md) |
+| `docs/` | [slides (PDF)](docs/slides.pdf), [evaluation](docs/evaluation.md), [responsible design](docs/responsible-design.md), [architecture](docs/architecture.md), [OpenAPI](docs/openapi.json), [AI dev log](docs/ai-dev-log.md), [wiki](docs/wiki/README.md) |
 | `Dockerfile`, `docker-compose.yml`, `docker-compose.ollama.yml` | container build and startup; the override adds a containerised Ollama |
 
-**Presentation slides:** [Budgie deck](https://claude.ai/artifact/JfDmFVz9CDskhLPRX2NoEs). It covers the brief's presentation list in 14 slides. The deck is a private claude.ai artifact: share it before the presentation, and for the submission export it as PDF (Share › Export) to `docs/slides.pdf`, which isn't committed yet.
+**Presentation slides:** [Budgie deck](https://claude.ai/artifact/JfDmFVz9CDskhLPRX2NoEs). It covers the brief's presentation list in 14 slides. The submitted copy is **[docs/slides.pdf](docs/slides.pdf)**. The claude.ai deck is the editable source, private until shared; after a change to it, export the PDF again to the same path.
