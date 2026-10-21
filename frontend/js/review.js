@@ -442,7 +442,10 @@ async function startProcessing() {
     if (state.mode !== "processing") return;
     showError(err);
     // Polling stopped, so "the page keeps checking" is no longer true.
-    if (slowNote) slowNote.remove();
+    if (slowNote) {
+      slowNote.remove();
+      slowNote = null;
+    }
     statusText.textContent = "Not finished yet.";
     panel.append(
       h(
@@ -694,54 +697,55 @@ function itemRow(row, index, readOnly, flagsByItemId) {
     sourceHint.hidden = !hint;
   };
   updateSourceHint();
-  const categoryErrors = errorsFor(`line_items.${index}.category`);
+  const categoryPath = `line_items.${index}.category`;
+  const categoryErrors = errorsFor(categoryPath);
   const errorNodes = categoryErrors.map((err, i) => errorNode(err.message, `${selectId}-err-${i}`));
   catExtra.push(...errorNodes);
   // While the item is uncategorised exactly one "needs a category" message shows:
   // the server's uncategorized_item flag if there is one, else the missing note.
   // Once a category is picked the flag is stale and hides; it shows again if the
   // user goes back to "Choose a category…". Server category errors are stale after
-  // any change; only the next server response, which re-renders, brings them back.
+  // any change: they hide and are dropped from state.fieldErrors, so a local
+  // re-render (Add item, Remove, …) doesn't bring them back; only a new server
+  // response or a failed save can.
   const otherFlagCount = flags.length - categoryFlags.length;
-  const updateCategoryNotes = () => {
-    const uncategorised = row.category === UNCATEGORIZED;
-    for (const node of flagNodes) node.hidden = !uncategorised;
-    missingNote.hidden = !uncategorised || flagNodes.length > 0 || readOnly;
-    tr.classList.toggle("flagged", otherFlagCount > 0 || (uncategorised && flagNodes.length > 0));
-  };
-  updateCategoryNotes();
-  // aria-describedby reads a referenced node even when it is hidden, so only
-  // shown flags, notes and errors are listed (found by /code-review).
-  const describedBy = () =>
-    flagNodes
-      .concat([missingNote], errorNodes)
-      .filter((node) => !node.hidden)
-      .map((node) => node.id)
-      .join(" ") || null;
+  let categoryErrorsShown = errorNodes.length > 0;
   const select = h(
     "select",
-    {
-      id: selectId,
-      disabled: readOnly,
-      required: true,
-      attrs: {
-        "aria-describedby": describedBy(),
-        "aria-invalid": categoryErrors.length ? "true" : null,
-      },
-    },
+    { id: selectId, disabled: readOnly, required: true },
     ...categoryOptions(row.category),
   );
   select.value = row.category;
-  select.addEventListener("change", () => {
-    row.category = select.value;
-    tr.classList.toggle("needs-category", row.category === UNCATEGORIZED);
-    updateCategoryNotes();
-    for (const node of errorNodes) node.hidden = true;
-    select.removeAttribute("aria-invalid");
-    updateSourceHint();
-    const ids = describedBy();
+  // The one place that sets the row's category state. A read-only row gets no
+  // needs-category highlight or missing note: its select is disabled, so there is
+  // nothing to act on (a confirmed expense can't hold an uncategorised item anyway).
+  const syncCategoryRow = () => {
+    const uncategorised = row.category === UNCATEGORIZED;
+    tr.classList.toggle("needs-category", uncategorised && !readOnly);
+    tr.classList.toggle("flagged", otherFlagCount > 0 || (uncategorised && flagNodes.length > 0));
+    for (const node of flagNodes) node.hidden = !uncategorised;
+    missingNote.hidden = !uncategorised || flagNodes.length > 0 || readOnly;
+    for (const node of errorNodes) node.hidden = !categoryErrorsShown;
+    // aria-describedby reads a referenced node even when it is hidden, so only
+    // shown flags, notes and errors are listed (found by /code-review).
+    const ids = flagNodes
+      .concat([missingNote], errorNodes)
+      .filter((node) => !node.hidden)
+      .map((node) => node.id)
+      .join(" ");
     if (ids) select.setAttribute("aria-describedby", ids);
     else select.removeAttribute("aria-describedby");
+    if (categoryErrorsShown) select.setAttribute("aria-invalid", "true");
+    else select.removeAttribute("aria-invalid");
+  };
+  syncCategoryRow();
+  select.addEventListener("change", () => {
+    row.category = select.value;
+    categoryErrorsShown = false;
+    // Paths are index-based; a change doesn't move rows, so `index` is still this row's.
+    state.fieldErrors = state.fieldErrors.filter((err) => err.path !== categoryPath);
+    syncCategoryRow();
+    updateSourceHint();
     updateActions();
   });
   tr.append(
@@ -784,7 +788,6 @@ function itemRow(row, index, readOnly, flagsByItemId) {
   }
   tr.append(removeCell);
 
-  if (row.category === UNCATEGORIZED && !readOnly) tr.classList.add("needs-category");
   return tr;
 }
 

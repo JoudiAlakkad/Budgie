@@ -5,6 +5,7 @@ const API_PREFIX = "/api";
 const POLL_INTERVAL_MS = 2000;
 const POLL_SLOW_AFTER_MS = 5 * 60 * 1000;
 const POLL_SLOW_INTERVAL_MS = 10000;
+const POLL_MAX_FAILURES = 3; // transient poll failures in a row before giving up
 const FINAL_STATUSES = new Set(["extracted", "failed", "confirmed"]);
 
 /** A non-2xx response, built from the error body (contracts/error-format.md). */
@@ -142,32 +143,48 @@ async function download(path) {
 
 /**
  * Polls `GET /receipts/{id}` every 2 s until the status is extracted, failed or confirmed.
- * Calls `onUpdate(receipt)` after every poll and resolves to the final receipt.
+ * Calls `onUpdate(receipt)` after every successful poll and resolves to the final receipt.
  * After 5 minutes it calls `onSlow()` once and keeps polling every 10 s; it never
- * gives up on time and rejects only with the `ApiError` of a failed poll.
+ * gives up on time.
+ *
+ * A failed poll with an `ApiError` of status 0 (network) or 5xx is retried at the
+ * current interval; after 3 such failures in a row it rejects with the last error, and
+ * any successful poll resets the count. A 4xx `ApiError` (e.g. 404 for a deleted
+ * receipt) or any other error rejects at once (docs/wiki/frontend/api-client.md).
  */
 export function pollReceipt(id, onUpdate, onSlow) {
   const started = Date.now();
   let slow = false;
+  let failures = 0;
   return new Promise((resolve, reject) => {
-    const tick = async () => {
-      let receipt;
-      try {
-        receipt = await api.get(`/receipts/${id}`);
-      } catch (err) {
-        reject(err);
-        return;
-      }
-      if (onUpdate) onUpdate(receipt);
-      if (FINAL_STATUSES.has(receipt.status)) {
-        resolve(receipt);
-        return;
-      }
+    const scheduleNext = () => {
       if (!slow && Date.now() - started >= POLL_SLOW_AFTER_MS) {
         slow = true;
         if (onSlow) onSlow();
       }
       setTimeout(tick, slow ? POLL_SLOW_INTERVAL_MS : POLL_INTERVAL_MS);
+    };
+    const tick = async () => {
+      let receipt;
+      try {
+        receipt = await api.get(`/receipts/${id}`);
+      } catch (err) {
+        const transient = err instanceof ApiError && (err.status === 0 || err.status >= 500);
+        failures += 1;
+        if (!transient || failures >= POLL_MAX_FAILURES) {
+          reject(err);
+          return;
+        }
+        scheduleNext();
+        return;
+      }
+      failures = 0;
+      if (onUpdate) onUpdate(receipt);
+      if (FINAL_STATUSES.has(receipt.status)) {
+        resolve(receipt);
+        return;
+      }
+      scheduleNext();
     };
     tick();
   });
