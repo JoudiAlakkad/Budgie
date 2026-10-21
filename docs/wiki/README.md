@@ -50,6 +50,7 @@ back; the parent records them.
 - [0028 — Evaluation truth and scoring](decisions/0028-evaluation-truth-and-scoring.md)
 - [0029 — Tutor agent for exam preparation](decisions/0029-tutor-agent-for-exam-preparation.md)
 - [0030 — Default model `qwen2.5vl:3b`](decisions/0030-default-model-qwen2-5vl-3b.md)
+- [0031 — The user can mark an `unreadable` flag as checked](decisions/0031-user-can-mark-unreadable-flags-checked.md)
 
 ## Areas
 

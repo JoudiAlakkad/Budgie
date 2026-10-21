@@ -35,10 +35,11 @@ Precision and recall of "flagged" (`needs_review` or `rejected`) on the receipts
 - Each flag's `message` next to its field, e.g. "Items sum to 12.40 but total is 14.40".
 - An "AI-generated" badge on each extracted value until the user edits or confirms it.
 - Every field stays editable whatever the status. After each edit the rules run again, so a fixed field clears its flag.
+- An `unreadable` flag has a "Looks right" button: the user can confirm a correct value without changing it ([0031](../decisions/0031-user-can-mark-unreadable-flags-checked.md)). Rule flags can't be dismissed; they clear when the data is fixed.
 
 ## Known gaps
 - An extraction that is internally consistent but wrong passes every rule, e.g. a misread price with a total that matches. Only the user's review catches it.
-- `unreadable_fields` is weak: in the spike the model listed fields it had read correctly, and didn't list ones it had invented. A false `unreadable` flag only costs a review.
+- `unreadable_fields` is weak: in the spike the model listed fields it had read correctly, and didn't list ones it had invented. A false `unreadable` flag only costs a review, and since [0031](../decisions/0031-user-can-mark-unreadable-flags-checked.md) one click.
 - The plausibility rule misses a non-receipt for which the model invents a full receipt. In the recorded pinboard run the sum check against the total (22.98 vs 25.00), the 2023 date and the `unreadable` flags send it to review; a more consistent invention would pass.
 - Payment lines listed as items (ZU ZAHLEN, BAR, ZURÜCK) make many real receipts `needs_review` through `sum_mismatch`, as in the recorded ALDI run. Correct, but noisy until the pipeline or the prompt removes them.
 
