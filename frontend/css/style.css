@@ -462,6 +462,34 @@ tr.flagged td {
   font-size: 0.875rem;
 }
 
+/* Decision 0031: a flag on an edited value is dimmed until the save rechecks it; the
+   "Edited — rechecked when you save" note says so in text, not by colour alone. */
+.flag-message.stale {
+  opacity: 0.6;
+}
+
+.stale-note {
+  font-style: italic;
+}
+
+.flag-entry {
+  display: block;
+}
+
+.flag-actions {
+  margin-top: 0.2rem;
+}
+
+button.flag-action {
+  padding: 0.1rem 0.5rem;
+  font-size: 0.875rem;
+}
+
+.flag-message.flag-checked {
+  border-left-color: var(--ok-border);
+  background: var(--ok-bg);
+}
+
 .field-error {
   display: block;
   margin-top: 0.25rem;

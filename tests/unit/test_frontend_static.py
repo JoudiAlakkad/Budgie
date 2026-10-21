@@ -12,6 +12,8 @@
    (F09, decision 0023).
 7. The stylesheet hides `[hidden]` with `!important`, so a class with `display` can't
    show an element the JS hid (F12 host test: "Choose a category" on categorised items).
+8. The review page's `CHECKABLE_FIELDS` equals the contract's `CheckedField`, and only
+   `buildPatch` sends `checked_fields` (decision 0031; a manual POST has no flags).
 
 The scanned sources are `frontend/js/**/*.js` and the inline scripts of `frontend/*.html`.
 Comments are stripped first, so a comment may name a sink. Each check skips with a reason
@@ -25,7 +27,7 @@ from typing import get_args
 
 import pytest
 
-from app.api.schemas import Category
+from app.api.schemas import Category, CheckedField
 from app.domain.leaks import CATEGORY_LABELS
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -481,3 +483,26 @@ def test_hidden_beats_class_display() -> None:
     css = (FRONTEND / "css" / "style.css").read_text(encoding="utf-8")
     hint = "add [hidden] { display: none !important; }"
     assert HIDDEN_RULE.search(BLOCK_COMMENT.sub("", css)), hint
+
+
+REVIEW_JS = JS_DIR / "review.js"
+CHECKABLE_BLOCK = re.compile(r"const\s+CHECKABLE_FIELDS\s*=\s*new\s+Set\(\s*\[(.*?)\]", re.DOTALL)
+
+
+def _js_function(code: str, name: str) -> str:
+    """The text of `function <name>(` up to the next top-level `function`."""
+    start = code.index(f"function {name}(")
+    end = code.find("\nfunction ", start + 1)
+    return code[start : end if end != -1 else len(code)]
+
+
+def test_checkable_fields_match_the_contract() -> None:
+    if not REVIEW_JS.is_file():
+        pytest.skip("frontend/js/review.js doesn't exist yet")
+    code = _strip_js_comments(REVIEW_JS.read_text(encoding="utf-8"))
+    block = CHECKABLE_BLOCK.search(code)
+    assert block, "review.js defines CHECKABLE_FIELDS = new Set([...]) (decision 0031)"
+    keys = re.findall(r"\"([^\"]+)\"", block.group(1))
+    assert keys == list(get_args(CheckedField))
+    assert "checked_fields" in _js_function(code, "buildPatch")
+    assert "checked_fields" not in _js_function(code, "buildCreate")

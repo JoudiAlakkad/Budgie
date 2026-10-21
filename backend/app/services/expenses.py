@@ -113,6 +113,8 @@ class ExpenseEdit(Protocol):
     def tax(self) -> Decimal | None: ...
     @property
     def line_items(self) -> Sequence[EditedLineItem]: ...
+    @property
+    def checked_fields(self) -> Sequence[str]: ...
 
 
 class ExpenseService:
@@ -217,16 +219,24 @@ class ExpenseService:
           stored category resent with a changed description stays on the item only, so a
           corrected misread (`Milch` -> `Bier`) doesn't train the new name.
         - `possible_duplicate` is recomputed against every other expense.
+        - Each key in `checked_fields` leaves `unreadable_fields` too (decision 0031);
+          a key that isn't there is ignored. Rule flags are not affected: they come back
+          from the reassessment unless the data is fixed.
 
-        A body with no fields is not an edit: it returns the expense unchanged.
+        A body with only `checked_fields` changes no value: it reassesses with the
+        reduced `unreadable_fields` but keeps `source`, `confirmed`, the receipt status
+        and the items. A body with no fields, or only an empty `checked_fields`, is not
+        an edit: it returns the expense unchanged.
         """
         sent = set(body.model_fields_set)
+        checked = set(body.checked_fields) if "checked_fields" in sent else set()
+        sent.discard("checked_fields")
         with self._db.transaction() as session:
             expenses = ExpenseRepository(session)
             current = expenses.get(expense_id)
             if current is None:
                 raise NotFound(f"Expense {expense_id} does not exist.")
-            if not sent:
+            if not sent and not checked:
                 return expense_view(current)
             values: dict[str, Any] = {
                 name: getattr(body, name) if name in sent else getattr(current, name)
@@ -243,7 +253,11 @@ class ExpenseService:
             else:
                 items = [_unchanged(item) for item in current.line_items]
             edited = sent & {*EDITABLE_SCALARS, "line_items"}
-            unreadable = tuple(key for key in current.unreadable_fields if key not in edited)
+            unreadable = tuple(
+                key for key in current.unreadable_fields if key not in edited and key not in checked
+            )
+            # Only `checked_fields` sent: no value changed, so neither did who made it.
+            check_only = not edited
             others = _duplicate_candidates(expenses, values["date"], values["total"], expense_id)
             review_status, flags = self._assess(
                 **values, items=items, unreadable_fields=unreadable, others=others
@@ -255,22 +269,23 @@ class ExpenseService:
                 subtotal=optional_cents(values["subtotal"]),
                 tax=optional_cents(values["tax"]),
                 total=optional_cents(values["total"]),
-                source="ai_corrected" if current.source == "ai" else current.source,
+                source=_edited_source(current.source, check_only),
                 review_status=review_status,
                 flags=flags,
                 unreadable_fields=unreadable,
-                confirmed=False,
+                confirmed=current.confirmed if check_only else False,
                 line_items=tuple(items),
             )
-            if current.confirmed and current.receipt_id is not None:
+            if not check_only and current.confirmed and current.receipt_id is not None:
                 _move_receipt(ReceiptRepository(session), current, "confirmed", "extracted")
             expense = expenses.update(expense_id, changes)
         # `edited` holds field names only: ExpenseUpdate forbids unknown keys.
         logger.info(
-            "Expense %d edited (%s), unconfirmed: %s",
+            "Expense %d edited (%s), checked (%s), unconfirmed: %s",
             expense_id,
             ", ".join(sorted(edited)),
-            current.confirmed,
+            ", ".join(sorted(checked)),
+            current.confirmed and not check_only,
         )
         return expense_view(expense)
 
@@ -482,6 +497,13 @@ def _duplicate_candidates(
 def _item_fields(item: NewLineItem) -> dict[str, Any]:
     """The `NewLineItem` fields by name (shallow; `dataclasses.asdict` would deep-copy)."""
     return {field.name: getattr(item, field.name) for field in dataclasses.fields(NewLineItem)}
+
+
+def _edited_source(source: str, check_only: bool) -> str:
+    """`ai` becomes `ai_corrected` when a value changes; a check alone changes nothing."""
+    if source == "ai" and not check_only:
+        return "ai_corrected"
+    return source
 
 
 def _unchanged(item: LineItemRecord) -> LineItemChange:

@@ -24,6 +24,10 @@ const SCALARS = [
 // Flags on any other field (subtotal, tax, payment_method, ...) have no input and go to
 // "Other findings", so none is dropped. Fields not shown are never sent: the server keeps them.
 const SCALAR_NAMES = new Set(SCALARS.map((def) => def.name));
+// The keys PATCH `checked_fields` accepts (decision 0031): the contract's `CheckedField`.
+// Only an `unreadable` flag on one of these gets a "Looks right" button.
+const CHECKABLE_FIELDS = new Set(["merchant", "date", "currency", "line_items", "total", "payment_method"]);
+const STALE_TEXT = "Edited — rechecked when you save";
 // Confirm needs these; the API refuses `null` for them in a PATCH.
 const CONFIRM_REQUIRED = ["merchant", "date", "total"];
 
@@ -64,6 +68,7 @@ const state = {
   busy: false,
   draft: null, // the form's values as typed (strings)
   edited: new Set(), // badge keys of fields the user edited in this page session
+  checked: new Set(), // `unreadable` flag fields marked "Looks right", sent as checked_fields (0031)
   aiTracked: false, // this session saw the expense as unconfirmed `ai`, so per-field badges are known
   leaving: false, // navigating away after a successful save or delete: no unsaved-changes warning
   nextKey: 1,
@@ -170,20 +175,27 @@ function scalarChanged(def) {
   return !sameValue(parseValue(def.kind, state.draft[def.name]), state.expense[def.name]);
 }
 
-function itemsChanged() {
+/** An item was added, removed or had its name, quantity or amount changed (not its category). */
+function itemContentChanged() {
   const server = state.expense.line_items;
   const rows = state.draft.items;
   if (rows.length !== server.length) return true;
   return rows.some((row, i) => {
     const item = server[i];
-    if (row.id !== item.id || row.category !== item.category) return true;
+    if (row.id !== item.id) return true;
     return ITEM_FIELDS.some((def) => !sameValue(parseValue(def.kind, row[def.name]), item[def.name]));
   });
 }
 
+function itemsChanged() {
+  if (itemContentChanged()) return true;
+  return state.draft.items.some((row, i) => row.category !== state.expense.line_items[i].category);
+}
+
 function isDirty() {
   if (!state.expense) return false;
-  return SCALARS.some(scalarChanged) || itemsChanged();
+  // A "Looks right" mark is an unsaved change too: it goes out with the next save (0031).
+  return SCALARS.some(scalarChanged) || itemsChanged() || state.checked.size > 0;
 }
 
 /** Required fields that had a value and were emptied: the API refuses `null` for them. */
@@ -255,6 +267,8 @@ function buildPatch() {
     if (scalarChanged(def)) body[def.name] = parseValue(def.kind, state.draft[def.name]).value;
   }
   if (itemsChanged()) body.line_items = state.draft.items.map(itemPayload);
+  // Values the user marked "Looks right"; clears their `unreadable` flags (decision 0031).
+  if (state.checked.size > 0) body.checked_fields = [...state.checked];
   return body;
 }
 
@@ -313,6 +327,8 @@ function applyExpense(expense) {
   state.expense = expense;
   state.draft = draftFrom(expense);
   state.fieldErrors = [];
+  // The server's flags are new: earlier "Looks right" marks were sent or no longer apply.
+  state.checked.clear();
   if (expense.source === "ai" && !expense.confirmed) state.aiTracked = true;
   if (expense.confirmed) {
     // Confirming reviews every value; the badges don't come back after "Edit again".
@@ -372,6 +388,124 @@ function flagNode(flag, id) {
     " Check: ",
     flag.message,
   );
+}
+
+/**
+ * A flag as shown on the form (decision 0031): the message, dimmed with a note while its
+ * value is edited, and for an `unreadable` flag a "Looks right" button that swaps the
+ * message for "Marked as checked" and Undo. `id` goes on the message; the checked note
+ * gets `<id>-checked`. Returns the entry; `entry.root` is the node to insert, and
+ * `describedIds()` lists only the shown node's id for an input's aria-describedby.
+ * Its state is set by syncFlags(), which updateActions() runs after every change.
+ */
+function flagEntry(flag, id, readOnly) {
+  const message = flagNode(flag, id);
+  const staleNote = h("span", { className: "stale-note" }, ` (${STALE_TEXT})`);
+  staleNote.hidden = true;
+  message.append(staleNote);
+  const entry = { flag, message, staleNote, checkable: false, root: message };
+  entry.describedIds = () => (entry.message.hidden || !id ? [] : [id]);
+  refs.flagEntries.push(entry);
+  if (readOnly || flag.code !== "unreadable" || !CHECKABLE_FIELDS.has(flag.field)) return entry;
+
+  entry.checkable = true;
+  const checkedId = id ? `${id}-checked` : null;
+  entry.lookRight = h(
+    "button",
+    {
+      type: "button",
+      className: "flag-action",
+      on: {
+        click: () => {
+          // A save in flight would apply its response and drop a mark made now.
+          if (state.busy) return;
+          state.checked.add(flag.field);
+          updateActions();
+          entry.undo.focus();
+          announce("Marked as checked. It is sent with the next save.");
+        },
+      },
+    },
+    "Looks right",
+  );
+  entry.actions = h("div", { className: "flag-actions" }, entry.lookRight);
+  entry.checkedText = h("span", { id: checkedId }, icon("✔"), " Marked as checked");
+  entry.undo = h(
+    "button",
+    {
+      type: "button",
+      className: "link-button",
+      on: {
+        click: () => {
+          if (state.busy) return;
+          state.checked.delete(flag.field);
+          updateActions();
+          entry.lookRight.focus();
+          announce("Check undone.");
+        },
+      },
+    },
+    "Undo",
+  );
+  entry.checkedLine = h("div", { className: "flag-message flag-checked" }, entry.checkedText, " ", entry.undo);
+  entry.checkedLine.hidden = true;
+  entry.root = h("div", { className: "flag-entry" }, message, entry.actions, entry.checkedLine);
+  entry.describedIds = () => {
+    if (!id) return [];
+    return entry.message.hidden ? [checkedId] : [id];
+  };
+  return entry;
+}
+
+/** Edited values whose flags are stale until the next save (decision 0031). */
+function editedState() {
+  if (!state.expense || !state.draft) return { scalars: new Set(), items: false };
+  return {
+    scalars: new Set(SCALARS.filter(scalarChanged).map((def) => def.name)),
+    items: itemContentChanged(),
+  };
+}
+
+function flagIsStale(flag, edited) {
+  const field = flag.field;
+  if (field && edited.scalars.has(field)) return true;
+  if (flag.code === "possible_duplicate" && (edited.scalars.has("date") || edited.scalars.has("total"))) {
+    return true;
+  }
+  if (!edited.items) return false;
+  if (flag.code === "sum_mismatch" || field === "line_items") return true;
+  // `uncategorized_item` keeps its own show/hide rule in syncCategoryRow.
+  return typeof field === "string" && /^line_items\[\d+\]$/.test(field) && flag.code !== "uncategorized_item";
+}
+
+/** Sets every shown flag's stale and checked state, then the inputs' aria-describedby. */
+function syncFlags() {
+  if (!refs.flagEntries) return;
+  const edited = editedState();
+  for (const entry of refs.flagEntries) {
+    const stale = flagIsStale(entry.flag, edited);
+    entry.message.classList.toggle("stale", stale);
+    entry.staleNote.hidden = !stale;
+    if (entry.checkable) {
+      const checked = state.checked.has(entry.flag.field);
+      entry.message.hidden = checked;
+      entry.actions.hidden = checked;
+      entry.checkedLine.hidden = !checked;
+    }
+  }
+  for (const sync of refs.describers) sync();
+}
+
+/**
+ * Keeps `input`'s aria-describedby to the shown flag and error nodes: a hidden node it
+ * named directly would still be read (docs/wiki/plan/workflow.md).
+ */
+function describeWith(input, entries, errorIds) {
+  return () => {
+    const ids = entries.flatMap((entry) => entry.describedIds()).concat(errorIds);
+    if (ids.length) input.setAttribute("aria-describedby", ids.join(" "));
+    else input.removeAttribute("aria-describedby");
+  };
 }
 
 function errorNode(message, id) {
@@ -521,6 +655,7 @@ function onEnterManually() {
   state.expense = null;
   state.draft = emptyDraft();
   state.fieldErrors = [];
+  state.checked.clear();
   render();
   const first = panel.querySelector("input");
   if (first) first.focus();
@@ -536,18 +671,15 @@ function scalarField(def, readOnly, flags) {
   const id = `f-${def.name}`;
   const expense = state.expense;
   const serverValue = expense ? expense[def.name] : null;
-  const describedBy = [];
+  const errorIds = [];
   const extra = [];
 
-  flags.forEach((flag, i) => {
-    const flagId = `${id}-flag-${i}`;
-    describedBy.push(flagId);
-    extra.push(flagNode(flag, flagId));
-  });
+  const entries = flags.map((flag, i) => flagEntry(flag, `${id}-flag-${i}`, readOnly));
+  extra.push(...entries.map((entry) => entry.root));
   const errors = errorsFor(def.name);
   errors.forEach((err, i) => {
     const errId = `${id}-err-${i}`;
-    describedBy.push(errId);
+    errorIds.push(errId);
     extra.push(errorNode(err.message, errId));
   });
 
@@ -563,7 +695,6 @@ function scalarField(def, readOnly, flags) {
       maxlength: def.kind === "currency" ? "3" : null,
       placeholder: def.required ? null : "–",
       autocomplete: "off",
-      "aria-describedby": describedBy.join(" ") || null,
       "aria-invalid": errors.length ? "true" : null,
     },
   });
@@ -591,14 +722,14 @@ function scalarField(def, readOnly, flags) {
     updateActions();
   });
 
-  return h(
-    "div",
-    { className: flags.length ? "field flagged" : "field" },
-    label,
-    input,
-    unknown,
-    ...extra,
-  );
+  const field = h("div", { className: "field" }, label, input, unknown, ...extra);
+  const describe = describeWith(input, entries, errorIds);
+  refs.describers.push(() => {
+    describe();
+    // The highlight stays while a flag is left that the user hasn't marked "Looks right".
+    field.classList.toggle("flagged", entries.some((entry) => !entry.message.hidden));
+  });
+  return field;
 }
 
 function categoryOptions(selected) {
@@ -632,8 +763,9 @@ function itemRow(row, index, readOnly, flagsByItemId) {
       flags
         .filter((flag) => flag.code !== "uncategorized_item")
         .forEach((flag, i) => {
+          // `line_items[i]` isn't a checked_fields key, so these never hide: a static list is right.
           describedBy.push(`${id}-flag-${i}`);
-          extra.push(flagNode(flag, `${id}-flag-${i}`));
+          extra.push(flagEntry(flag, `${id}-flag-${i}`, readOnly).root);
         });
       rowError.forEach((err, i) => {
         describedBy.push(`${id}-rowerr-${i}`);
@@ -900,7 +1032,7 @@ function renderForm() {
   const manual = state.mode === "manual";
   const expense = state.expense;
   const readOnly = !manual && expense.confirmed && !state.unlocked;
-  refs = { badges: new Map() };
+  refs = { badges: new Map(), flagEntries: [], describers: [] };
 
   const title = standalone
     ? manual
@@ -982,7 +1114,7 @@ function renderForm() {
       h(
         "ul",
         { className: "flag-list", attrs: { "aria-labelledby": "other-findings" } },
-        ...general.map((flag) => h("li", {}, flagNode(flag))),
+        ...general.map((flag) => h("li", {}, flagEntry(flag, undefined, readOnly).root)),
       ),
     );
   }
@@ -1012,7 +1144,7 @@ function renderForm() {
 
   const itemsHeading = h("h2", { id: "items-heading" }, "Line items");
   form.append(itemsHeading);
-  for (const flag of listFlags) form.append(h("p", {}, flagNode(flag)));
+  for (const flag of listFlags) form.append(h("div", {}, flagEntry(flag, undefined, readOnly).root));
   for (const err of errorsFor("line_items")) form.append(h("p", {}, errorNode(err.message)));
   if (state.draft.items.length === 0) {
     form.append(
@@ -1064,6 +1196,7 @@ function actionsBar(manual, readOnly) {
           on: {
             click: () => {
               state.unlocked = true;
+              state.checked.clear();
               render();
               const first = document.getElementById("f-merchant");
               if (first) first.focus();
@@ -1133,6 +1266,8 @@ function labelsOf(names) {
 /** Updates the two buttons, their reasons and the item sum without rebuilding the form. */
 function updateActions() {
   if (refs.sum) refs.sum.textContent = itemsSumText();
+  // Every edit and every "Looks right"/Undo comes through here, so the flags follow too.
+  syncFlags();
   if (!refs.saveConfirm) return;
   const manual = state.mode === "manual";
   const reasons = [];
