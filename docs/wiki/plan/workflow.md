@@ -49,6 +49,7 @@ See [0010](../decisions/0010-ci-gates-before-merge.md): ruff, pytest, OpenAPI dr
 - **Image `HEALTHCHECK`:** only checks that `/api/health` answers. Because health is always 200, a container with `db: error` still counts as healthy; the docker gate checks `db: ok` separately.
 - **gitleaks config:** `.gitleaks.toml` extends the default rules with one allowlist: a "secret" that is only a decimal number is ignored. In F11, `generic-api-key` fired on `"completion_tokens_mean": 441.8235294117647` in `eval/results/summary.json` (a key name with "token" and a high-entropy value). CI scans the whole history, so rounding the numbers couldn't fix the pushed commit; the allowlist does. Checked with the pinned 8.21.2: 1 leak without the file, none with it.
 - **Versions:** ruff is pinned exactly in `backend/pyproject.toml`, and `.pre-commit-config.yaml` must use the same `rev`.
+- Pillow is pinned exactly in the `eval` extra (`pillow==12.3.0`, F12): the demo PNGs are checked pixel for pixel, and glyph rendering depends on the FreeType bundled in each Pillow wheel. `test_installed_pillow_is_the_pinned_one` reads the pin from `pyproject.toml`. An exact pin needs a 12.3.0 wheel for every Python that runs `make install` (3.12 in CI, 3.14 in the dev container); a new Python release may need a Pillow upgrade plus a re-render.
 
 ## Git conventions
 - Commit messages are short and imperative, and name the feature, e.g. `F05: persist extraction failures`.

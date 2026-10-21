@@ -1,5 +1,6 @@
 """scripts/make_demo_receipts.py: the committed demo receipts for scenario 1 (F12)."""
 
+import tomllib
 from decimal import Decimal
 from pathlib import Path
 
@@ -12,7 +13,20 @@ from app.services.item_categories import load_seed
 from tests.unit.fixture_shape import load_script
 
 demo = load_script("make_demo_receipts")
-COMMITTED = Path(__file__).resolve().parents[2] / "data" / "demo" / "receipts"
+ROOT = Path(__file__).resolve().parents[2]
+COMMITTED = ROOT / "data" / "demo" / "receipts"
+
+
+def _pinned_pillow() -> str:
+    """The exact Pillow version in the `eval` extra, the one the demo PNGs are rendered with."""
+    with (ROOT / "backend" / "pyproject.toml").open("rb") as file:
+        extra = tomllib.load(file)["project"]["optional-dependencies"]["eval"]
+    pins = [req.split("==", 1)[1].strip() for req in extra if req.lower().startswith("pillow==")]
+    assert len(pins) == 1, f"the eval extra must pin Pillow exactly (pillow==X.Y.Z): {extra}"
+    return pins[0]
+
+
+PINNED_PILLOW = _pinned_pillow()
 
 
 @pytest.mark.parametrize(
@@ -81,6 +95,14 @@ def test_committed_receipts_exist_and_open() -> None:
             assert image.height == 2 * demo.MARGIN + demo.LINE * len(demo.lines(receipt))
 
 
+def test_installed_pillow_is_the_pinned_one() -> None:
+    """A drifted Pillow shows up here as a version problem, not as a pixel diff below."""
+    assert PIL.__version__ == PINNED_PILLOW, (
+        f"Pillow {PIL.__version__} is installed, but backend/pyproject.toml pins "
+        f"{PINNED_PILLOW} for the pixel-exact demo check: run `make install`"
+    )
+
+
 @pytest.mark.parametrize("receipt", demo.RECEIPTS, ids=lambda r: r.file)
 def test_committed_receipts_match_the_script_pixel_for_pixel(receipt) -> None:
     """An item edit that keeps the line count must not leave a stale PNG behind."""
@@ -92,6 +114,6 @@ def test_committed_receipts_match_the_script_pixel_for_pixel(receipt) -> None:
     diff = ImageChops.difference(rendered, committed).getbbox()
     versions = f"Pillow {PIL.__version__}, FreeType {features.version('freetype2')}"
     assert diff is None, (
-        f"{path.name} differs from the script in {diff}: run `make demo-receipts` "
-        f"({versions}; the committed PNGs were rendered with Pillow 12.3.0)"
+        f"{path.name} differs from the script in {diff} (installed: {versions}): "
+        f"run `make demo-receipts` with the pinned Pillow {PINNED_PILLOW}"
     )

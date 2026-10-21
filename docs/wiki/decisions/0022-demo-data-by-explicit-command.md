@@ -28,6 +28,6 @@ The seed covers scenarios 2 and 3. Scenario 1 needs a photo to upload, and the e
 
 Seed the history first, because `make seed-demo` only loads into an empty database, then upload the receipts in order.
 
-Each committed PNG is compared pixel for pixel with the script's render, so a change to the receipt data needs `make demo-receipts` in the same commit. A newer Pillow 12.x could move glyph edges and fail this check with no change to the content; the failure message names the Pillow and FreeType versions (rendered with 12.3.0), and re-rendering fixes it. The check isn't loosened.
+Each committed PNG is compared pixel for pixel with the script's render, so a change to the receipt data needs `make demo-receipts` in the same commit. Pillow is pinned exactly in the `eval` extra (12.3.0 at F12), because a different Pillow can move glyph edges with no change to the content (third `/code-review`). A separate test checks that the installed Pillow equals the pin, so a drift fails as a version problem rather than a pixel diff. The pixel test's message names the installed Pillow and FreeType versions. Upgrading Pillow means changing the pin and re-rendering the PNGs in the same commit. The check isn't loosened.
 
 The shops are fictional and the receipts carry no address or payment data. The text is ASCII because Pillow's bundled font has no umlauts or euro sign. The printed dates are October 2026, so after October 2028 they fall outside the 2-year date rule and get flagged.

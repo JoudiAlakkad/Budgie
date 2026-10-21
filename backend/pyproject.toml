@@ -38,7 +38,10 @@ dev = [
 ]
 # The evaluation's image downsizing (eval/images.py, decision 0028); not in the Docker image.
 eval = [
-    "pillow>=12.3,<13",
+    # Exact: the committed demo PNGs are checked pixel for pixel against a fresh render, and
+    # glyph edges depend on the FreeType bundled in each Pillow wheel (decision 0022). It also
+    # keeps the eval's downsizing reproducible (decision 0028).
+    "pillow==12.3.0",
 ]
 
 [tool.setuptools.packages.find]
