@@ -49,6 +49,8 @@ back; the parent records them.
 - [0027 — Fixes from the first v3 host test](decisions/0027-host-test-fixes-for-v3-and-upload.md)
 - [0028 — Evaluation truth and scoring](decisions/0028-evaluation-truth-and-scoring.md)
 - [0029 — Tutor agent for exam preparation](decisions/0029-tutor-agent-for-exam-preparation.md)
+- [0030 — Default model `qwen2.5vl:3b`](decisions/0030-default-model-qwen2-5vl-3b.md)
+- [0031 — The user can mark an `unreadable` flag as checked](decisions/0031-user-can-mark-unreadable-flags-checked.md)
 
 ## Areas
 
@@ -59,3 +61,5 @@ back; the parent records them.
 ## Project evidence
 
 - [AI development log](../ai-dev-log.md) — add episodes with `/dev-log <title>`
+- [Responsible design](../responsible-design.md) — limitations, failure modes, privacy, security, misuse (criterion 19)
+- [Project README](../../README.md) — setup and operations (criterion 18)

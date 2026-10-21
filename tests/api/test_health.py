@@ -18,7 +18,7 @@ def test_health_db_ok_llm_down(client: TestClient) -> None:
     response = client.get("/api/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "db": "ok", "llm": "down", "model": "gemma3:4b"}
+    assert response.json() == {"status": "ok", "db": "ok", "llm": "down", "model": "qwen2.5vl:3b"}
 
 
 def test_health_llm_ok(client: TestClient, fake_llm: FakeLLMClient) -> None:

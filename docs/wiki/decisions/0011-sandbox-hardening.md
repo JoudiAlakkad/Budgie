@@ -15,7 +15,9 @@ The brief requires the agent harness to run sandboxed: access only to the worksp
   - `.claude/settings.local.json` holds per-machine overrides and is gitignored.
 - **Claude Code permissions** in `.claude/settings.json`:
   - `deny`: reading `.env*`, `~/.ssh/**` and `~/.gitconfig`
-  - `ask`: `git push`, `git commit`, `rm`, `docker`, `curl` and `wget`
+  - `ask`: `git push`, `git commit`, `git reset`, `git rebase`, `rm`, `docker`, `curl`, `wget` and `pip install`
+  - also `deny` (added later, as in `.claude/settings.json` since F12's check): `~/.git-credentials`, `sudo` and `git push --force`
+  - **Limit (found by `/code-review` in F12):** the `Read(...)` deny rules apply to the Read tool only. A shell command such as `cat .env` isn't matched. Listing every reading command is a losing game, so the real protection is that the container holds no secrets: Budgie needs no `.env`, and no credentials are forwarded. The README says so.
   - `allow`: tests, lint and read-only git commands
 - **Git: the push model.** The student chose this on 2026-09-28.
   - The agent commits locally. Only the student pushes, from a host terminal. No personal credentials and no access tokens exist inside the container.

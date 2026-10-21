@@ -22,10 +22,13 @@ backend/
 tests/                     # at the repo root: unit/, api/, integration/ (-m integration, live model),
                            # fixtures/recorded_responses/ (generated), recorded.py (replay helper)
 
-At the repo root: Makefile (install, check, run, openapi, docker-check),
-Dockerfile, .github/workflows/ci.yml, scripts/docker-health-check.sh,
-scripts/make_fixtures.py (generates the redacted recorded responses, decision 0017) and
-scripts/fixture_scan.py (independent privacy scan, used by the generator and the tests).
+At the repo root: Makefile (install, check, run, openapi, seed-demo, demo-receipts,
+docker-check, eval-check, eval, eval-score), Dockerfile, docker-compose.yml and
+docker-compose.ollama.yml (F12), .github/workflows/ci.yml, scripts/docker-health-check.sh,
+scripts/make_fixtures.py (generates the redacted recorded responses, decision 0017),
+scripts/fixture_scan.py (independent privacy scan, used by the generator and the tests) and
+scripts/make_demo_receipts.py (renders the synthetic demo receipts into data/demo/receipts/,
+decision 0022; tested in tests/unit/test_make_demo_receipts.py).
 ```
 
 ## Dependency direction

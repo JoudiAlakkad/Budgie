@@ -1941,12 +1941,30 @@
             "type": "array",
             "minItems": 1,
             "title": "Line Items"
+          },
+          "checked_fields": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "merchant",
+                "date",
+                "currency",
+                "line_items",
+                "subtotal",
+                "tax",
+                "total",
+                "payment_method"
+              ]
+            },
+            "type": "array",
+            "title": "Checked Fields",
+            "description": "Values the user checked and found right; their `unreadable` flags clear."
           }
         },
         "additionalProperties": false,
         "type": "object",
         "title": "ExpenseUpdate",
-        "description": "`PATCH /expenses/{id}`: only the fields sent change.\n\nFields that are required in `ExpenseCreate` may be left out but not sent as `null`.\n`line_items`, if sent, replaces the list."
+        "description": "`PATCH /expenses/{id}`: only the fields sent change.\n\nFields that are required in `ExpenseCreate` may be left out but not sent as `null`.\n`line_items`, if sent, replaces the list. `checked_fields` (decision 0031) drops\nthose keys from the model's unreadable fields without changing a value."
       },
       "FieldError": {
         "properties": {

@@ -3,7 +3,9 @@
 
 const API_PREFIX = "/api";
 const POLL_INTERVAL_MS = 2000;
-const POLL_TIMEOUT_MS = 5 * 60 * 1000;
+const POLL_SLOW_AFTER_MS = 5 * 60 * 1000;
+const POLL_SLOW_INTERVAL_MS = 10000;
+const POLL_MAX_FAILURES = 3; // transient poll failures in a row before giving up
 const FINAL_STATUSES = new Set(["extracted", "failed", "confirmed"]);
 
 /** A non-2xx response, built from the error body (contracts/error-format.md). */
@@ -15,17 +17,6 @@ export class ApiError extends Error {
     this.error = error;
     this.detail = detail;
     this.fields = fields || null;
-  }
-}
-
-/** Polling gave up after 5 minutes; the receipt may still finish later. */
-export class StillProcessingError extends Error {
-  constructor() {
-    const detail =
-      "The receipt is still being processed. Reload the page in a moment to check again.";
-    super(detail);
-    this.name = "StillProcessingError";
-    this.detail = detail;
   }
 }
 
@@ -152,29 +143,83 @@ async function download(path) {
 
 /**
  * Polls `GET /receipts/{id}` every 2 s until the status is extracted, failed or confirmed.
- * Calls `onUpdate(receipt)` after every poll and resolves to the final receipt.
- * Rejects with `StillProcessingError` after 5 minutes, or with the `ApiError` of a failed poll.
+ * Calls `onUpdate(receipt)` after every successful poll and resolves to the final receipt.
+ * After 5 minutes it calls `onSlow()` once and keeps polling every 10 s; it never
+ * gives up on time.
+ *
+ * A failed poll with an `ApiError` of status 0 (network) or 5xx is retried at the
+ * current interval; after 3 such failures in a row it rejects with the last error, and
+ * any successful poll resets the count. A 4xx `ApiError` (e.g. 404 for a deleted
+ * receipt) or any other error rejects at once (docs/wiki/frontend/api-client.md).
+ *
+ * Cancellation: pass `options.signal` (an `AbortSignal`). Once it aborts, no further tick
+ * is scheduled, the result of a request already in flight is ignored, `onUpdate` and
+ * `onSlow` aren't called again, and the promise rejects with `signal.reason` (a
+ * `DOMException` named "AbortError" for a plain `controller.abort()`). Callers ignore
+ * that rejection by checking `signal.aborted` first. An already aborted signal rejects
+ * at once, without a request.
+ *
+ * @param {number} id
+ * @param {(receipt: object) => void} [onUpdate]
+ * @param {() => void} [onSlow]
+ * @param {{signal?: AbortSignal}} [options]
+ * @returns {Promise<object>} the receipt in its final status
  */
-export function pollReceipt(id, onUpdate) {
+export function pollReceipt(id, onUpdate, onSlow, { signal } = {}) {
   const started = Date.now();
+  let slow = false;
+  let failures = 0;
+  let timer = null;
   return new Promise((resolve, reject) => {
+    const cancelled = () => Boolean(signal && signal.aborted);
+    const onAbort = () => {
+      if (timer !== null) clearTimeout(timer);
+      timer = null;
+      reject(signal.reason);
+    };
+    const settle = (fn, value) => {
+      if (signal) signal.removeEventListener("abort", onAbort);
+      fn(value);
+    };
+    const scheduleNext = () => {
+      if (!slow && Date.now() - started >= POLL_SLOW_AFTER_MS) {
+        slow = true;
+        if (onSlow) onSlow();
+      }
+      timer = setTimeout(tick, slow ? POLL_SLOW_INTERVAL_MS : POLL_INTERVAL_MS);
+    };
     const tick = async () => {
+      timer = null;
       let receipt;
       try {
         receipt = await api.get(`/receipts/${id}`);
       } catch (err) {
-        reject(err);
+        if (cancelled()) return;
+        const transient = err instanceof ApiError && (err.status === 0 || err.status >= 500);
+        failures += 1;
+        if (!transient || failures >= POLL_MAX_FAILURES) {
+          settle(reject, err);
+          return;
+        }
+        scheduleNext();
         return;
       }
+      if (cancelled()) return;
+      failures = 0;
       if (onUpdate) onUpdate(receipt);
       if (FINAL_STATUSES.has(receipt.status)) {
-        resolve(receipt);
-      } else if (Date.now() - started >= POLL_TIMEOUT_MS) {
-        reject(new StillProcessingError());
-      } else {
-        setTimeout(tick, POLL_INTERVAL_MS);
+        settle(resolve, receipt);
+        return;
       }
+      scheduleNext();
     };
+    if (signal) {
+      if (signal.aborted) {
+        reject(signal.reason);
+        return;
+      }
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
     tick();
   });
 }
@@ -212,7 +257,7 @@ export function showError(err) {
   close.addEventListener("click", clearError);
   banner.append(text, close);
   banner.hidden = false;
-  if (!(err instanceof ApiError) && !(err instanceof StillProcessingError)) {
+  if (!(err instanceof ApiError)) {
     console.error(err);
   }
 }

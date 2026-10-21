@@ -10,6 +10,12 @@
    leak explanations use (F09, decision 0023).
 6. No user-visible string in `frontend/js/dashboard.js` says "leak" without "potential"
    (F09, decision 0023).
+7. The stylesheet hides `[hidden]` with `!important`, so a class with `display` can't
+   show an element the JS hid (F12 host test: "Choose a category" on categorised items).
+8. The review page's `CHECKABLE_FIELDS` equals the contract's `CheckedField`, and only
+   `buildPatch` sends `checked_fields` (decision 0031; a manual POST has no flags).
+9. `pollReceipt` takes an `AbortSignal`, and every caller passes one (F12: the poll has
+   no time limit, so it must stop when the page leaves the processing screen).
 
 The scanned sources are `frontend/js/**/*.js` and the inline scripts of `frontend/*.html`.
 Comments are stripped first, so a comment may name a sink. Each check skips with a reason
@@ -23,7 +29,7 @@ from typing import get_args
 
 import pytest
 
-from app.api.schemas import Category
+from app.api.schemas import Category, CheckedField
 from app.domain.leaks import CATEGORY_LABELS
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -455,3 +461,77 @@ def test_the_dashboard_never_says_leak_without_potential() -> None:
     # Not vacuous: the scanner reads the page's prose (about 50 texts in F08).
     assert len([lit for _, lit in _string_literals(code) if _visible_text(lit)]) > 20
     assert hits == [], 'the UI says "potential leak", never "leak" alone (decision 0023)'
+
+
+HIDDEN_RULE = re.compile(
+    r"(?:^|[},])\s*\[hidden\]\s*\{[^}]*display\s*:\s*none\s*!important", re.MULTILINE
+)
+
+
+@pytest.mark.parametrize(
+    ("css", "ok"),
+    [
+        ("[hidden] { display: none !important; }", True),
+        ("a {}\n[hidden]{display:none!important}", True),
+        (".error-banner[hidden] { display: none; }", False),
+        ("[hidden] { display: none; }", False),
+    ],
+)
+def test_hidden_rule_pattern(css: str, ok: bool) -> None:
+    assert bool(HIDDEN_RULE.search(css)) is ok
+
+
+def test_hidden_beats_class_display() -> None:
+    css = (FRONTEND / "css" / "style.css").read_text(encoding="utf-8")
+    hint = "add [hidden] { display: none !important; }"
+    assert HIDDEN_RULE.search(BLOCK_COMMENT.sub("", css)), hint
+
+
+REVIEW_JS = JS_DIR / "review.js"
+CHECKABLE_BLOCK = re.compile(r"const\s+CHECKABLE_FIELDS\s*=\s*new\s+Set\(\s*\[(.*?)\]", re.DOTALL)
+
+
+def _js_function(code: str, name: str) -> str:
+    """The text of `function <name>(` up to the next top-level `function`."""
+    start = code.index(f"function {name}(")
+    end = code.find("\nfunction ", start + 1)
+    return code[start : end if end != -1 else len(code)]
+
+
+def test_checkable_fields_match_the_contract() -> None:
+    if not REVIEW_JS.is_file():
+        pytest.skip("frontend/js/review.js doesn't exist yet")
+    code = _strip_js_comments(REVIEW_JS.read_text(encoding="utf-8"))
+    block = CHECKABLE_BLOCK.search(code)
+    assert block, "review.js defines CHECKABLE_FIELDS = new Set([...]) (decision 0031)"
+    keys = re.findall(r"\"([^\"]+)\"", block.group(1))
+    assert keys == list(get_args(CheckedField))
+    assert "checked_fields" in _js_function(code, "buildPatch")
+    assert "checked_fields" not in _js_function(code, "buildCreate")
+
+
+POLL_SIGNATURE = re.compile(
+    r"export\s+function\s+pollReceipt\(\s*id\s*,\s*onUpdate\s*,\s*onSlow\s*,\s*\{\s*signal\s*\}"
+)
+
+
+def test_receipt_poll_can_be_cancelled() -> None:
+    """`pollReceipt` takes an AbortSignal and every caller passes one (F12, `/code-review`).
+
+    Polling has no time limit, so a poll left running after the page moved on would call
+    `GET /receipts/{id}` every 10 s until the tab closes.
+    """
+    if not API_JS.is_file():
+        pytest.skip("frontend/js/api.js doesn't exist yet")
+    api_code = _strip_js_comments(API_JS.read_text(encoding="utf-8"))
+    assert POLL_SIGNATURE.search(api_code), "pollReceipt(id, onUpdate, onSlow, { signal })"
+    body = _js_function(api_code, "pollReceipt")
+    assert "clearTimeout" in body and "signal.aborted" in body
+    for path, code in _require_scripts().items():
+        if path == API_JS:
+            continue
+        for match in re.finditer(r"\bpollReceipt\(", code):
+            if code[: match.start()].rstrip().endswith("function"):
+                continue
+            call = code[match.start() : match.start() + 1000]
+            assert "signal:" in call, f"{path.name}: pollReceipt call without a signal"

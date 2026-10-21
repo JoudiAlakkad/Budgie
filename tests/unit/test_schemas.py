@@ -10,10 +10,12 @@ from typing import get_args
 import pytest
 from pydantic import BaseModel, ValidationError
 
+from app.ai.schema import OUTPUT_SPECS, UnreadableField, UnreadableFieldV1
 from app.api import schemas
 from app.api.schemas import (
     Budget,
     Category,
+    CheckedField,
     Expense,
     ExpenseCreate,
     ExpenseUpdate,
@@ -230,6 +232,17 @@ def test_category_literals_match_domain_logic() -> None:
     assert list(get_args(SpendingCategory)) == SPENDING_CATEGORIES
     assert list(get_args(Category)) == [*SPENDING_CATEGORIES, *SPECIAL_CATEGORIES]
     assert list(get_args(LineItemCategory)) == [*get_args(Category), "uncategorized"]
+
+
+def test_checked_fields_cover_the_unreadable_keys_of_every_prompt_version() -> None:
+    """Decision 0031: any key a stored expense can list as unreadable can be checked."""
+    assert set(get_args(CheckedField)) == set(get_args(UnreadableField)) | set(
+        get_args(UnreadableFieldV1)
+    )
+    # A new prompt version with its own unreadable keys must be added above.
+    for version, spec in OUTPUT_SPECS.items():
+        (literal,) = get_args(spec.model.model_fields["unreadable_fields"].annotation)
+        assert set(get_args(literal)) <= set(get_args(CheckedField)), version
 
 
 def test_not_a_receipt_is_a_receipt_error_code() -> None:

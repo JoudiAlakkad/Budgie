@@ -20,7 +20,7 @@ How the extraction is measured. The rules (what counts as correct, flagged and c
 | `run_eval.py` | CLI: `check`, `run`, `score` |
 
 - `eval` imports `app.ai`, `app.config`, `app.domain` and `app.services`, and never imports `app.api` or `app.db` **directly** (import-linter, direct imports only: `app.services` itself imports `app.db`, but nothing in `eval` opens a database). `app` never imports `eval`.
-- Pillow comes from the `eval` extra (`pip install -e "./backend[dev,eval]"`); the Docker image doesn't install it.
+- Pillow comes from the `eval` extra (`pip install -e "./backend[dev,eval]"`), pinned exactly since F12, which also keeps the downsizing reproducible ([0022](../decisions/0022-demo-data-by-explicit-command.md)); the Docker image doesn't install it.
 - Tests are in `tests/eval/` and use synthetic cases only, since `data/eval/` is in neither CI nor a worktree.
 
 ## Running it

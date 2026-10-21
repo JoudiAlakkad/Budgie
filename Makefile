@@ -5,7 +5,7 @@ VENV   ?= .venv
 PY     := $(VENV)/bin/python
 CONFIG := backend/pyproject.toml
 
-.PHONY: install lint format test imports openapi openapi-check secrets check run seed-demo docker-check \
+.PHONY: install lint format test imports openapi openapi-check secrets check run seed-demo demo-receipts docker-check \
 	eval-check eval eval-score
 
 install:
@@ -46,6 +46,10 @@ run:
 # Demo data (decision 0022): only loads into an empty database. TODAY=YYYY-MM-DD pins the date.
 seed-demo:
 	$(PY) -m app.demo_seed $(if $(TODAY),--today $(TODAY))
+
+# Synthetic receipt photos for scenario 1 (committed in data/demo/receipts/; needs Pillow).
+demo-receipts:
+	$(PY) scripts/make_demo_receipts.py
 
 # Needs docker, so run it on the host (the dev container has none).
 docker-check:

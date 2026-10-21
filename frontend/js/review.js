@@ -12,6 +12,8 @@ const SAME_RESULT_TEXT =
   "A retry with the same model usually gives the same result; it helps only after a model or prompt change.";
 const CORRECTED_NOTE = "AI-extracted, corrected by you — check the remaining values";
 const UNKNOWN_TEXT = "unknown, please fill in";
+const SLOW_PROCESSING_TEXT =
+  "Still processing. On a CPU-only model server this can take several minutes; the page keeps checking.";
 
 const SCALARS = [
   { name: "merchant", label: "Merchant", kind: "text", required: true },
@@ -22,6 +24,20 @@ const SCALARS = [
 // Flags on any other field (subtotal, tax, payment_method, ...) have no input and go to
 // "Other findings", so none is dropped. Fields not shown are never sent: the server keeps them.
 const SCALAR_NAMES = new Set(SCALARS.map((def) => def.name));
+// The keys PATCH `checked_fields` accepts (decision 0031): the contract's `CheckedField`.
+// Only an `unreadable` flag on one of these gets a "Looks right" button. `subtotal` and
+// `tax` (prompt v1 only) have no input, so their flags and buttons are in "Other findings".
+const CHECKABLE_FIELDS = new Set([
+  "merchant",
+  "date",
+  "currency",
+  "line_items",
+  "subtotal",
+  "tax",
+  "total",
+  "payment_method",
+]);
+const STALE_TEXT = "Edited — rechecked when you save";
 // Confirm needs these; the API refuses `null` for them in a PATCH.
 const CONFIRM_REQUIRED = ["merchant", "date", "total"];
 
@@ -62,6 +78,7 @@ const state = {
   busy: false,
   draft: null, // the form's values as typed (strings)
   edited: new Set(), // badge keys of fields the user edited in this page session
+  checked: new Set(), // `unreadable` flag fields marked "Looks right", sent as checked_fields (0031)
   aiTracked: false, // this session saw the expense as unconfirmed `ai`, so per-field badges are known
   leaving: false, // navigating away after a successful save or delete: no unsaved-changes warning
   nextKey: 1,
@@ -70,6 +87,15 @@ const state = {
 
 // Nodes that input handlers update without a full re-render.
 let refs = {};
+
+// The running receipt poll's AbortController, or null. Polling has no time limit (F12),
+// so it must be stopped whenever the page leaves the processing screen.
+let poll = null;
+
+function stopPolling() {
+  if (poll) poll.abort();
+  poll = null;
+}
 
 function announce(text) {
   live.textContent = "";
@@ -168,20 +194,48 @@ function scalarChanged(def) {
   return !sameValue(parseValue(def.kind, state.draft[def.name]), state.expense[def.name]);
 }
 
-function itemsChanged() {
-  const server = state.expense.line_items;
-  const rows = state.draft.items;
-  if (rows.length !== server.length) return true;
-  return rows.some((row, i) => {
-    const item = server[i];
-    if (row.id !== item.id || row.category !== item.category) return true;
-    return ITEM_FIELDS.some((def) => !sameValue(parseValue(def.kind, row[def.name]), item[def.name]));
-  });
+function rowContentChanged(row, item) {
+  return ITEM_FIELDS.some((def) => !sameValue(parseValue(def.kind, row[def.name]), item[def.name]));
 }
 
-function isDirty() {
+/**
+ * The item edits in one pass: `any` = an item was added, removed or had its name, quantity
+ * or amount changed (not its category); `changedIds` = ids of stored items whose content
+ * changed or that were removed (decision 0031: their `line_items[i]` flags are stale).
+ */
+function itemChanges() {
+  const server = state.expense.line_items;
+  const rows = state.draft.items;
+  const rowsById = new Map(rows.filter((row) => row.id !== null).map((row) => [row.id, row]));
+  const changedIds = new Set();
+  for (const item of server) {
+    const row = rowsById.get(item.id);
+    if (!row || rowContentChanged(row, item)) changedIds.add(item.id);
+  }
+  // A new row, or (not possible on this page today) a reordering, changes the list too.
+  const any =
+    changedIds.size > 0 || rows.length !== server.length || rows.some((row, i) => row.id !== server[i].id);
+  return { any, changedIds };
+}
+
+function itemContentChanged() {
+  return itemChanges().any;
+}
+
+/** Only a category changed; call when the content is unchanged (rows and ids line up). */
+function categoryChanged() {
+  return state.draft.items.some((row, i) => row.category !== state.expense.line_items[i].category);
+}
+
+function itemsChanged() {
+  return itemContentChanged() || categoryChanged();
+}
+
+/** `edited` is editedState(); updateActions() passes the one it computed for the flags. */
+function isDirty(edited = editedState()) {
   if (!state.expense) return false;
-  return SCALARS.some(scalarChanged) || itemsChanged();
+  // A "Looks right" mark is an unsaved change too: it goes out with the next save (0031).
+  return edited.scalars.size > 0 || edited.items || categoryChanged() || state.checked.size > 0;
 }
 
 /** Required fields that had a value and were emptied: the API refuses `null` for them. */
@@ -253,6 +307,8 @@ function buildPatch() {
     if (scalarChanged(def)) body[def.name] = parseValue(def.kind, state.draft[def.name]).value;
   }
   if (itemsChanged()) body.line_items = state.draft.items.map(itemPayload);
+  // Values the user marked "Looks right"; clears their `unreadable` flags (decision 0031).
+  if (state.checked.size > 0) body.checked_fields = [...state.checked];
   return body;
 }
 
@@ -311,6 +367,8 @@ function applyExpense(expense) {
   state.expense = expense;
   state.draft = draftFrom(expense);
   state.fieldErrors = [];
+  // The server's flags are new: earlier "Looks right" marks were sent or no longer apply.
+  state.checked.clear();
   if (expense.source === "ai" && !expense.confirmed) state.aiTracked = true;
   if (expense.confirmed) {
     // Confirming reviews every value; the badges don't come back after "Edit again".
@@ -372,6 +430,146 @@ function flagNode(flag, id) {
   );
 }
 
+/**
+ * A flag as shown on the form (decision 0031): the message, dimmed with a note while its
+ * value is edited, and for an `unreadable` flag a "Looks right" button that swaps the
+ * message for "Marked as checked" and Undo. `id` goes on the message; the checked note
+ * gets `<id>-checked`. Returns the entry; `entry.root` is the node to insert, and
+ * `describedIds()` lists only the shown node's id for an input's aria-describedby.
+ * Its state is set by syncFlags(), which updateActions() runs after every change.
+ */
+function flagEntry(flag, id, readOnly) {
+  const message = flagNode(flag, id);
+  const staleNote = h("span", { className: "stale-note" }, ` (${STALE_TEXT})`);
+  staleNote.hidden = true;
+  message.append(staleNote);
+  const entry = { flag, message, staleNote, checkable: false, root: message };
+  entry.describedIds = () => (entry.message.hidden || !id ? [] : [id]);
+  refs.flagEntries.push(entry);
+  if (readOnly || flag.code !== "unreadable" || !CHECKABLE_FIELDS.has(flag.field)) return entry;
+
+  entry.checkable = true;
+  const checkedId = id ? `${id}-checked` : null;
+  entry.lookRight = h(
+    "button",
+    {
+      type: "button",
+      className: "flag-action",
+      on: {
+        click: () => {
+          // A save in flight would apply its response and drop a mark made now. The
+          // button is disabled then (updateActions); this guard is the fallback.
+          if (state.busy) return;
+          state.checked.add(flag.field);
+          updateActions();
+          entry.undo.focus();
+          announce("Marked as checked. It is sent with the next save.");
+        },
+      },
+    },
+    "Looks right",
+  );
+  entry.actions = h("div", { className: "flag-actions" }, entry.lookRight);
+  entry.checkedText = h("span", { id: checkedId }, icon("✔"), " Marked as checked");
+  entry.undo = h(
+    "button",
+    {
+      type: "button",
+      className: "link-button",
+      on: {
+        click: () => {
+          if (state.busy) return;
+          state.checked.delete(flag.field);
+          updateActions();
+          entry.lookRight.focus();
+          announce("Check undone.");
+        },
+      },
+    },
+    "Undo",
+  );
+  entry.checkedLine = h("div", { className: "flag-message flag-checked" }, entry.checkedText, " ", entry.undo);
+  entry.checkedLine.hidden = true;
+  entry.root = h("div", { className: "flag-entry" }, message, entry.actions, entry.checkedLine);
+  entry.describedIds = () => {
+    if (!id) return [];
+    return entry.message.hidden ? [checkedId] : [id];
+  };
+  return entry;
+}
+
+/**
+ * Edited values whose flags are stale until the next save (decision 0031). Computed once
+ * per updateActions() and shared by syncFlags() and isDirty(): `scalars` = names of the
+ * changed scalar fields, `items` = any item content change, `itemIds` = stored items whose
+ * content changed or that were removed.
+ */
+function editedState() {
+  if (!state.expense || !state.draft) return { scalars: new Set(), items: false, itemIds: new Set() };
+  const items = itemChanges();
+  return {
+    scalars: new Set(SCALARS.filter(scalarChanged).map((def) => def.name)),
+    items: items.any,
+    itemIds: items.changedIds,
+  };
+}
+
+function flagIsStale(flag, edited) {
+  const field = flag.field;
+  if (field && edited.scalars.has(field)) return true;
+  if (flag.code === "possible_duplicate" && (edited.scalars.has("date") || edited.scalars.has("total"))) {
+    return true;
+  }
+  if (!edited.items) return false;
+  // The whole list and the sum: stale on any item add, remove or edit.
+  if (flag.code === "sum_mismatch" || field === "line_items") return true;
+  // `uncategorized_item` keeps its own show/hide rule in syncCategoryRow.
+  const itemMatch = typeof field === "string" ? /^line_items\[(\d+)\]$/.exec(field) : null;
+  if (!itemMatch || flag.code === "uncategorized_item") return false;
+  // `line_items[i]` is the stored item at index i: stale only when that item changed or
+  // was removed. An index with no stored item can't be matched, so any edit counts.
+  const item = state.expense.line_items[Number(itemMatch[1])];
+  return item ? edited.itemIds.has(item.id) : true;
+}
+
+/**
+ * Sets every shown flag's stale and checked state, then the inputs' aria-describedby.
+ * "Looks right" and Undo are disabled while a save is in flight, like the save buttons.
+ */
+function syncFlags(edited) {
+  if (!refs.flagEntries) return;
+  for (const entry of refs.flagEntries) {
+    if (entry.checkable) {
+      entry.lookRight.disabled = state.busy;
+      entry.undo.disabled = state.busy;
+    }
+    const stale = flagIsStale(entry.flag, edited);
+    entry.message.classList.toggle("stale", stale);
+    entry.staleNote.hidden = !stale;
+    if (entry.checkable) {
+      const checked = state.checked.has(entry.flag.field);
+      entry.message.hidden = checked;
+      entry.actions.hidden = checked;
+      entry.checkedLine.hidden = !checked;
+    }
+  }
+  for (const sync of refs.describers) sync();
+}
+
+/**
+ * Keeps `input`'s aria-describedby to the shown flag and error nodes: a hidden node it
+ * named directly would still be read (docs/wiki/plan/workflow.md).
+ */
+function describeWith(input, entries, errorIds) {
+  return () => {
+    const ids = entries.flatMap((entry) => entry.describedIds()).concat(errorIds).join(" ");
+    // Runs on every keystroke: touch the attribute only when the list changes.
+    if (ids === (input.getAttribute("aria-describedby") || "")) return;
+    if (ids) input.setAttribute("aria-describedby", ids);
+    else input.removeAttribute("aria-describedby");
+  };
+}
+
 function errorNode(message, id) {
   return h("span", { className: "field-error", id }, icon("✖"), " ", message);
 }
@@ -386,6 +584,7 @@ async function onDelete() {
   try {
     await api.delete(`/receipts/${receiptId}`);
     state.mode = "deleted";
+    stopPolling();
     goHome();
   } catch (err) {
     showError(err);
@@ -397,6 +596,10 @@ async function onDelete() {
 // ---------------------------------------------------------------- processing
 
 async function startProcessing() {
+  // One poll at a time: a Retry starts a new one.
+  stopPolling();
+  const controller = new AbortController();
+  poll = controller;
   state.mode = "processing";
   const statusText = h(
     "span",
@@ -404,13 +607,17 @@ async function startProcessing() {
     RECEIPT_STATUS_WORDS[state.receipt.status] || state.receipt.status,
     "…",
   );
+  // The spinner box is a live region (role="status"): the status words and, after
+  // 5 minutes, the slow note are announced when they change or appear.
+  const statusLines = h("div", {}, statusText);
+  let slowNote = null;
   panel.replaceChildren(
     panelHeader("Reading your receipt"),
     h(
       "div",
       { className: "spinner-box", attrs: { role: "status" } },
       h("div", { className: "spinner", attrs: { "aria-hidden": "true" } }),
-      statusText,
+      statusLines,
     ),
     h(
       "p",
@@ -419,14 +626,31 @@ async function startProcessing() {
     ),
   );
   try {
-    const receipt = await pollReceipt(receiptId, (update) => {
-      statusText.textContent = `${RECEIPT_STATUS_WORDS[update.status] || update.status}…`;
-    });
-    if (state.mode !== "processing") return;
+    const receipt = await pollReceipt(
+      receiptId,
+      (update) => {
+        statusText.textContent = `${RECEIPT_STATUS_WORDS[update.status] || update.status}…`;
+      },
+      () => {
+        if (state.mode !== "processing" || slowNote) return;
+        slowNote = h("p", { className: "hint" }, SLOW_PROCESSING_TEXT);
+        statusLines.append(slowNote);
+      },
+      { signal: controller.signal },
+    );
+    if (controller.signal.aborted || state.mode !== "processing") return;
+    poll = null;
     route(receipt);
   } catch (err) {
-    if (state.mode !== "processing") return;
+    // A cancelled poll rejects with the abort reason: the page has moved on, so ignore it.
+    if (controller.signal.aborted || state.mode !== "processing") return;
+    poll = null;
     showError(err);
+    // Polling stopped, so "the page keeps checking" is no longer true.
+    if (slowNote) {
+      slowNote.remove();
+      slowNote = null;
+    }
     statusText.textContent = "Not finished yet.";
     panel.append(
       h(
@@ -497,11 +721,13 @@ async function onRetry() {
 }
 
 function onEnterManually() {
+  stopPolling();
   clearError();
   state.mode = "manual";
   state.expense = null;
   state.draft = emptyDraft();
   state.fieldErrors = [];
+  state.checked.clear();
   render();
   const first = panel.querySelector("input");
   if (first) first.focus();
@@ -517,18 +743,15 @@ function scalarField(def, readOnly, flags) {
   const id = `f-${def.name}`;
   const expense = state.expense;
   const serverValue = expense ? expense[def.name] : null;
-  const describedBy = [];
+  const errorIds = [];
   const extra = [];
 
-  flags.forEach((flag, i) => {
-    const flagId = `${id}-flag-${i}`;
-    describedBy.push(flagId);
-    extra.push(flagNode(flag, flagId));
-  });
+  const entries = flags.map((flag, i) => flagEntry(flag, `${id}-flag-${i}`, readOnly));
+  extra.push(...entries.map((entry) => entry.root));
   const errors = errorsFor(def.name);
   errors.forEach((err, i) => {
     const errId = `${id}-err-${i}`;
-    describedBy.push(errId);
+    errorIds.push(errId);
     extra.push(errorNode(err.message, errId));
   });
 
@@ -544,7 +767,6 @@ function scalarField(def, readOnly, flags) {
       maxlength: def.kind === "currency" ? "3" : null,
       placeholder: def.required ? null : "–",
       autocomplete: "off",
-      "aria-describedby": describedBy.join(" ") || null,
       "aria-invalid": errors.length ? "true" : null,
     },
   });
@@ -572,14 +794,14 @@ function scalarField(def, readOnly, flags) {
     updateActions();
   });
 
-  return h(
-    "div",
-    { className: flags.length ? "field flagged" : "field" },
-    label,
-    input,
-    unknown,
-    ...extra,
-  );
+  const field = h("div", { className: "field" }, label, input, unknown, ...extra);
+  const describe = describeWith(input, entries, errorIds);
+  refs.describers.push(() => {
+    describe();
+    // The highlight stays while a flag is left that the user hasn't marked "Looks right".
+    field.classList.toggle("flagged", entries.some((entry) => !entry.message.hidden));
+  });
+  return field;
 }
 
 function categoryOptions(selected) {
@@ -613,8 +835,9 @@ function itemRow(row, index, readOnly, flagsByItemId) {
       flags
         .filter((flag) => flag.code !== "uncategorized_item")
         .forEach((flag, i) => {
+          // `line_items[i]` isn't a checked_fields key, so these never hide: a static list is right.
           describedBy.push(`${id}-flag-${i}`);
-          extra.push(flagNode(flag, `${id}-flag-${i}`));
+          extra.push(flagEntry(flag, `${id}-flag-${i}`, readOnly).root);
         });
       rowError.forEach((err, i) => {
         describedBy.push(`${id}-rowerr-${i}`);
@@ -662,19 +885,14 @@ function itemRow(row, index, readOnly, flagsByItemId) {
   const selectId = `item-${row.key}-category`;
   const categoryFlags = flags.filter((flag) => flag.code === "uncategorized_item");
   const catExtra = [];
-  const describedBy = [];
-  categoryFlags.forEach((flag, i) => {
-    describedBy.push(`${selectId}-flag-${i}`);
-    catExtra.push(flagNode(flag, `${selectId}-flag-${i}`));
-  });
+  const flagNodes = categoryFlags.map((flag, i) => flagNode(flag, `${selectId}-flag-${i}`));
+  catExtra.push(...flagNodes);
   const missingNote = h(
     "span",
     { className: "flag-message", id: `${selectId}-missing` },
     icon("⚠"),
     " Choose a category before confirming.",
   );
-  missingNote.hidden = row.category !== UNCATEGORIZED || categoryFlags.length > 0 || readOnly;
-  describedBy.push(missingNote.id);
   const sourceHint = h("span", { className: "hint" });
   const updateSourceHint = () => {
     const hint =
@@ -683,29 +901,54 @@ function itemRow(row, index, readOnly, flagsByItemId) {
     sourceHint.hidden = !hint;
   };
   updateSourceHint();
-  const categoryErrors = errorsFor(`line_items.${index}.category`);
-  categoryErrors.forEach((err, i) => {
-    describedBy.push(`${selectId}-err-${i}`);
-    catExtra.push(errorNode(err.message, `${selectId}-err-${i}`));
-  });
+  const categoryPath = `line_items.${index}.category`;
+  const categoryErrors = errorsFor(categoryPath);
+  const errorNodes = categoryErrors.map((err, i) => errorNode(err.message, `${selectId}-err-${i}`));
+  catExtra.push(...errorNodes);
+  // While the item is uncategorised exactly one "needs a category" message shows:
+  // the server's uncategorized_item flag if there is one, else the missing note.
+  // Once a category is picked the flag is stale and hides; it shows again if the
+  // user goes back to "Choose a category…". Server category errors are stale after
+  // any change: they hide and are dropped from state.fieldErrors, so a local
+  // re-render (Add item, Remove, …) doesn't bring them back; only a new server
+  // response or a failed save can.
+  const otherFlagCount = flags.length - categoryFlags.length;
+  let categoryErrorsShown = errorNodes.length > 0;
   const select = h(
     "select",
-    {
-      id: selectId,
-      disabled: readOnly,
-      required: true,
-      attrs: {
-        "aria-describedby": describedBy.join(" ") || null,
-        "aria-invalid": categoryErrors.length ? "true" : null,
-      },
-    },
+    { id: selectId, disabled: readOnly, required: true },
     ...categoryOptions(row.category),
   );
   select.value = row.category;
+  // The one place that sets the row's category state. A read-only row gets no
+  // needs-category highlight or missing note: its select is disabled, so there is
+  // nothing to act on (a confirmed expense can't hold an uncategorised item anyway).
+  const syncCategoryRow = () => {
+    const uncategorised = row.category === UNCATEGORIZED;
+    tr.classList.toggle("needs-category", uncategorised && !readOnly);
+    tr.classList.toggle("flagged", otherFlagCount > 0 || (uncategorised && flagNodes.length > 0));
+    for (const node of flagNodes) node.hidden = !uncategorised;
+    missingNote.hidden = !uncategorised || flagNodes.length > 0 || readOnly;
+    for (const node of errorNodes) node.hidden = !categoryErrorsShown;
+    // aria-describedby reads a referenced node even when it is hidden, so only
+    // shown flags, notes and errors are listed (found by /code-review).
+    const ids = flagNodes
+      .concat([missingNote], errorNodes)
+      .filter((node) => !node.hidden)
+      .map((node) => node.id)
+      .join(" ");
+    if (ids) select.setAttribute("aria-describedby", ids);
+    else select.removeAttribute("aria-describedby");
+    if (categoryErrorsShown) select.setAttribute("aria-invalid", "true");
+    else select.removeAttribute("aria-invalid");
+  };
+  syncCategoryRow();
   select.addEventListener("change", () => {
     row.category = select.value;
-    tr.classList.toggle("needs-category", row.category === UNCATEGORIZED);
-    missingNote.hidden = row.category !== UNCATEGORIZED || categoryFlags.length > 0;
+    categoryErrorsShown = false;
+    // Paths are index-based; a change doesn't move rows, so `index` is still this row's.
+    state.fieldErrors = state.fieldErrors.filter((err) => err.path !== categoryPath);
+    syncCategoryRow();
     updateSourceHint();
     updateActions();
   });
@@ -749,8 +992,6 @@ function itemRow(row, index, readOnly, flagsByItemId) {
   }
   tr.append(removeCell);
 
-  if (flags.length) tr.classList.add("flagged");
-  if (row.category === UNCATEGORIZED && !readOnly) tr.classList.add("needs-category");
   return tr;
 }
 
@@ -863,7 +1104,7 @@ function renderForm() {
   const manual = state.mode === "manual";
   const expense = state.expense;
   const readOnly = !manual && expense.confirmed && !state.unlocked;
-  refs = { badges: new Map() };
+  refs = { badges: new Map(), flagEntries: [], describers: [] };
 
   const title = standalone
     ? manual
@@ -945,7 +1186,7 @@ function renderForm() {
       h(
         "ul",
         { className: "flag-list", attrs: { "aria-labelledby": "other-findings" } },
-        ...general.map((flag) => h("li", {}, flagNode(flag))),
+        ...general.map((flag) => h("li", {}, flagEntry(flag, undefined, readOnly).root)),
       ),
     );
   }
@@ -975,7 +1216,7 @@ function renderForm() {
 
   const itemsHeading = h("h2", { id: "items-heading" }, "Line items");
   form.append(itemsHeading);
-  for (const flag of listFlags) form.append(h("p", {}, flagNode(flag)));
+  for (const flag of listFlags) form.append(h("div", {}, flagEntry(flag, undefined, readOnly).root));
   for (const err of errorsFor("line_items")) form.append(h("p", {}, errorNode(err.message)));
   if (state.draft.items.length === 0) {
     form.append(
@@ -1027,6 +1268,7 @@ function actionsBar(manual, readOnly) {
           on: {
             click: () => {
               state.unlocked = true;
+              state.checked.clear();
               render();
               const first = document.getElementById("f-merchant");
               if (first) first.focus();
@@ -1096,6 +1338,10 @@ function labelsOf(names) {
 /** Updates the two buttons, their reasons and the item sum without rebuilding the form. */
 function updateActions() {
   if (refs.sum) refs.sum.textContent = itemsSumText();
+  // Every edit and every "Looks right"/Undo comes through here, so the flags follow too.
+  // The edited state is computed once here and shared by the flags and the dirty marker.
+  const edited = editedState();
+  syncFlags(edited);
   if (!refs.saveConfirm) return;
   const manual = state.mode === "manual";
   const reasons = [];
@@ -1106,7 +1352,7 @@ function updateActions() {
   if (manual) {
     if (missing.length) reasons.push(`To save, fill in ${labelsOf(missing).join(", ")}.`);
   } else {
-    refs.dirty.textContent = isDirty() ? "Unsaved changes" : "";
+    refs.dirty.textContent = isDirty(edited) ? "Unsaved changes" : "";
     const emptied = emptiedRequired();
     if (emptied.length) {
       draftBlocked = true;
@@ -1229,6 +1475,8 @@ function onSaveDraft() {
 // ---------------------------------------------------------------- page
 
 function render() {
+  // Every screen but processing is drawn here, so leaving processing stops the poll.
+  stopPolling();
   if (state.mode === "failed") renderFailed();
   else if (state.mode === "review" || state.mode === "manual") renderForm();
 }

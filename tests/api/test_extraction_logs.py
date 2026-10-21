@@ -19,7 +19,7 @@ ALLOWED_TEMPLATES = {
     "Receipt %d uploaded (%s)",
     "Receipt %d deleted",
     "Expense %d created by hand, %d items, receipt %s",
-    "Expense %d edited (%s), unconfirmed: %s",
+    "Expense %d edited (%s), checked (%s), unconfirmed: %s",
     "Expense %d confirmed",
     "Expense %d deleted, receipt %s",
     "Expense %d: receipt %d was not %s, left as it is",

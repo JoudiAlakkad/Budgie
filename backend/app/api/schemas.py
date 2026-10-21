@@ -153,6 +153,12 @@ ErrorCode = Literal[
 ]
 """The `error` of an HTTP error body (error-format.md#http-error-codes)."""
 
+CheckedField = Literal[
+    "merchant", "date", "currency", "line_items", "subtotal", "tax", "total", "payment_method"
+]
+"""A key the user marks as checked (decision 0031): every unreadable-field key of any prompt
+version, so `subtotal` and `tax` from v1 extractions can be cleared too."""
+
 ReviewStatus = Literal["accepted", "needs_review", "rejected"]
 Source = Literal["ai", "ai_corrected", "manual"]
 CategorySource = Literal["seed", "user", "none"]
@@ -282,7 +288,8 @@ class ExpenseUpdate(_Request):
     """`PATCH /expenses/{id}`: only the fields sent change.
 
     Fields that are required in `ExpenseCreate` may be left out but not sent as `null`.
-    `line_items`, if sent, replaces the list.
+    `line_items`, if sent, replaces the list. `checked_fields` (decision 0031) drops
+    those keys from the model's unreadable fields without changing a value.
     """
 
     merchant: str = None  # type: ignore[assignment]
@@ -292,6 +299,10 @@ class ExpenseUpdate(_Request):
     subtotal: Money | None = None
     tax: Money | None = None
     line_items: list[LineItemInput] = Field(default=None, min_length=1)  # type: ignore[assignment]
+    checked_fields: list[CheckedField] = Field(
+        default_factory=list,
+        description="Values the user checked and found right; their `unreadable` flags clear.",
+    )
 
 
 # ---------------------------------------------------------------- settings and insights

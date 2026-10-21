@@ -537,6 +537,154 @@ def test_an_edited_field_leaves_unreadable_fields(
     assert unreadable(patch(api, expense["id"], {"merchant": "Edeka 2"})) == left
 
 
+# ---------------------------------------------------------------- checked_fields (0031)
+
+
+@pytest.mark.parametrize(
+    ("keys", "checked", "left"),
+    [
+        (["date", "total"], ["date"], ["total"]),
+        (["date", "total"], ["date", "total"], []),
+        (["currency", "payment_method"], ["payment_method"], ["currency"]),
+        (["line_items", "merchant"], ["line_items", "merchant"], []),
+        # a key that isn't unreadable is ignored next to one that is
+        (["date", "total"], ["merchant", "total"], ["date"]),
+    ],
+)
+def test_a_checked_field_leaves_unreadable_fields(
+    api: TestClient, model: ModelServer, keys: list, checked: list, left: list
+) -> None:
+    _, expense = extracted(api, model, unreadable_fields=keys)
+    assert unreadable(expense) == keys
+
+    edited = patch(api, expense["id"], {"checked_fields": checked})
+
+    assert unreadable(edited) == left
+    assert edited["review_status"] == ("needs_review" if left else "accepted")
+    assert api.get(f"/api/expenses/{expense['id']}").json() == edited
+    # A checked key stays dropped on the next edit.
+    assert unreadable(patch(api, expense["id"], {"merchant": "Edeka 2"})) == left
+
+
+def test_a_check_only_patch_keeps_source_values_and_confirmation(
+    api: TestClient, model: ModelServer
+) -> None:
+    receipt_id, expense = extracted(api, model, unreadable_fields=["date", "payment_method"])
+    confirmed = confirm(api, expense["id"])
+    assert receipt_status(api, receipt_id) == "confirmed"
+
+    edited = patch(api, expense["id"], {"checked_fields": ["date", "payment_method"]})
+
+    assert (edited["source"], edited["confirmed"]) == ("ai", True)
+    assert receipt_status(api, receipt_id) == "confirmed"
+    unchanged = {"review_status", "flags", "updated_at"}
+    assert {k: v for k, v in edited.items() if k not in unchanged} == {
+        k: v for k, v in confirmed.items() if k not in unchanged
+    }
+    assert (edited["review_status"], edited["flags"]) == ("accepted", [])
+
+
+def test_checking_with_a_value_change_is_an_edit(api: TestClient, model: ModelServer) -> None:
+    receipt_id, expense = extracted(api, model, unreadable_fields=["date", "total"])
+    confirm(api, expense["id"])
+
+    edited = patch(api, expense["id"], {"merchant": "Edeka", "checked_fields": ["date"]})
+
+    assert (edited["source"], edited["confirmed"]) == ("ai_corrected", False)
+    assert receipt_status(api, receipt_id) == "extracted"
+    assert unreadable(edited) == ["total"]
+
+
+@pytest.mark.parametrize(
+    ("fields", "flag"),
+    [
+        ({"total": 9.99}, ("total", "sum_mismatch")),
+        ({"total": None}, ("total", "missing_total")),
+    ],
+)
+def test_checking_never_clears_a_rule_flag(
+    api: TestClient, model: ModelServer, fields: dict, flag: tuple
+) -> None:
+    _, expense = extracted(api, model, unreadable_fields=["total"], **fields)
+    assert flag in codes(expense)
+
+    edited = patch(api, expense["id"], {"checked_fields": ["total"]})
+
+    assert unreadable(edited) == []
+    assert flag in codes(edited)
+    assert edited["review_status"] != "accepted"
+
+
+def test_an_empty_checked_fields_changes_nothing(api: TestClient, model: ModelServer) -> None:
+    _, expense = extracted(api, model, unreadable_fields=["date"])
+
+    assert patch(api, expense["id"], {"checked_fields": []}) == expense
+
+
+def test_a_check_that_removes_no_unreadable_key_is_a_no_op(
+    api: TestClient, model: ModelServer
+) -> None:
+    """No reassessment: a stale check must not un-accept a confirmed expense (0031)."""
+    receipt_id, expense = extracted(api, model, unreadable_fields=["date"])
+    confirmed = confirm(api, expense["id"])
+    # A duplicate added afterwards: a reassessment of the first would flag it.
+    create(
+        api,
+        merchant=expense["merchant"],
+        date=expense["date"],
+        total=expense["total"],
+        line_items=[{"description": "BROT", "amount": expense["total"], "category": "other"}],
+    )
+
+    unchanged = patch(api, expense["id"], {"checked_fields": ["merchant", "payment_method"]})
+
+    assert unchanged == confirmed
+    assert api.get(f"/api/expenses/{expense['id']}").json() == confirmed
+    assert receipt_status(api, receipt_id) == "confirmed"
+    # Checking the unreadable date does reassess, and finds the duplicate.
+    checked = patch(api, expense["id"], {"checked_fields": ["date"]})
+    assert unreadable(checked) == []
+    assert duplicate_flags(checked)
+    assert (checked["review_status"], checked["confirmed"]) == ("needs_review", True)
+
+
+def test_v1_subtotal_and_tax_can_be_checked(
+    api: TestClient, model: ModelServer, settings: Settings
+) -> None:
+    """A stored v1 expense can list `subtotal` and `tax` as unreadable (decision 0031)."""
+    _, expense = extracted(api, model, unreadable_fields=["date"])
+    with database_for(settings.database_url).engine.begin() as conn:
+        conn.execute(
+            text("UPDATE expenses SET unreadable_fields = :keys WHERE id = :id"),
+            {"keys": '["subtotal", "tax", "date"]', "id": expense["id"]},
+        )
+    flagged = patch(api, expense["id"], {"merchant": "Edeka"})
+    assert unreadable(flagged) == ["subtotal", "tax", "date"]
+
+    edited = patch(api, expense["id"], {"checked_fields": ["subtotal", "tax"]})
+
+    assert unreadable(edited) == ["date"]
+    assert api.get(f"/api/expenses/{expense['id']}").json() == edited
+
+
+@pytest.mark.parametrize(
+    "checked",
+    [["unit_price"], ["line_items[0]"], "date", [None]],
+    ids=["key", "item", "str", "null"],
+)
+def test_an_unknown_checked_key_is_422(
+    api: TestClient, model: ModelServer, checked: object
+) -> None:
+    _, expense = extracted(api, model, unreadable_fields=["date"])
+
+    response = api.patch(f"/api/expenses/{expense['id']}", json={"checked_fields": checked})
+
+    assert response.status_code == 422
+    assert response.json()["error"] == "validation_error"
+    assert any(f["field"].startswith("checked_fields") for f in response.json()["fields"])
+    assert api.get(f"/api/expenses/{expense['id']}").json() == expense
+
+
 def test_line_items_are_updated_created_and_deleted(api: TestClient) -> None:
     expense = create(api)
     banane, cola = expense["line_items"]
