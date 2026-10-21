@@ -151,41 +151,75 @@ async function download(path) {
  * current interval; after 3 such failures in a row it rejects with the last error, and
  * any successful poll resets the count. A 4xx `ApiError` (e.g. 404 for a deleted
  * receipt) or any other error rejects at once (docs/wiki/frontend/api-client.md).
+ *
+ * Cancellation: pass `options.signal` (an `AbortSignal`). Once it aborts, no further tick
+ * is scheduled, the result of a request already in flight is ignored, `onUpdate` and
+ * `onSlow` aren't called again, and the promise rejects with `signal.reason` (a
+ * `DOMException` named "AbortError" for a plain `controller.abort()`). Callers ignore
+ * that rejection by checking `signal.aborted` first. An already aborted signal rejects
+ * at once, without a request.
+ *
+ * @param {number} id
+ * @param {(receipt: object) => void} [onUpdate]
+ * @param {() => void} [onSlow]
+ * @param {{signal?: AbortSignal}} [options]
+ * @returns {Promise<object>} the receipt in its final status
  */
-export function pollReceipt(id, onUpdate, onSlow) {
+export function pollReceipt(id, onUpdate, onSlow, { signal } = {}) {
   const started = Date.now();
   let slow = false;
   let failures = 0;
+  let timer = null;
   return new Promise((resolve, reject) => {
+    const cancelled = () => Boolean(signal && signal.aborted);
+    const onAbort = () => {
+      if (timer !== null) clearTimeout(timer);
+      timer = null;
+      reject(signal.reason);
+    };
+    const settle = (fn, value) => {
+      if (signal) signal.removeEventListener("abort", onAbort);
+      fn(value);
+    };
     const scheduleNext = () => {
       if (!slow && Date.now() - started >= POLL_SLOW_AFTER_MS) {
         slow = true;
         if (onSlow) onSlow();
       }
-      setTimeout(tick, slow ? POLL_SLOW_INTERVAL_MS : POLL_INTERVAL_MS);
+      timer = setTimeout(tick, slow ? POLL_SLOW_INTERVAL_MS : POLL_INTERVAL_MS);
     };
     const tick = async () => {
+      timer = null;
       let receipt;
       try {
         receipt = await api.get(`/receipts/${id}`);
       } catch (err) {
+        if (cancelled()) return;
         const transient = err instanceof ApiError && (err.status === 0 || err.status >= 500);
         failures += 1;
         if (!transient || failures >= POLL_MAX_FAILURES) {
-          reject(err);
+          settle(reject, err);
           return;
         }
         scheduleNext();
         return;
       }
+      if (cancelled()) return;
       failures = 0;
       if (onUpdate) onUpdate(receipt);
       if (FINAL_STATUSES.has(receipt.status)) {
-        resolve(receipt);
+        settle(resolve, receipt);
         return;
       }
       scheduleNext();
     };
+    if (signal) {
+      if (signal.aborted) {
+        reject(signal.reason);
+        return;
+      }
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
     tick();
   });
 }

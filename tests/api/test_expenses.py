@@ -547,8 +547,8 @@ def test_an_edited_field_leaves_unreadable_fields(
         (["date", "total"], ["date", "total"], []),
         (["currency", "payment_method"], ["payment_method"], ["currency"]),
         (["line_items", "merchant"], ["line_items", "merchant"], []),
-        # a key that isn't unreadable is ignored
-        (["date"], ["merchant", "total"], ["date"]),
+        # a key that isn't unreadable is ignored next to one that is
+        (["date", "total"], ["merchant", "total"], ["date"]),
     ],
 )
 def test_a_checked_field_leaves_unreadable_fields(
@@ -621,8 +621,56 @@ def test_an_empty_checked_fields_changes_nothing(api: TestClient, model: ModelSe
     assert patch(api, expense["id"], {"checked_fields": []}) == expense
 
 
+def test_a_check_that_removes_no_unreadable_key_is_a_no_op(
+    api: TestClient, model: ModelServer
+) -> None:
+    """No reassessment: a stale check must not un-accept a confirmed expense (0031)."""
+    receipt_id, expense = extracted(api, model, unreadable_fields=["date"])
+    confirmed = confirm(api, expense["id"])
+    # A duplicate added afterwards: a reassessment of the first would flag it.
+    create(
+        api,
+        merchant=expense["merchant"],
+        date=expense["date"],
+        total=expense["total"],
+        line_items=[{"description": "BROT", "amount": expense["total"], "category": "other"}],
+    )
+
+    unchanged = patch(api, expense["id"], {"checked_fields": ["merchant", "payment_method"]})
+
+    assert unchanged == confirmed
+    assert api.get(f"/api/expenses/{expense['id']}").json() == confirmed
+    assert receipt_status(api, receipt_id) == "confirmed"
+    # Checking the unreadable date does reassess, and finds the duplicate.
+    checked = patch(api, expense["id"], {"checked_fields": ["date"]})
+    assert unreadable(checked) == []
+    assert duplicate_flags(checked)
+    assert (checked["review_status"], checked["confirmed"]) == ("needs_review", True)
+
+
+def test_v1_subtotal_and_tax_can_be_checked(
+    api: TestClient, model: ModelServer, settings: Settings
+) -> None:
+    """A stored v1 expense can list `subtotal` and `tax` as unreadable (decision 0031)."""
+    _, expense = extracted(api, model, unreadable_fields=["date"])
+    with database_for(settings.database_url).engine.begin() as conn:
+        conn.execute(
+            text("UPDATE expenses SET unreadable_fields = :keys WHERE id = :id"),
+            {"keys": '["subtotal", "tax", "date"]', "id": expense["id"]},
+        )
+    flagged = patch(api, expense["id"], {"merchant": "Edeka"})
+    assert unreadable(flagged) == ["subtotal", "tax", "date"]
+
+    edited = patch(api, expense["id"], {"checked_fields": ["subtotal", "tax"]})
+
+    assert unreadable(edited) == ["date"]
+    assert api.get(f"/api/expenses/{expense['id']}").json() == edited
+
+
 @pytest.mark.parametrize(
-    "checked", [["subtotal"], ["line_items[0]"], "date", [None]], ids=["key", "item", "str", "null"]
+    "checked",
+    [["unit_price"], ["line_items[0]"], "date", [None]],
+    ids=["key", "item", "str", "null"],
 )
 def test_an_unknown_checked_key_is_422(
     api: TestClient, model: ModelServer, checked: object

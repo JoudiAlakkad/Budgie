@@ -225,18 +225,20 @@ class ExpenseService:
 
         A body with only `checked_fields` changes no value: it reassesses with the
         reduced `unreadable_fields` but keeps `source`, `confirmed`, the receipt status
-        and the items. A body with no fields, or only an empty `checked_fields`, is not
-        an edit: it returns the expense unchanged.
+        and the items. A body that sends no value and whose `checked_fields` removes no
+        key from `unreadable_fields` (no fields, an empty list, or only keys that aren't
+        unreadable) is not an edit: it returns the expense unchanged, with no
+        reassessment and no write, so a stale check can't add a fresh flag.
         """
         sent = set(body.model_fields_set)
-        checked = set(body.checked_fields) if "checked_fields" in sent else set()
+        checked = set(body.checked_fields)
         sent.discard("checked_fields")
         with self._db.transaction() as session:
             expenses = ExpenseRepository(session)
             current = expenses.get(expense_id)
             if current is None:
                 raise NotFound(f"Expense {expense_id} does not exist.")
-            if not sent and not checked:
+            if not sent and checked.isdisjoint(current.unreadable_fields):
                 return expense_view(current)
             values: dict[str, Any] = {
                 name: getattr(body, name) if name in sent else getattr(current, name)

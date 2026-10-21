@@ -14,6 +14,8 @@
    show an element the JS hid (F12 host test: "Choose a category" on categorised items).
 8. The review page's `CHECKABLE_FIELDS` equals the contract's `CheckedField`, and only
    `buildPatch` sends `checked_fields` (decision 0031; a manual POST has no flags).
+9. `pollReceipt` takes an `AbortSignal`, and every caller passes one (F12: the poll has
+   no time limit, so it must stop when the page leaves the processing screen).
 
 The scanned sources are `frontend/js/**/*.js` and the inline scripts of `frontend/*.html`.
 Comments are stripped first, so a comment may name a sink. Each check skips with a reason
@@ -506,3 +508,30 @@ def test_checkable_fields_match_the_contract() -> None:
     assert keys == list(get_args(CheckedField))
     assert "checked_fields" in _js_function(code, "buildPatch")
     assert "checked_fields" not in _js_function(code, "buildCreate")
+
+
+POLL_SIGNATURE = re.compile(
+    r"export\s+function\s+pollReceipt\(\s*id\s*,\s*onUpdate\s*,\s*onSlow\s*,\s*\{\s*signal\s*\}"
+)
+
+
+def test_receipt_poll_can_be_cancelled() -> None:
+    """`pollReceipt` takes an AbortSignal and every caller passes one (F12, `/code-review`).
+
+    Polling has no time limit, so a poll left running after the page moved on would call
+    `GET /receipts/{id}` every 10 s until the tab closes.
+    """
+    if not API_JS.is_file():
+        pytest.skip("frontend/js/api.js doesn't exist yet")
+    api_code = _strip_js_comments(API_JS.read_text(encoding="utf-8"))
+    assert POLL_SIGNATURE.search(api_code), "pollReceipt(id, onUpdate, onSlow, { signal })"
+    body = _js_function(api_code, "pollReceipt")
+    assert "clearTimeout" in body and "signal.aborted" in body
+    for path, code in _require_scripts().items():
+        if path == API_JS:
+            continue
+        for match in re.finditer(r"\bpollReceipt\(", code):
+            if code[: match.start()].rstrip().endswith("function"):
+                continue
+            call = code[match.start() : match.start() + 1000]
+            assert "signal:" in call, f"{path.name}: pollReceipt call without a signal"

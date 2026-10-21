@@ -25,8 +25,18 @@ const SCALARS = [
 // "Other findings", so none is dropped. Fields not shown are never sent: the server keeps them.
 const SCALAR_NAMES = new Set(SCALARS.map((def) => def.name));
 // The keys PATCH `checked_fields` accepts (decision 0031): the contract's `CheckedField`.
-// Only an `unreadable` flag on one of these gets a "Looks right" button.
-const CHECKABLE_FIELDS = new Set(["merchant", "date", "currency", "line_items", "total", "payment_method"]);
+// Only an `unreadable` flag on one of these gets a "Looks right" button. `subtotal` and
+// `tax` (prompt v1 only) have no input, so their flags and buttons are in "Other findings".
+const CHECKABLE_FIELDS = new Set([
+  "merchant",
+  "date",
+  "currency",
+  "line_items",
+  "subtotal",
+  "tax",
+  "total",
+  "payment_method",
+]);
 const STALE_TEXT = "Edited — rechecked when you save";
 // Confirm needs these; the API refuses `null` for them in a PATCH.
 const CONFIRM_REQUIRED = ["merchant", "date", "total"];
@@ -77,6 +87,15 @@ const state = {
 
 // Nodes that input handlers update without a full re-render.
 let refs = {};
+
+// The running receipt poll's AbortController, or null. Polling has no time limit (F12),
+// so it must be stopped whenever the page leaves the processing screen.
+let poll = null;
+
+function stopPolling() {
+  if (poll) poll.abort();
+  poll = null;
+}
 
 function announce(text) {
   live.textContent = "";
@@ -175,27 +194,48 @@ function scalarChanged(def) {
   return !sameValue(parseValue(def.kind, state.draft[def.name]), state.expense[def.name]);
 }
 
-/** An item was added, removed or had its name, quantity or amount changed (not its category). */
-function itemContentChanged() {
-  const server = state.expense.line_items;
-  const rows = state.draft.items;
-  if (rows.length !== server.length) return true;
-  return rows.some((row, i) => {
-    const item = server[i];
-    if (row.id !== item.id) return true;
-    return ITEM_FIELDS.some((def) => !sameValue(parseValue(def.kind, row[def.name]), item[def.name]));
-  });
+function rowContentChanged(row, item) {
+  return ITEM_FIELDS.some((def) => !sameValue(parseValue(def.kind, row[def.name]), item[def.name]));
 }
 
-function itemsChanged() {
-  if (itemContentChanged()) return true;
+/**
+ * The item edits in one pass: `any` = an item was added, removed or had its name, quantity
+ * or amount changed (not its category); `changedIds` = ids of stored items whose content
+ * changed or that were removed (decision 0031: their `line_items[i]` flags are stale).
+ */
+function itemChanges() {
+  const server = state.expense.line_items;
+  const rows = state.draft.items;
+  const rowsById = new Map(rows.filter((row) => row.id !== null).map((row) => [row.id, row]));
+  const changedIds = new Set();
+  for (const item of server) {
+    const row = rowsById.get(item.id);
+    if (!row || rowContentChanged(row, item)) changedIds.add(item.id);
+  }
+  // A new row, or (not possible on this page today) a reordering, changes the list too.
+  const any =
+    changedIds.size > 0 || rows.length !== server.length || rows.some((row, i) => row.id !== server[i].id);
+  return { any, changedIds };
+}
+
+function itemContentChanged() {
+  return itemChanges().any;
+}
+
+/** Only a category changed; call when the content is unchanged (rows and ids line up). */
+function categoryChanged() {
   return state.draft.items.some((row, i) => row.category !== state.expense.line_items[i].category);
 }
 
-function isDirty() {
+function itemsChanged() {
+  return itemContentChanged() || categoryChanged();
+}
+
+/** `edited` is editedState(); updateActions() passes the one it computed for the flags. */
+function isDirty(edited = editedState()) {
   if (!state.expense) return false;
   // A "Looks right" mark is an unsaved change too: it goes out with the next save (0031).
-  return SCALARS.some(scalarChanged) || itemsChanged() || state.checked.size > 0;
+  return edited.scalars.size > 0 || edited.items || categoryChanged() || state.checked.size > 0;
 }
 
 /** Required fields that had a value and were emptied: the API refuses `null` for them. */
@@ -417,7 +457,8 @@ function flagEntry(flag, id, readOnly) {
       className: "flag-action",
       on: {
         click: () => {
-          // A save in flight would apply its response and drop a mark made now.
+          // A save in flight would apply its response and drop a mark made now. The
+          // button is disabled then (updateActions); this guard is the fallback.
           if (state.busy) return;
           state.checked.add(flag.field);
           updateActions();
@@ -457,12 +498,19 @@ function flagEntry(flag, id, readOnly) {
   return entry;
 }
 
-/** Edited values whose flags are stale until the next save (decision 0031). */
+/**
+ * Edited values whose flags are stale until the next save (decision 0031). Computed once
+ * per updateActions() and shared by syncFlags() and isDirty(): `scalars` = names of the
+ * changed scalar fields, `items` = any item content change, `itemIds` = stored items whose
+ * content changed or that were removed.
+ */
 function editedState() {
-  if (!state.expense || !state.draft) return { scalars: new Set(), items: false };
+  if (!state.expense || !state.draft) return { scalars: new Set(), items: false, itemIds: new Set() };
+  const items = itemChanges();
   return {
     scalars: new Set(SCALARS.filter(scalarChanged).map((def) => def.name)),
-    items: itemContentChanged(),
+    items: items.any,
+    itemIds: items.changedIds,
   };
 }
 
@@ -473,16 +521,28 @@ function flagIsStale(flag, edited) {
     return true;
   }
   if (!edited.items) return false;
+  // The whole list and the sum: stale on any item add, remove or edit.
   if (flag.code === "sum_mismatch" || field === "line_items") return true;
   // `uncategorized_item` keeps its own show/hide rule in syncCategoryRow.
-  return typeof field === "string" && /^line_items\[\d+\]$/.test(field) && flag.code !== "uncategorized_item";
+  const itemMatch = typeof field === "string" ? /^line_items\[(\d+)\]$/.exec(field) : null;
+  if (!itemMatch || flag.code === "uncategorized_item") return false;
+  // `line_items[i]` is the stored item at index i: stale only when that item changed or
+  // was removed. An index with no stored item can't be matched, so any edit counts.
+  const item = state.expense.line_items[Number(itemMatch[1])];
+  return item ? edited.itemIds.has(item.id) : true;
 }
 
-/** Sets every shown flag's stale and checked state, then the inputs' aria-describedby. */
-function syncFlags() {
+/**
+ * Sets every shown flag's stale and checked state, then the inputs' aria-describedby.
+ * "Looks right" and Undo are disabled while a save is in flight, like the save buttons.
+ */
+function syncFlags(edited) {
   if (!refs.flagEntries) return;
-  const edited = editedState();
   for (const entry of refs.flagEntries) {
+    if (entry.checkable) {
+      entry.lookRight.disabled = state.busy;
+      entry.undo.disabled = state.busy;
+    }
     const stale = flagIsStale(entry.flag, edited);
     entry.message.classList.toggle("stale", stale);
     entry.staleNote.hidden = !stale;
@@ -502,8 +562,10 @@ function syncFlags() {
  */
 function describeWith(input, entries, errorIds) {
   return () => {
-    const ids = entries.flatMap((entry) => entry.describedIds()).concat(errorIds);
-    if (ids.length) input.setAttribute("aria-describedby", ids.join(" "));
+    const ids = entries.flatMap((entry) => entry.describedIds()).concat(errorIds).join(" ");
+    // Runs on every keystroke: touch the attribute only when the list changes.
+    if (ids === (input.getAttribute("aria-describedby") || "")) return;
+    if (ids) input.setAttribute("aria-describedby", ids);
     else input.removeAttribute("aria-describedby");
   };
 }
@@ -522,6 +584,7 @@ async function onDelete() {
   try {
     await api.delete(`/receipts/${receiptId}`);
     state.mode = "deleted";
+    stopPolling();
     goHome();
   } catch (err) {
     showError(err);
@@ -533,6 +596,10 @@ async function onDelete() {
 // ---------------------------------------------------------------- processing
 
 async function startProcessing() {
+  // One poll at a time: a Retry starts a new one.
+  stopPolling();
+  const controller = new AbortController();
+  poll = controller;
   state.mode = "processing";
   const statusText = h(
     "span",
@@ -569,11 +636,15 @@ async function startProcessing() {
         slowNote = h("p", { className: "hint" }, SLOW_PROCESSING_TEXT);
         statusLines.append(slowNote);
       },
+      { signal: controller.signal },
     );
-    if (state.mode !== "processing") return;
+    if (controller.signal.aborted || state.mode !== "processing") return;
+    poll = null;
     route(receipt);
   } catch (err) {
-    if (state.mode !== "processing") return;
+    // A cancelled poll rejects with the abort reason: the page has moved on, so ignore it.
+    if (controller.signal.aborted || state.mode !== "processing") return;
+    poll = null;
     showError(err);
     // Polling stopped, so "the page keeps checking" is no longer true.
     if (slowNote) {
@@ -650,6 +721,7 @@ async function onRetry() {
 }
 
 function onEnterManually() {
+  stopPolling();
   clearError();
   state.mode = "manual";
   state.expense = null;
@@ -1267,7 +1339,9 @@ function labelsOf(names) {
 function updateActions() {
   if (refs.sum) refs.sum.textContent = itemsSumText();
   // Every edit and every "Looks right"/Undo comes through here, so the flags follow too.
-  syncFlags();
+  // The edited state is computed once here and shared by the flags and the dirty marker.
+  const edited = editedState();
+  syncFlags(edited);
   if (!refs.saveConfirm) return;
   const manual = state.mode === "manual";
   const reasons = [];
@@ -1278,7 +1352,7 @@ function updateActions() {
   if (manual) {
     if (missing.length) reasons.push(`To save, fill in ${labelsOf(missing).join(", ")}.`);
   } else {
-    refs.dirty.textContent = isDirty() ? "Unsaved changes" : "";
+    refs.dirty.textContent = isDirty(edited) ? "Unsaved changes" : "";
     const emptied = emptiedRequired();
     if (emptied.length) {
       draftBlocked = true;
@@ -1401,6 +1475,8 @@ function onSaveDraft() {
 // ---------------------------------------------------------------- page
 
 function render() {
+  // Every screen but processing is drawn here, so leaving processing stops the poll.
+  stopPolling();
   if (state.mode === "failed") renderFailed();
   else if (state.mode === "review" || state.mode === "manual") renderForm();
 }
