@@ -153,8 +153,11 @@ ErrorCode = Literal[
 ]
 """The `error` of an HTTP error body (error-format.md#http-error-codes)."""
 
-CheckedField = Literal["merchant", "date", "currency", "line_items", "total", "payment_method"]
-"""A key the user marks as checked (decision 0031); mirrors the model's unreadable-field keys."""
+CheckedField = Literal[
+    "merchant", "date", "currency", "line_items", "subtotal", "tax", "total", "payment_method"
+]
+"""A key the user marks as checked (decision 0031): every unreadable-field key of any prompt
+version, so `subtotal` and `tax` from v1 extractions can be cleared too."""
 
 ReviewStatus = Literal["accepted", "needs_review", "rejected"]
 Source = Literal["ai", "ai_corrected", "manual"]

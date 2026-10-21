@@ -8,8 +8,8 @@ In the F12 host test, an ALDI receipt showed "could not be read" warnings on dat
 The same screenshot showed a second, separate problem. "Items sum to 17.80 but total is 10.95" stayed after the user had typed 17.80, because flags only refresh from a server response (0018: "flags are stale between an edit and Save").
 
 ## Decision
-- **Contract:** `ExpenseUpdate` gets `checked_fields: list[CheckedField]` (optional, default empty). Its keys are the model's unreadable-field keys: `merchant`, `date`, `currency`, `line_items`, `total`, `payment_method`. An unknown key is `422 validation_error`.
-- **Semantics:** the checked keys leave `unreadable_fields`, then the rules run again. A key that isn't in `unreadable_fields` is ignored.
+- **Contract:** `ExpenseUpdate` gets `checked_fields: list[CheckedField]` (optional, default empty). Its keys are the unreadable-field keys of every prompt version: `merchant`, `date`, `currency`, `line_items`, `subtotal`, `tax`, `total`, `payment_method`. `subtotal` and `tax` are only in v1, but stored v1 expenses can still carry them, and they have no input to edit (found by `/code-review`). A test ties the list to the prompt schemas. An unknown key is `422 validation_error`.
+- **Semantics:** the checked keys leave `unreadable_fields`, then the rules run again. A key that isn't in `unreadable_fields` is ignored: a body whose checks remove nothing and that sends no value returns the expense unchanged, with no reassessment (`/code-review`: a stale client could otherwise turn a confirmed expense `needs_review` through a fresh `possible_duplicate`).
   - A body with only `checked_fields` changes no value. So it leaves `source` alone (`ai` stays `ai`), and it doesn't un-confirm.
   - A body with value changes as well behaves like any edit.
   - `checked_fields` sent together with values is allowed.

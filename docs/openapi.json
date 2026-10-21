@@ -1950,6 +1950,8 @@
                 "date",
                 "currency",
                 "line_items",
+                "subtotal",
+                "tax",
                 "total",
                 "payment_method"
               ]
